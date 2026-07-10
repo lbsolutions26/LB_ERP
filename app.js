@@ -234,6 +234,36 @@ function renderItensDocumentoTable() {
     .join("");
 }
 
+function parseLegacyNumber(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const normalized = text.replace(/\./g, "").replace(/,/g, ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildFallbackItemFromDocumento(documento) {
+  if (!documento) return null;
+
+  const payload = documento.raw_payload || {};
+  const quantidade = parseLegacyNumber(payload.quantidade) || 1;
+  const valorTotal = Number(documento.total || 0);
+  const valorUnitario = quantidade > 0 ? valorTotal / quantidade : valorTotal;
+
+  const descricao =
+    (typeof payload.descricao === "string" && payload.descricao.trim()) ||
+    (typeof documento.observacoes === "string" && documento.observacoes.trim()) ||
+    "Item consolidado do cabecalho legado";
+
+  return {
+    descricao_item: descricao,
+    quantidade,
+    valor_unitario: valorUnitario,
+    valor_total: valorTotal
+  };
+}
+
 async function openDocumentoItens(tipoDocumento, documentoId) {
   let itens = [];
 
@@ -290,6 +320,22 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
         valor_unitario: item.valor_unitario,
         valor_total: item.total
       }));
+    }
+  }
+
+  if (!itens.length && (state.pedidosSource === "documentos_venda" || state.orcamentosSource === "documentos_venda")) {
+    const { data: documentoData, error: documentoError } = await supabaseClient
+      .from("documentos_venda")
+      .select("id, total, observacoes, raw_payload")
+      .eq("empresa_id", state.empresaId)
+      .eq("id", documentoId)
+      .maybeSingle();
+
+    if (documentoError) throw documentoError;
+
+    const fallbackItem = buildFallbackItemFromDocumento(documentoData);
+    if (fallbackItem) {
+      itens = [fallbackItem];
     }
   }
 
