@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GuPedal ERP Web</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <main id="authScreen" class="auth-screen">
+      <section class="auth-card">
+        <h1>GuPedal SaaS</h1>
+        <p class="subtitle">Login por empresa para dados isolados por cliente</p>
+
+        <form id="loginForm" class="auth-form">
+          <input name="email" type="email" placeholder="Email" required />
+          <input name="password" type="password" placeholder="Senha" required />
+          <button type="submit" class="btn">Entrar</button>
+        </form>
+
+        <p class="tiny-note">
+          Primeiro acesso: crie o usuário no painel do Supabase e vincule em usuarios_empresas.
+        </p>
+      </section>
+    </main>
+
+    <div id="appShell" class="hidden">
+      <header class="topbar">
+        <div>
+          <h1>GuPedal v2</h1>
+          <p id="empresaInfo" class="subtitle">Empresa</p>
+        </div>
+        <div class="top-actions">
+          <button id="refreshBtn" class="btn btn-ghost">Atualizar</button>
+          <button id="logoutBtn" class="btn btn-ghost">Sair</button>
+        </div>
+      </header>
+
+      <nav class="menu-tabs">
+        <button class="tab active" data-section="dashboard">Dashboard</button>
+        <button class="tab" data-section="clientes">Clientes</button>
+        <button class="tab" data-section="pedidos">Pedidos</button>
+        <button class="tab" data-section="orcamentos">Orcamentos</button>
+        <button class="tab" data-section="despesas">Despesas</button>
+        <button class="tab" data-section="produtos">Produtos</button>
+        <button class="tab" data-section="relatorios">Relatorios</button>
+      </nav>
+
+      <main class="layout">
+        <section id="section-dashboard" class="card app-section active-section">
+          <h2>Dashboard</h2>
+          <div class="metric-grid">
+            <article>
+              <span>Clientes</span>
+              <strong id="clientesCount">0</strong>
+            </article>
+            <article>
+              <span>Pedidos</span>
+              <strong id="pedidosCount">0</strong>
+            </article>
+            <article>
+              <span>Despesas</span>
+              <strong id="despesasCount">0</strong>
+            </article>
+            <article>
+              <span>Faturamento</span>
+              <strong id="faturamentoValue">R$ 0,00</strong>
+            </article>
+          </div>
+        </section>
+
+        <section id="section-clientes" class="card app-section hidden">
+          <h2>Clientes</h2>
+          <div class="form-block">
+            <form id="clienteForm">
+              <input name="nome" placeholder="Nome" required />
+              <input name="telefone" placeholder="Telefone" />
+              <input name="email" placeholder="Email" type="email" />
+              <button type="submit" class="btn">Salvar Cliente</button>
+            </form>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Telefone</th>
+                  <th>Email</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="clientesTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="section-pedidos" class="card app-section hidden">
+          <h2>Pedidos</h2>
+          <div class="form-block">
+            <form id="pedidoForm">
+              <select name="cliente_id" id="pedidoClienteSelect" required>
+                <option value="">Selecione um cliente</option>
+              </select>
+              <input name="descricao" placeholder="Descricao" />
+              <input name="valor_total" type="number" min="0" step="0.01" placeholder="Valor total" required />
+              <select name="status" required>
+                <option value="aberto">Aberto</option>
+                <option value="fechado">Fechado</option>
+                <option value="cancelado">Cancelado</option>
+              </select>
+              <button type="submit" class="btn">Salvar Pedido</button>
+            </form>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Cliente</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="pedidosTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="section-orcamentos" class="card app-section hidden">
+          <h2>Orcamentos</h2>
+          <div class="form-block">
+            <form id="orcamentoForm">
+              <select name="cliente_id" id="orcamentoClienteSelect" required>
+                <option value="">Selecione um cliente</option>
+              </select>
+              <input name="descricao" placeholder="Descricao" />
+              <input name="valor_total" type="number" min="0" step="0.01" placeholder="Valor total" required />
+              <select name="status" required>
+                <option value="aberto">Aberto</option>
+                <option value="aprovado">Aprovado</option>
+                <option value="reprovado">Reprovado</option>
+              </select>
+              <button type="submit" class="btn">Salvar Orcamento</button>
+            </form>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Cliente</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="orcamentosTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="section-despesas" class="card app-section hidden">
+          <h2>Despesas</h2>
+          <div class="form-block">
+            <form id="despesaForm">
+              <input name="descricao" placeholder="Descricao" required />
+              <input name="categoria" placeholder="Categoria" />
+              <input name="valor" type="number" min="0" step="0.01" placeholder="Valor" required />
+              <select name="status" required>
+                <option value="aberto">Aberto</option>
+                <option value="pago">Pago</option>
+              </select>
+              <button type="submit" class="btn">Salvar Despesa</button>
+            </form>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Descricao</th>
+                  <th>Status</th>
+                  <th>Valor</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="despesasTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="section-produtos" class="card app-section hidden">
+          <h2>Produtos</h2>
+          <div class="form-block">
+            <form id="produtoForm">
+              <input name="nome" placeholder="Produto" required />
+              <input name="preco" placeholder="Preco" type="number" min="0" step="0.01" required />
+              <input name="estoque" placeholder="Estoque" type="number" min="0" step="1" value="0" />
+              <input name="ponto_pedido" placeholder="Ponto de pedido" type="number" min="0" step="1" value="0" />
+              <button type="submit" class="btn">Salvar Produto</button>
+            </form>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Preco</th>
+                  <th>Estoque</th>
+                  <th>Ponto</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="produtosTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="section-relatorios" class="card app-section hidden">
+          <h2>Relatorios</h2>
+          <div class="metric-grid relatorio-grid">
+            <article>
+              <span>Estoque (Todos)</span>
+              <strong id="estoqueTotalCount">0 itens</strong>
+            </article>
+            <article>
+              <span>Estoque (Com saldo)</span>
+              <strong id="estoqueComSaldoCount">0 itens</strong>
+            </article>
+            <article>
+              <span>Estoque (Ponto de pedido)</span>
+              <strong id="estoquePontoPedidoCount">0 itens</strong>
+            </article>
+            <article>
+              <span>Orcamento em aberto</span>
+              <strong id="orcamentoAbertoValue">R$ 0,00</strong>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
