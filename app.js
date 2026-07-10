@@ -46,11 +46,14 @@ const state = {
   session: null,
   empresaId: null,
   empresaNome: "",
+  isPlatformAdmin: false,
   clientes: [],
   produtos: [],
   pedidos: [],
   orcamentos: [],
-  despesas: []
+  despesas: [],
+  adminEmpresas: [],
+  adminVinculos: []
 };
 
 const els = {
@@ -58,6 +61,7 @@ const els = {
   appShell: document.getElementById("appShell"),
   loginForm: document.getElementById("loginForm"),
   logoutBtn: document.getElementById("logoutBtn"),
+  adminTab: document.getElementById("adminTab"),
   saasTitleLogin: document.getElementById("saasTitleLogin"),
   saasTitleApp: document.getElementById("saasTitleApp"),
   empresaInfo: document.getElementById("empresaInfo"),
@@ -68,13 +72,17 @@ const els = {
   pedidoForm: document.getElementById("pedidoForm"),
   orcamentoForm: document.getElementById("orcamentoForm"),
   despesaForm: document.getElementById("despesaForm"),
+  adminEmpresaForm: document.getElementById("adminEmpresaForm"),
+  adminVinculoForm: document.getElementById("adminVinculoForm"),
   pedidoClienteSelect: document.getElementById("pedidoClienteSelect"),
   orcamentoClienteSelect: document.getElementById("orcamentoClienteSelect"),
+  adminEmpresaSelect: document.getElementById("adminEmpresaSelect"),
   clientesTable: document.getElementById("clientesTable"),
   produtosTable: document.getElementById("produtosTable"),
   pedidosTable: document.getElementById("pedidosTable"),
   orcamentosTable: document.getElementById("orcamentosTable"),
   despesasTable: document.getElementById("despesasTable"),
+  adminVinculosTable: document.getElementById("adminVinculosTable"),
   clientesCount: document.getElementById("clientesCount"),
   pedidosCount: document.getElementById("pedidosCount"),
   despesasCount: document.getElementById("despesasCount"),
@@ -122,6 +130,10 @@ function escapeHtml(value) {
 }
 
 function setSection(sectionName) {
+  if (sectionName === "admin" && !state.isPlatformAdmin) {
+    sectionName = "dashboard";
+  }
+
   for (const tab of els.tabs) {
     tab.classList.toggle("active", tab.dataset.section === sectionName);
   }
@@ -130,6 +142,11 @@ function setSection(sectionName) {
     section.classList.toggle("hidden", !isTarget);
     section.classList.toggle("active-section", isTarget);
   }
+}
+
+function updateAdminVisibility() {
+  if (!els.adminTab) return;
+  els.adminTab.classList.toggle("hidden", !state.isPlatformAdmin);
 }
 
 function updateShellVisibility() {
@@ -177,6 +194,61 @@ async function loadEmpresaContext() {
   state.empresaId = data.empresa_id;
   state.empresaNome = data.empresas?.nome || "Empresa";
   els.empresaInfo.textContent = `${state.empresaNome} • ${state.session.user.email}`;
+}
+
+async function loadPlatformAdminStatus() {
+  const userId = state.session?.user?.id;
+  if (!userId) {
+    state.isPlatformAdmin = false;
+    updateAdminVisibility();
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("platform_admins")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    state.isPlatformAdmin = false;
+  } else {
+    state.isPlatformAdmin = Boolean(data);
+  }
+
+  updateAdminVisibility();
+}
+
+async function loadAdminEmpresas() {
+  if (!state.isPlatformAdmin) {
+    state.adminEmpresas = [];
+    state.adminVinculos = [];
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("empresas")
+    .select("id, nome, created_at")
+    .order("nome");
+
+  if (error) throw error;
+  state.adminEmpresas = data || [];
+}
+
+async function loadAdminVinculos() {
+  if (!state.isPlatformAdmin) {
+    state.adminVinculos = [];
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("usuarios_empresas")
+    .select("user_id, empresa_id, role, ativo, empresas(nome)")
+    .order("created_at", { ascending: false })
+    .limit(150);
+
+  if (error) throw error;
+  state.adminVinculos = data || [];
 }
 
 async function loadClientes() {
@@ -253,6 +325,35 @@ function renderSelects() {
       optionHtml
     );
   }
+}
+
+function renderAdminEmpresasSelect() {
+  if (!els.adminEmpresaSelect) return;
+  els.adminEmpresaSelect.innerHTML = '<option value="">Selecione a empresa</option>';
+
+  for (const empresa of state.adminEmpresas) {
+    els.adminEmpresaSelect.insertAdjacentHTML(
+      "beforeend",
+      `<option value="${empresa.id}">${escapeHtml(empresa.nome)}</option>`
+    );
+  }
+}
+
+function renderAdminVinculosTable() {
+  if (!els.adminVinculosTable) return;
+  els.adminVinculosTable.innerHTML = state.adminVinculos
+    .map(
+      (item) => `
+      <tr>
+        <td>${escapeHtml(item.empresas?.nome || "-")}</td>
+        <td>${escapeHtml(item.empresa_id)}</td>
+        <td>${escapeHtml(item.user_id)}</td>
+        <td>${escapeHtml(item.role || "user")}</td>
+        <td>${item.ativo ? "Sim" : "Nao"}</td>
+      </tr>
+    `
+    )
+    .join("");
 }
 
 function renderClientesTable() {
@@ -365,19 +466,28 @@ function renderMetrics() {
 async function refreshAll() {
   try {
     if (!state.session || !state.empresaId) return;
-    await Promise.all([
+    const baseLoads = [
       loadClientes(),
       loadProdutos(),
       loadPedidos(),
       loadOrcamentos(),
       loadDespesas()
-    ]);
+    ];
+
+    if (state.isPlatformAdmin) {
+      baseLoads.push(loadAdminEmpresas(), loadAdminVinculos());
+    }
+
+    await Promise.all(baseLoads);
+
     renderSelects();
     renderClientesTable();
     renderProdutosTable();
     renderPedidosTable();
     renderOrcamentosTable();
     renderDespesasTable();
+    renderAdminEmpresasSelect();
+    renderAdminVinculosTable();
     renderMetrics();
   } catch (error) {
     console.error(error);
@@ -487,6 +597,69 @@ async function createDespesa(event) {
   await refreshAll();
 }
 
+async function createAdminEmpresa(event) {
+  event.preventDefault();
+  if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
+
+  const formData = new FormData(els.adminEmpresaForm);
+  const nome = String(formData.get("nome") || "").trim();
+  if (!nome) return;
+
+  const { error } = await supabaseClient.from("empresas").insert({ nome });
+  if (error) throw error;
+
+  els.adminEmpresaForm.reset();
+  showToast("Empresa criada");
+  await refreshAll();
+}
+
+async function findUserByEmail(email) {
+  const { data, error } = await supabaseClient.rpc("admin_find_user_by_email", {
+    target_email: email
+  });
+
+  if (error) throw error;
+  if (!data || !data.length) {
+    throw new Error("Usuario nao encontrado no Auth");
+  }
+
+  return data[0].user_id;
+}
+
+async function createAdminVinculo(event) {
+  event.preventDefault();
+  if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
+
+  const formData = new FormData(els.adminVinculoForm);
+  const email = String(formData.get("email") || "").trim();
+  const empresaId = String(formData.get("empresa_id") || "").trim();
+  const role = String(formData.get("role") || "user").trim();
+
+  if (!email || !empresaId) {
+    return;
+  }
+
+  const userId = await findUserByEmail(email);
+
+  const { error } = await supabaseClient
+    .from("usuarios_empresas")
+    .upsert(
+      {
+        user_id: userId,
+        empresa_id: empresaId,
+        role,
+        ativo: true
+      },
+      { onConflict: "user_id,empresa_id" }
+    );
+
+  if (error) throw error;
+
+  els.adminVinculoForm.reset();
+  showToast("Usuario vinculado");
+  await refreshAll();
+}
+
 async function deleteByTable(table, id) {
   const { error } = await supabaseClient
     .from(table)
@@ -505,10 +678,13 @@ async function handleSession(session) {
   if (!session) {
     state.empresaId = null;
     state.empresaNome = "";
+    state.isPlatformAdmin = false;
+    updateAdminVisibility();
     return;
   }
 
   try {
+    await loadPlatformAdminStatus();
     await loadEmpresaContext();
     await refreshAll();
   } catch (error) {
@@ -579,6 +755,22 @@ function attachEvents() {
       await createDespesa(event);
     } catch (error) {
       showToast(`Erro ao salvar despesa: ${error.message}`, "error");
+    }
+  });
+
+  els.adminEmpresaForm.addEventListener("submit", async (event) => {
+    try {
+      await createAdminEmpresa(event);
+    } catch (error) {
+      showToast(`Erro ao criar empresa: ${error.message}`, "error");
+    }
+  });
+
+  els.adminVinculoForm.addEventListener("submit", async (event) => {
+    try {
+      await createAdminVinculo(event);
+    } catch (error) {
+      showToast(`Erro ao vincular usuario: ${error.message}`, "error");
     }
   });
 

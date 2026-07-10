@@ -18,6 +18,11 @@ create table if not exists public.usuarios_empresas (
   primary key (user_id, empresa_id)
 );
 
+create table if not exists public.platform_admins (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  created_at timestamp with time zone not null default now()
+);
+
 create or replace function public.user_belongs_to_empresa(target_empresa_id uuid)
 returns boolean
 language sql
@@ -31,6 +36,40 @@ as $$
       and ue.ativo = true
   );
 $$;
+
+create or replace function public.is_platform_admin()
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1
+    from public.platform_admins pa
+    where pa.user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.admin_find_user_by_email(target_email text)
+returns table(user_id uuid, email text)
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+begin
+  if not public.is_platform_admin() then
+    raise exception 'Acesso negado';
+  end if;
+
+  return query
+  select u.id, u.email::text
+  from auth.users u
+  where lower(u.email::text) = lower(target_email)
+  limit 1;
+end;
+$$;
+
+revoke all on function public.admin_find_user_by_email(text) from public;
+grant execute on function public.admin_find_user_by_email(text) to authenticated;
 
 create or replace function public.current_empresa_id()
 returns uuid
@@ -123,6 +162,7 @@ create table if not exists public.despesas (
 
 alter table public.empresas enable row level security;
 alter table public.usuarios_empresas enable row level security;
+alter table public.platform_admins enable row level security;
 alter table public.clientes enable row level security;
 alter table public.produtos enable row level security;
 alter table public.pedidos enable row level security;
@@ -137,11 +177,31 @@ on public.usuarios_empresas
 for select
 using (user_id = auth.uid());
 
+drop policy if exists "usuarios_empresas_platform_admin" on public.usuarios_empresas;
+create policy "usuarios_empresas_platform_admin"
+on public.usuarios_empresas
+for all
+using (public.is_platform_admin())
+with check (public.is_platform_admin());
+
+drop policy if exists "platform_admins_self" on public.platform_admins;
+create policy "platform_admins_self"
+on public.platform_admins
+for select
+using (user_id = auth.uid());
+
 drop policy if exists "empresas_select" on public.empresas;
 create policy "empresas_select"
 on public.empresas
 for select
 using (public.user_belongs_to_empresa(id));
+
+drop policy if exists "empresas_platform_admin" on public.empresas;
+create policy "empresas_platform_admin"
+on public.empresas
+for all
+using (public.is_platform_admin())
+with check (public.is_platform_admin());
 
 drop policy if exists "clientes_tenant" on public.clientes;
 create policy "clientes_tenant"
@@ -199,3 +259,7 @@ with check (public.user_belongs_to_empresa(empresa_id));
 -- 3) vincular usuario na empresa
 -- insert into public.usuarios_empresas (user_id, empresa_id, role)
 -- values ('UUID_DO_AUTH_USER', 'UUID_DA_EMPRESA', 'owner');
+-- 4) promover administrador da plataforma
+-- insert into public.platform_admins (user_id)
+-- values ('UUID_DO_AUTH_USER')
+-- on conflict (user_id) do nothing;

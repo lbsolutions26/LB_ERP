@@ -324,6 +324,12 @@ th {
   font-size: 1rem;
 }
 
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
 .toast {
   position: fixed;
   right: 1rem;
@@ -338,6 +344,10 @@ th {
 
 @media (max-width: 900px) {
   .forms {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -11,6 +11,7 @@ Base SaaS multiempresa para migrar seu AppSheet para web usando HTML, CSS, JavaS
 - Despesas
 - Produtos
 - Relatorios
+- Admin SaaS (apenas platform admin)
 
 ## Modelo multiempresa
 
@@ -34,6 +35,14 @@ Exemplo de vinculo:
 ```sql
 insert into public.usuarios_empresas (user_id, empresa_id, role)
 values ('UUID_DO_AUTH_USER', 'UUID_DA_EMPRESA', 'owner');
+```
+
+Promover usuario para administrar a plataforma (nova aba Admin SaaS):
+
+```sql
+insert into public.platform_admins (user_id)
+values ('UUID_DO_AUTH_USER')
+on conflict (user_id) do nothing;
 ```
 
 ## 3) Configurar credenciais

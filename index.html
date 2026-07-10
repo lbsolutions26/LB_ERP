@@ -53,6 +53,7 @@
         <button class="tab" data-section="despesas">Despesas</button>
         <button class="tab" data-section="produtos">Produtos</button>
         <button class="tab" data-section="relatorios">Relatorios</button>
+        <button id="adminTab" class="tab hidden" data-section="admin">Admin SaaS</button>
       </nav>
 
       <main class="layout">
@@ -245,6 +246,51 @@
               <span>Orcamento em aberto</span>
               <strong id="orcamentoAbertoValue">R$ 0,00</strong>
             </article>
+          </div>
+        </section>
+
+        <section id="section-admin" class="card app-section hidden">
+          <h2>Admin SaaS</h2>
+
+          <div class="admin-grid">
+            <article class="form-block">
+              <h3>Nova Empresa</h3>
+              <form id="adminEmpresaForm">
+                <input name="nome" placeholder="Nome da empresa" required />
+                <button type="submit" class="btn">Criar Empresa</button>
+              </form>
+            </article>
+
+            <article class="form-block">
+              <h3>Vincular Usuario</h3>
+              <form id="adminVinculoForm">
+                <input name="email" type="email" placeholder="Email do usuario auth" required />
+                <select name="empresa_id" id="adminEmpresaSelect" required>
+                  <option value="">Selecione a empresa</option>
+                </select>
+                <select name="role" required>
+                  <option value="owner">owner</option>
+                  <option value="manager">manager</option>
+                  <option value="user">user</option>
+                </select>
+                <button type="submit" class="btn">Vincular</button>
+              </form>
+            </article>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th>Empresa ID</th>
+                  <th>User ID</th>
+                  <th>Role</th>
+                  <th>Ativo</th>
+                </tr>
+              </thead>
+              <tbody id="adminVinculosTable"></tbody>
+            </table>
           </div>
         </section>
       </main>
