@@ -87,6 +87,9 @@ const els = {
   sections: Array.from(document.querySelectorAll(".app-section")),
   clienteForm: document.getElementById("clienteForm"),
   produtoForm: document.getElementById("produtoForm"),
+  openProdutoModalBtn: document.getElementById("openProdutoModalBtn"),
+  closeProdutoModalBtn: document.getElementById("closeProdutoModalBtn"),
+  produtoModal: document.getElementById("produtoModal"),
   pedidoForm: document.getElementById("pedidoForm"),
   orcamentoForm: document.getElementById("orcamentoForm"),
   despesaForm: document.getElementById("despesaForm"),
@@ -178,6 +181,16 @@ function setSection(sectionName) {
     section.classList.toggle("hidden", !isTarget);
     section.classList.toggle("active-section", isTarget);
   }
+}
+
+function openProdutoModal() {
+  if (!els.produtoModal) return;
+  els.produtoModal.classList.remove("hidden");
+}
+
+function closeProdutoModal() {
+  if (!els.produtoModal) return;
+  els.produtoModal.classList.add("hidden");
 }
 
 function updateAdminVisibility() {
@@ -793,6 +806,7 @@ async function createProduto(event) {
   }
 
   els.produtoForm.reset();
+  closeProdutoModal();
   showToast("Produto salvo");
   await refreshAll();
 }
@@ -1077,6 +1091,22 @@ function attachEvents() {
       showToast(`Erro ao salvar produto: ${error.message}`, "error");
     }
   });
+
+  if (els.openProdutoModalBtn) {
+    els.openProdutoModalBtn.addEventListener("click", openProdutoModal);
+  }
+
+  if (els.closeProdutoModalBtn) {
+    els.closeProdutoModalBtn.addEventListener("click", closeProdutoModal);
+  }
+
+  if (els.produtoModal) {
+    els.produtoModal.addEventListener("click", (event) => {
+      if (event.target === els.produtoModal) {
+        closeProdutoModal();
+      }
+    });
+  }
 
   const filterBindings = [
     ["nome", els.filtroProdutoNome],
