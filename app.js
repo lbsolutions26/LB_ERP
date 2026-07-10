@@ -51,6 +51,8 @@ const state = {
   clientes: [],
   produtos: [],
   produtosSource: "produtos",
+  pedidosSource: "pedidos",
+  orcamentosSource: "orcamentos",
   produtoSort: {
     field: "nome",
     direction: "asc"
@@ -465,6 +467,32 @@ async function loadProdutos() {
 }
 
 async function loadPedidos() {
+  const { data: docsData, error: docsError } = await supabaseClient
+    .from("documentos_venda")
+    .select(
+      "id, data_emissao, status, total, cliente_legacy_id, cliente:clientes(id,nome)"
+    )
+    .eq("empresa_id", state.empresaId)
+    .eq("tipo_documento", "pedido")
+    .order("data_emissao", { ascending: false });
+
+  if (!docsError) {
+    state.pedidosSource = "documentos_venda";
+    state.pedidos = (docsData || []).map((item) => ({
+      id: item.id,
+      data_pedido: item.data_emissao,
+      status: item.status,
+      valor_total: item.total,
+      cliente: item.cliente,
+      cliente_legacy_id: item.cliente_legacy_id
+    }));
+    return;
+  }
+
+  if (!isMissingRelationError(docsError)) {
+    throw docsError;
+  }
+
   const { data, error } = await supabaseClient
     .from("pedidos")
     .select(
@@ -474,10 +502,37 @@ async function loadPedidos() {
     .order("data_pedido", { ascending: false });
 
   if (error) throw error;
+  state.pedidosSource = "pedidos";
   state.pedidos = data || [];
 }
 
 async function loadOrcamentos() {
+  const { data: docsData, error: docsError } = await supabaseClient
+    .from("documentos_venda")
+    .select(
+      "id, data_emissao, status, total, cliente_legacy_id, cliente:clientes(id,nome)"
+    )
+    .eq("empresa_id", state.empresaId)
+    .eq("tipo_documento", "orcamento")
+    .order("data_emissao", { ascending: false });
+
+  if (!docsError) {
+    state.orcamentosSource = "documentos_venda";
+    state.orcamentos = (docsData || []).map((item) => ({
+      id: item.id,
+      data_orcamento: item.data_emissao,
+      status: item.status,
+      valor_total: item.total,
+      cliente: item.cliente,
+      cliente_legacy_id: item.cliente_legacy_id
+    }));
+    return;
+  }
+
+  if (!isMissingRelationError(docsError)) {
+    throw docsError;
+  }
+
   const { data, error } = await supabaseClient
     .from("orcamentos")
     .select(
@@ -487,6 +542,7 @@ async function loadOrcamentos() {
     .order("data_orcamento", { ascending: false });
 
   if (error) throw error;
+  state.orcamentosSource = "orcamentos";
   state.orcamentos = data || [];
 }
 
@@ -689,10 +745,11 @@ function renderPedidosTable() {
   els.pedidosTable.innerHTML = state.pedidos
     .map((pedido) => {
       const data = pedido.data_pedido ? new Date(pedido.data_pedido).toLocaleDateString("pt-BR") : "-";
+      const clienteNome = pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${escapeHtml(pedido.cliente_legacy_id)}` : "-");
       return `
       <tr>
         <td>${data}</td>
-        <td>${escapeHtml(pedido.cliente?.nome || "-")}</td>
+        <td>${clienteNome}</td>
         <td>${escapeHtml(pedido.status || "-")}</td>
         <td>${moeda.format(pedido.valor_total || 0)}</td>
         <td><button class="action-delete" data-del-pedido="${pedido.id}">Excluir</button></td>
@@ -706,10 +763,11 @@ function renderOrcamentosTable() {
   els.orcamentosTable.innerHTML = state.orcamentos
     .map((orcamento) => {
       const data = orcamento.data_orcamento ? new Date(orcamento.data_orcamento).toLocaleDateString("pt-BR") : "-";
+      const clienteNome = orcamento.cliente?.nome || (orcamento.cliente_legacy_id ? `Legacy #${escapeHtml(orcamento.cliente_legacy_id)}` : "-");
       return `
       <tr>
         <td>${data}</td>
-        <td>${escapeHtml(orcamento.cliente?.nome || "-")}</td>
+        <td>${clienteNome}</td>
         <td>${escapeHtml(orcamento.status || "-")}</td>
         <td>${moeda.format(orcamento.valor_total || 0)}</td>
         <td><button class="action-delete" data-del-orcamento="${orcamento.id}">Excluir</button></td>
@@ -905,18 +963,36 @@ async function createProduto(event) {
 async function createPedido(event) {
   event.preventDefault();
   const formData = new FormData(els.pedidoForm);
+  const clienteIdRaw = Number(formData.get("cliente_id"));
+  const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
 
-  const payload = {
-    empresa_id: state.empresaId,
-    cliente_id: Number(formData.get("cliente_id")),
-    descricao: String(formData.get("descricao") || "").trim() || null,
-    status: String(formData.get("status") || "aberto"),
-    valor_total: Number(formData.get("valor_total") || 0),
-    data_pedido: new Date().toISOString()
-  };
+  if (state.pedidosSource === "documentos_venda") {
+    const payload = {
+      empresa_id: state.empresaId,
+      tipo_documento: "pedido",
+      cliente_id: clienteId,
+      observacoes: String(formData.get("descricao") || "").trim() || null,
+      status: String(formData.get("status") || "aberto"),
+      total: Number(formData.get("valor_total") || 0),
+      subtotal: Number(formData.get("valor_total") || 0),
+      data_emissao: new Date().toISOString()
+    };
 
-  const { error } = await supabaseClient.from("pedidos").insert(payload);
-  if (error) throw error;
+    const { error } = await supabaseClient.from("documentos_venda").insert(payload);
+    if (error) throw error;
+  } else {
+    const payload = {
+      empresa_id: state.empresaId,
+      cliente_id: clienteId,
+      descricao: String(formData.get("descricao") || "").trim() || null,
+      status: String(formData.get("status") || "aberto"),
+      valor_total: Number(formData.get("valor_total") || 0),
+      data_pedido: new Date().toISOString()
+    };
+
+    const { error } = await supabaseClient.from("pedidos").insert(payload);
+    if (error) throw error;
+  }
 
   els.pedidoForm.reset();
   showToast("Pedido salvo");
@@ -926,17 +1002,36 @@ async function createPedido(event) {
 async function createOrcamento(event) {
   event.preventDefault();
   const formData = new FormData(els.orcamentoForm);
-  const payload = {
-    empresa_id: state.empresaId,
-    cliente_id: Number(formData.get("cliente_id")),
-    descricao: String(formData.get("descricao") || "").trim() || null,
-    status: String(formData.get("status") || "aberto"),
-    valor_total: Number(formData.get("valor_total") || 0),
-    data_orcamento: new Date().toISOString()
-  };
+  const clienteIdRaw = Number(formData.get("cliente_id"));
+  const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
 
-  const { error } = await supabaseClient.from("orcamentos").insert(payload);
-  if (error) throw error;
+  if (state.orcamentosSource === "documentos_venda") {
+    const payload = {
+      empresa_id: state.empresaId,
+      tipo_documento: "orcamento",
+      cliente_id: clienteId,
+      observacoes: String(formData.get("descricao") || "").trim() || null,
+      status: String(formData.get("status") || "aberto"),
+      total: Number(formData.get("valor_total") || 0),
+      subtotal: Number(formData.get("valor_total") || 0),
+      data_emissao: new Date().toISOString()
+    };
+
+    const { error } = await supabaseClient.from("documentos_venda").insert(payload);
+    if (error) throw error;
+  } else {
+    const payload = {
+      empresa_id: state.empresaId,
+      cliente_id: clienteId,
+      descricao: String(formData.get("descricao") || "").trim() || null,
+      status: String(formData.get("status") || "aberto"),
+      valor_total: Number(formData.get("valor_total") || 0),
+      data_orcamento: new Date().toISOString()
+    };
+
+    const { error } = await supabaseClient.from("orcamentos").insert(payload);
+    if (error) throw error;
+  }
 
   els.orcamentoForm.reset();
   showToast("Orcamento salvo");
@@ -1112,6 +1207,19 @@ async function deleteByTable(table, id) {
     .delete()
     .eq("id", id)
     .eq("empresa_id", state.empresaId);
+  if (error) throw error;
+  showToast("Registro excluido");
+  await refreshAll();
+}
+
+async function deleteDocumentoVenda(id, tipoDocumento) {
+  const { error } = await supabaseClient
+    .from("documentos_venda")
+    .delete()
+    .eq("id", id)
+    .eq("empresa_id", state.empresaId)
+    .eq("tipo_documento", tipoDocumento);
+
   if (error) throw error;
   showToast("Registro excluido");
   await refreshAll();
@@ -1310,10 +1418,18 @@ function attachEvents() {
         await deleteByTable(state.produtosSource, Number(produtoId));
       }
       if (pedidoId) {
-        await deleteByTable("pedidos", Number(pedidoId));
+        if (state.pedidosSource === "documentos_venda") {
+          await deleteDocumentoVenda(Number(pedidoId), "pedido");
+        } else {
+          await deleteByTable("pedidos", Number(pedidoId));
+        }
       }
       if (orcamentoId) {
-        await deleteByTable("orcamentos", Number(orcamentoId));
+        if (state.orcamentosSource === "documentos_venda") {
+          await deleteDocumentoVenda(Number(orcamentoId), "orcamento");
+        } else {
+          await deleteByTable("orcamentos", Number(orcamentoId));
+        }
       }
       if (despesaId) {
         await deleteByTable("despesas", Number(despesaId));
