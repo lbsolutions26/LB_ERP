@@ -3792,10 +3792,12 @@ select
   d.data_emissao,
   d.total,
   case
+    when coalesce(d.total, 0) <= 0 then 0
     when lower(coalesce(btrim(r.tipo_pgto_raw), '')) in ('dinheiro','pix','debito','débito','credito','crédito') then 0
     else d.total
   end as valor_aberto,
   case
+    when coalesce(d.total, 0) <= 0 then 'cancelado'
     when lower(coalesce(btrim(r.tipo_pgto_raw), '')) in ('dinheiro','pix','debito','débito','credito','crédito') then 'recebido'
     when lower(coalesce(btrim(r.tipo_pgto_raw), '')) = 'parcelado' then 'aberto'
     else 'aberto'
@@ -3818,11 +3820,16 @@ select
   1,
   cr.emissao,
   cr.valor_original,
-  case when cr.status = 'recebido' then cr.valor_original else 0 end,
-  case when cr.status = 'recebido' then 'recebido' else 'pendente' end,
+  case when cr.status = 'recebido' and coalesce(cr.valor_original, 0) > 0 then cr.valor_original else 0 end,
+  case
+    when cr.status = 'recebido' and coalesce(cr.valor_original, 0) > 0 then 'recebido'
+    when coalesce(cr.valor_original, 0) <= 0 then 'cancelado'
+    else 'pendente'
+  end,
   fp.id,
   case
-    when cr.status = 'recebido' then 'Pagamento a vista importado'
+    when cr.status = 'recebido' and coalesce(cr.valor_original, 0) > 0 then 'Pagamento a vista importado'
+    when coalesce(cr.valor_original, 0) <= 0 then 'Parcela cancelada por valor zero no legado'
     else 'Pagamento pendente/parcelado importado do legado'
   end
 from public.contas_receber cr
@@ -3837,10 +3844,11 @@ select
   p.empresa_id,
   p.id,
   cr.emissao,
-  p.valor_parcela,
+  p.valor_recebido,
   p.forma_pagamento_id,
   'Recebimento importado do legado'
 from public.contas_receber_parcelas p
 join public.contas_receber cr on cr.id = p.conta_receber_id
 where p.status = 'recebido'
+  and coalesce(p.valor_recebido, 0) > 0
   and not exists (select 1 from public.recebimentos r where r.parcela_id = p.id);
