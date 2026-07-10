@@ -262,6 +262,23 @@
             </article>
 
             <article class="form-block">
+              <h3>Criar Usuario + Vinculo</h3>
+              <form id="adminInviteForm">
+                <input name="email" type="email" placeholder="Email do novo usuario" required />
+                <input name="password" type="password" placeholder="Senha inicial" required minlength="6" />
+                <select name="empresa_id" id="adminInviteEmpresaSelect" required>
+                  <option value="">Selecione a empresa</option>
+                </select>
+                <select name="role" required>
+                  <option value="owner">owner</option>
+                  <option value="manager">manager</option>
+                  <option value="user">user</option>
+                </select>
+                <button type="submit" class="btn">Criar e Vincular</button>
+              </form>
+            </article>
+
+            <article class="form-block">
               <h3>Vincular Usuario</h3>
               <form id="adminVinculoForm">
                 <input name="email" type="email" placeholder="Email do usuario auth" required />

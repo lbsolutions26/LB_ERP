@@ -66,6 +66,7 @@ Opcao B (Vercel):
   - SAAS_NAME
    - SUPABASE_URL
    - SUPABASE_ANON_KEY
+  - SUPABASE_SERVICE_ROLE_KEY (necessaria para Admin SaaS criar usuarios)
 2. O frontend carregara automaticamente via [api/public-config.js](api/public-config.js).
 
 ## 4) Rodar o app
@@ -84,6 +85,7 @@ npx serve .
 2. Na Vercel, clique em New Project e importe o repositorio.
 3. Em Environment Variables, adicione SUPABASE_URL e SUPABASE_ANON_KEY.
   Opcional: SAAS_NAME para personalizar a marca do topo/login.
+  Para habilitar criacao de usuarios no Admin SaaS, adicione SUPABASE_SERVICE_ROLE_KEY.
 4. Deploy.
 
 Fluxo recomendado:

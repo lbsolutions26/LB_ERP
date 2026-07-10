@@ -73,10 +73,12 @@ const els = {
   orcamentoForm: document.getElementById("orcamentoForm"),
   despesaForm: document.getElementById("despesaForm"),
   adminEmpresaForm: document.getElementById("adminEmpresaForm"),
+  adminInviteForm: document.getElementById("adminInviteForm"),
   adminVinculoForm: document.getElementById("adminVinculoForm"),
   pedidoClienteSelect: document.getElementById("pedidoClienteSelect"),
   orcamentoClienteSelect: document.getElementById("orcamentoClienteSelect"),
   adminEmpresaSelect: document.getElementById("adminEmpresaSelect"),
+  adminInviteEmpresaSelect: document.getElementById("adminInviteEmpresaSelect"),
   clientesTable: document.getElementById("clientesTable"),
   produtosTable: document.getElementById("produtosTable"),
   pedidosTable: document.getElementById("pedidosTable"),
@@ -330,12 +332,19 @@ function renderSelects() {
 function renderAdminEmpresasSelect() {
   if (!els.adminEmpresaSelect) return;
   els.adminEmpresaSelect.innerHTML = '<option value="">Selecione a empresa</option>';
+  if (els.adminInviteEmpresaSelect) {
+    els.adminInviteEmpresaSelect.innerHTML = '<option value="">Selecione a empresa</option>';
+  }
 
   for (const empresa of state.adminEmpresas) {
+    const option = `<option value="${empresa.id}">${escapeHtml(empresa.nome)}</option>`;
     els.adminEmpresaSelect.insertAdjacentHTML(
       "beforeend",
-      `<option value="${empresa.id}">${escapeHtml(empresa.nome)}</option>`
+      option
     );
+    if (els.adminInviteEmpresaSelect) {
+      els.adminInviteEmpresaSelect.insertAdjacentHTML("beforeend", option);
+    }
   }
 }
 
@@ -660,6 +669,48 @@ async function createAdminVinculo(event) {
   await refreshAll();
 }
 
+async function createAdminUserAndVinculo(event) {
+  event.preventDefault();
+  if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
+
+  const formData = new FormData(els.adminInviteForm);
+  const email = String(formData.get("email") || "").trim();
+  const password = String(formData.get("password") || "").trim();
+  const empresaId = String(formData.get("empresa_id") || "").trim();
+  const role = String(formData.get("role") || "user").trim();
+
+  if (!email || !password || !empresaId) return;
+
+  const accessToken = state.session?.access_token;
+  if (!accessToken) {
+    throw new Error("Sessao invalida. Faca login novamente.");
+  }
+
+  const response = await fetch("/api/admin-create-user", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({
+      email,
+      password,
+      empresa_id: empresaId,
+      role
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Falha ao criar usuario");
+  }
+
+  els.adminInviteForm.reset();
+  showToast("Usuario criado e vinculado");
+  await refreshAll();
+}
+
 async function deleteByTable(table, id) {
   const { error } = await supabaseClient
     .from(table)
@@ -763,6 +814,14 @@ function attachEvents() {
       await createAdminEmpresa(event);
     } catch (error) {
       showToast(`Erro ao criar empresa: ${error.message}`, "error");
+    }
+  });
+
+  els.adminInviteForm.addEventListener("submit", async (event) => {
+    try {
+      await createAdminUserAndVinculo(event);
+    } catch (error) {
+      showToast(`Erro ao criar usuario: ${error.message}`, "error");
     }
   });
 
