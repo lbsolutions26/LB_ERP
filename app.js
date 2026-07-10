@@ -1,25 +1,45 @@
 let supabaseClient;
 let saasName = "LB ERP SaaS";
 
+function isConfigUsable(config) {
+  if (!config || !config.SUPABASE_URL || !config.SUPABASE_ANON_KEY) {
+    return false;
+  }
+
+  const url = String(config.SUPABASE_URL).trim();
+  const key = String(config.SUPABASE_ANON_KEY).trim();
+
+  if (!url.startsWith("https://")) {
+    return false;
+  }
+
+  if (url.includes("SEU-PROJETO") || key.includes("SUA_ANON_KEY")) {
+    return false;
+  }
+
+  return true;
+}
+
 async function loadRuntimeConfig() {
   const localConfig = window.SUPABASE_CONFIG || {};
-  if (localConfig.SUPABASE_URL && localConfig.SUPABASE_ANON_KEY) {
-    return localConfig;
-  }
 
   try {
     const response = await fetch("/api/public-config");
-    if (!response.ok) {
-      throw new Error("Nao foi possivel carregar configuracao do deploy");
+    if (response.ok) {
+      const remoteConfig = await response.json();
+      if (isConfigUsable(remoteConfig)) {
+        return remoteConfig;
+      }
     }
-    const remoteConfig = await response.json();
-    if (!remoteConfig.SUPABASE_URL || !remoteConfig.SUPABASE_ANON_KEY) {
-      throw new Error("Configuracao incompleta no deploy");
-    }
-    return remoteConfig;
   } catch (_error) {
-    throw new Error("Configure config.js localmente ou as variaveis SUPABASE_URL e SUPABASE_ANON_KEY na Vercel");
+    // Em ambiente local sem API da Vercel, seguimos para fallback local.
   }
+
+  if (isConfigUsable(localConfig)) {
+    return localConfig;
+  }
+
+  throw new Error("Configure config.js localmente ou as variaveis SUPABASE_URL e SUPABASE_ANON_KEY na Vercel");
 }
 
 const state = {
