@@ -149,6 +149,12 @@ function setSection(sectionName) {
 function updateAdminVisibility() {
   if (!els.adminTab) return;
   els.adminTab.classList.toggle("hidden", !state.isPlatformAdmin);
+
+  const adminSection = document.getElementById("section-admin");
+  if (!state.isPlatformAdmin && adminSection) {
+    adminSection.classList.add("hidden");
+    adminSection.classList.remove("active-section");
+  }
 }
 
 function updateShellVisibility() {
@@ -725,6 +731,7 @@ async function deleteByTable(table, id) {
 async function handleSession(session) {
   state.session = session;
   updateShellVisibility();
+  setSection("dashboard");
 
   if (!session) {
     state.empresaId = null;
