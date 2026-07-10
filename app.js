@@ -1,4 +1,5 @@
 let supabaseClient;
+let saasName = "LB ERP SaaS";
 
 async function loadRuntimeConfig() {
   const localConfig = window.SUPABASE_CONFIG || {};
@@ -37,6 +38,8 @@ const els = {
   appShell: document.getElementById("appShell"),
   loginForm: document.getElementById("loginForm"),
   logoutBtn: document.getElementById("logoutBtn"),
+  saasTitleLogin: document.getElementById("saasTitleLogin"),
+  saasTitleApp: document.getElementById("saasTitleApp"),
   empresaInfo: document.getElementById("empresaInfo"),
   tabs: Array.from(document.querySelectorAll(".tab")),
   sections: Array.from(document.querySelectorAll(".app-section")),
@@ -63,6 +66,16 @@ const els = {
   refreshBtn: document.getElementById("refreshBtn"),
   toast: document.getElementById("toast")
 };
+
+function applySaasBranding() {
+  document.title = saasName;
+  if (els.saasTitleLogin) {
+    els.saasTitleLogin.textContent = saasName;
+  }
+  if (els.saasTitleApp) {
+    els.saasTitleApp.textContent = saasName;
+  }
+}
 
 const moeda = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -583,7 +596,11 @@ function attachEvents() {
 
 async function initApp() {
   try {
-    const { SUPABASE_URL, SUPABASE_ANON_KEY } = await loadRuntimeConfig();
+    const { SUPABASE_URL, SUPABASE_ANON_KEY, SAAS_NAME } = await loadRuntimeConfig();
+    if (SAAS_NAME) {
+      saasName = SAAS_NAME;
+    }
+    applySaasBranding();
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   } catch (error) {
     alert(error.message);

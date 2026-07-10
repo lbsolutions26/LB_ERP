@@ -45,6 +45,7 @@ Opcao A (local):
 
 ```js
 window.SUPABASE_CONFIG = {
+  SAAS_NAME: "LB ERP SaaS",
   SUPABASE_URL: "https://SEU-PROJETO.supabase.co",
   SUPABASE_ANON_KEY: "SUA_ANON_KEY"
 };
@@ -53,6 +54,7 @@ window.SUPABASE_CONFIG = {
 Opcao B (Vercel):
 
 1. Configure no projeto da Vercel:
+  - SAAS_NAME
    - SUPABASE_URL
    - SUPABASE_ANON_KEY
 2. O frontend carregara automaticamente via [api/public-config.js](api/public-config.js).
@@ -72,6 +74,7 @@ npx serve .
 1. Crie um repositorio no GitHub e envie este projeto.
 2. Na Vercel, clique em New Project e importe o repositorio.
 3. Em Environment Variables, adicione SUPABASE_URL e SUPABASE_ANON_KEY.
+  Opcional: SAAS_NAME para personalizar a marca do topo/login.
 4. Deploy.
 
 Fluxo recomendado:
