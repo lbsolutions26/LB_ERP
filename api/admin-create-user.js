@@ -86,14 +86,28 @@ module.exports = async function handler(req, res) {
 
   const createUserPayload = await createUserResponse.json().catch(() => ({}));
   if (!createUserResponse.ok) {
+    const details =
+      createUserPayload.msg ||
+      createUserPayload.message ||
+      createUserPayload.error_description ||
+      createUserPayload.error;
+
     return res.status(400).json({
-      error: createUserPayload.msg || createUserPayload.message || "Failed to create auth user"
+      error: details || "Failed to create auth user"
     });
   }
 
-  const createdUserId = createUserPayload?.user?.id;
+  const createdUserId =
+    createUserPayload?.user?.id ||
+    createUserPayload?.id ||
+    createUserPayload?.data?.user?.id ||
+    createUserPayload?.data?.id;
+
   if (!createdUserId) {
-    return res.status(500).json({ error: "Auth user created without ID" });
+    return res.status(500).json({
+      error: "Auth user created without ID",
+      payload_keys: Object.keys(createUserPayload || {})
+    });
   }
 
   const upsertResponse = await fetch(`${SUPABASE_URL}/rest/v1/usuarios_empresas`, {
