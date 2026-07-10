@@ -90,6 +90,8 @@ const els = {
   openProdutoModalBtn: document.getElementById("openProdutoModalBtn"),
   closeProdutoModalBtn: document.getElementById("closeProdutoModalBtn"),
   produtoModal: document.getElementById("produtoModal"),
+  produtoModalTitle: document.getElementById("produtoModalTitle"),
+  produtoSubmitBtn: document.getElementById("produtoSubmitBtn"),
   pedidoForm: document.getElementById("pedidoForm"),
   orcamentoForm: document.getElementById("orcamentoForm"),
   despesaForm: document.getElementById("despesaForm"),
@@ -191,6 +193,68 @@ function openProdutoModal() {
 function closeProdutoModal() {
   if (!els.produtoModal) return;
   els.produtoModal.classList.add("hidden");
+}
+
+function setProdutoFormMode({ editing = false, produto = null } = {}) {
+  if (!els.produtoForm) return;
+
+  if (!editing) {
+    els.produtoForm.reset();
+    delete els.produtoForm.dataset.editId;
+    if (els.produtoModalTitle) {
+      els.produtoModalTitle.textContent = "Novo Produto";
+    }
+    if (els.produtoSubmitBtn) {
+      els.produtoSubmitBtn.textContent = "Salvar Produto";
+    }
+    return;
+  }
+
+  if (!produto) return;
+
+  els.produtoForm.reset();
+  els.produtoForm.dataset.editId = String(produto.id);
+  if (els.produtoModalTitle) {
+    els.produtoModalTitle.textContent = "Editar Produto";
+  }
+  if (els.produtoSubmitBtn) {
+    els.produtoSubmitBtn.textContent = "Salvar Alteracoes";
+  }
+
+  const setValue = (name, value) => {
+    const field = els.produtoForm.elements.namedItem(name);
+    if (field && "value" in field) {
+      field.value = value == null ? "" : String(value);
+    }
+  };
+
+  setValue("nome", produto.nome || "");
+  setValue("categoria", produto.categoria && produto.categoria !== "-" ? produto.categoria : "");
+  setValue("preco", produto.preco ?? 0);
+  setValue("custo", produto.custo ?? "");
+  setValue("margem", produto.margem ?? "");
+  setValue("estoque", produto.estoque ?? 0);
+  setValue("ponto_pedido", produto.ponto_pedido ?? 0);
+  setValue("descricao", produto.descricao || "");
+  setValue("imagem_path", produto.imagem_path || "");
+  setValue("ativo", produto.ativo ? "sim" : "nao");
+  setValue("controla_estoque", produto.controla_estoque === false ? "nao" : "sim");
+}
+
+function openProdutoCreateModal() {
+  setProdutoFormMode({ editing: false });
+  openProdutoModal();
+}
+
+function openProdutoEditModal(produtoId) {
+  const produto = state.produtos.find((item) => Number(item.id) === Number(produtoId));
+  if (!produto) {
+    showToast("Produto nao encontrado", "error");
+    return;
+  }
+
+  setProdutoFormMode({ editing: true, produto });
+  openProdutoModal();
 }
 
 function updateAdminVisibility() {
@@ -352,7 +416,7 @@ async function loadProdutos() {
   const { data: catalogData, error: catalogError } = await supabaseClient
     .from("produto_catalogo")
     .select(
-      "id, nome, preco_venda, custo, margem_percentual, estoque_atual, estoque_minimo, ativo, controla_estoque, categoria:produto_categorias(nome)"
+      "id, nome, descricao, imagem_path, preco_venda, custo, margem_percentual, estoque_atual, estoque_minimo, ativo, controla_estoque, categoria:produto_categorias(nome)"
     )
     .eq("empresa_id", state.empresaId)
     .order("nome");
@@ -362,6 +426,8 @@ async function loadProdutos() {
     state.produtos = (catalogData || []).map((item) => ({
       id: item.id,
       nome: item.nome,
+      descricao: item.descricao || null,
+      imagem_path: item.imagem_path || null,
       categoria: item.categoria?.nome || "-",
       preco: Number(item.preco_venda || 0),
       custo: item.custo == null ? null : Number(item.custo),
@@ -388,6 +454,8 @@ async function loadProdutos() {
   state.produtosSource = "produtos";
   state.produtos = (data || []).map((item) => ({
     ...item,
+    descricao: null,
+    imagem_path: null,
     categoria: "-",
     custo: null,
     margem: null,
@@ -531,7 +599,10 @@ function renderProdutosTable() {
         <td>${escapeHtml(produto.estoque ?? 0)}</td>
         <td>${escapeHtml(produto.ponto_pedido ?? 0)}</td>
         <td>${produto.ativo ? "Sim" : "Nao"}</td>
-        <td><button class="action-delete" data-del-produto="${produto.id}">Excluir</button></td>
+        <td>
+          <button class="action-edit" data-edit-produto="${produto.id}">Editar</button>
+          <button class="action-delete" data-del-produto="${produto.id}">Excluir</button>
+        </td>
       </tr>
     `
     )
@@ -749,6 +820,7 @@ async function createProduto(event) {
   event.preventDefault();
   const formData = new FormData(els.produtoForm);
   const nome = String(formData.get("nome") || "").trim();
+  const editId = Number(els.produtoForm?.dataset.editId || 0) || null;
   if (!nome) return;
 
   if (state.produtosSource === "produto_catalogo") {
@@ -787,11 +859,21 @@ async function createProduto(event) {
       imagem_path: String(formData.get("imagem_path") || "").trim() || null
     };
 
-    const { error: insertCatalogError } = await supabaseClient
-      .from("produto_catalogo")
-      .insert(payloadCatalogo);
+    if (editId) {
+      const { error: updateCatalogError } = await supabaseClient
+        .from("produto_catalogo")
+        .update(payloadCatalogo)
+        .eq("id", editId)
+        .eq("empresa_id", state.empresaId);
 
-    if (insertCatalogError) throw insertCatalogError;
+      if (updateCatalogError) throw updateCatalogError;
+    } else {
+      const { error: insertCatalogError } = await supabaseClient
+        .from("produto_catalogo")
+        .insert(payloadCatalogo);
+
+      if (insertCatalogError) throw insertCatalogError;
+    }
   } else {
     const payload = {
       empresa_id: state.empresaId,
@@ -801,13 +883,22 @@ async function createProduto(event) {
       ponto_pedido: Number(formData.get("ponto_pedido") || 0)
     };
 
-    const { error } = await supabaseClient.from("produtos").insert(payload);
-    if (error) throw error;
+    if (editId) {
+      const { error } = await supabaseClient
+        .from("produtos")
+        .update(payload)
+        .eq("id", editId)
+        .eq("empresa_id", state.empresaId);
+      if (error) throw error;
+    } else {
+      const { error } = await supabaseClient.from("produtos").insert(payload);
+      if (error) throw error;
+    }
   }
 
-  els.produtoForm.reset();
+  setProdutoFormMode({ editing: false });
   closeProdutoModal();
-  showToast("Produto salvo");
+  showToast(editId ? "Produto atualizado" : "Produto salvo");
   await refreshAll();
 }
 
@@ -1093,16 +1184,20 @@ function attachEvents() {
   });
 
   if (els.openProdutoModalBtn) {
-    els.openProdutoModalBtn.addEventListener("click", openProdutoModal);
+    els.openProdutoModalBtn.addEventListener("click", openProdutoCreateModal);
   }
 
   if (els.closeProdutoModalBtn) {
-    els.closeProdutoModalBtn.addEventListener("click", closeProdutoModal);
+    els.closeProdutoModalBtn.addEventListener("click", () => {
+      setProdutoFormMode({ editing: false });
+      closeProdutoModal();
+    });
   }
 
   if (els.produtoModal) {
     els.produtoModal.addEventListener("click", (event) => {
       if (event.target === els.produtoModal) {
+        setProdutoFormMode({ editing: false });
         closeProdutoModal();
       }
     });
@@ -1197,12 +1292,17 @@ function attachEvents() {
     if (!(target instanceof HTMLElement)) return;
 
     const clienteId = target.getAttribute("data-del-cliente");
+    const produtoEditId = target.getAttribute("data-edit-produto");
     const produtoId = target.getAttribute("data-del-produto");
     const pedidoId = target.getAttribute("data-del-pedido");
     const orcamentoId = target.getAttribute("data-del-orcamento");
     const despesaId = target.getAttribute("data-del-despesa");
 
     try {
+      if (produtoEditId) {
+        openProdutoEditModal(Number(produtoEditId));
+        return;
+      }
       if (clienteId) {
         await deleteByTable("clientes", Number(clienteId));
       }
