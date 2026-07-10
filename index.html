@@ -52,6 +52,7 @@
         <button class="tab" data-section="orcamentos">Orcamentos</button>
         <button class="tab" data-section="despesas">Despesas</button>
         <button class="tab" data-section="produtos">Produtos</button>
+        <button id="ownerUsersTab" class="tab hidden" data-section="usuarios">Usuarios</button>
         <button class="tab" data-section="relatorios">Relatorios</button>
         <button id="adminTab" class="tab hidden" data-section="admin">Admin SaaS</button>
       </nav>
@@ -246,6 +247,36 @@
               <span>Orcamento em aberto</span>
               <strong id="orcamentoAbertoValue">R$ 0,00</strong>
             </article>
+          </div>
+        </section>
+
+        <section id="section-usuarios" class="card app-section hidden">
+          <h2>Usuarios da Empresa</h2>
+
+          <div class="form-block">
+            <h3>Novo Usuario da Empresa</h3>
+            <form id="ownerUserForm">
+              <input name="email" type="email" placeholder="Email do usuario" required />
+              <input name="password" type="password" placeholder="Senha inicial" required minlength="6" />
+              <select name="role" required>
+                <option value="manager">manager</option>
+                <option value="user">user</option>
+              </select>
+              <button type="submit" class="btn">Criar Usuario</button>
+            </form>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>User ID</th>
+                  <th>Role</th>
+                  <th>Ativo</th>
+                </tr>
+              </thead>
+              <tbody id="ownerUsersTable"></tbody>
+            </table>
           </div>
         </section>
 

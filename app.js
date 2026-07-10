@@ -46,12 +46,14 @@ const state = {
   session: null,
   empresaId: null,
   empresaNome: "",
+  currentRole: "user",
   isPlatformAdmin: false,
   clientes: [],
   produtos: [],
   pedidos: [],
   orcamentos: [],
   despesas: [],
+  ownerUsers: [],
   adminEmpresas: [],
   adminVinculos: []
 };
@@ -61,6 +63,7 @@ const els = {
   appShell: document.getElementById("appShell"),
   loginForm: document.getElementById("loginForm"),
   logoutBtn: document.getElementById("logoutBtn"),
+  ownerUsersTab: document.getElementById("ownerUsersTab"),
   adminTab: document.getElementById("adminTab"),
   saasTitleLogin: document.getElementById("saasTitleLogin"),
   saasTitleApp: document.getElementById("saasTitleApp"),
@@ -72,6 +75,7 @@ const els = {
   pedidoForm: document.getElementById("pedidoForm"),
   orcamentoForm: document.getElementById("orcamentoForm"),
   despesaForm: document.getElementById("despesaForm"),
+  ownerUserForm: document.getElementById("ownerUserForm"),
   adminEmpresaForm: document.getElementById("adminEmpresaForm"),
   adminInviteForm: document.getElementById("adminInviteForm"),
   adminVinculoForm: document.getElementById("adminVinculoForm"),
@@ -84,6 +88,7 @@ const els = {
   pedidosTable: document.getElementById("pedidosTable"),
   orcamentosTable: document.getElementById("orcamentosTable"),
   despesasTable: document.getElementById("despesasTable"),
+  ownerUsersTable: document.getElementById("ownerUsersTable"),
   adminVinculosTable: document.getElementById("adminVinculosTable"),
   clientesCount: document.getElementById("clientesCount"),
   pedidosCount: document.getElementById("pedidosCount"),
@@ -157,6 +162,18 @@ function updateAdminVisibility() {
   }
 }
 
+function updateOwnerUsersVisibility() {
+  if (!els.ownerUsersTab) return;
+  const isOwner = state.currentRole === "owner";
+  els.ownerUsersTab.classList.toggle("hidden", !isOwner);
+
+  const ownerSection = document.getElementById("section-usuarios");
+  if (!isOwner && ownerSection) {
+    ownerSection.classList.add("hidden");
+    ownerSection.classList.remove("active-section");
+  }
+}
+
 function updateShellVisibility() {
   const isLogged = Boolean(state.session);
   els.authScreen.classList.toggle("hidden", isLogged);
@@ -188,7 +205,7 @@ async function loadEmpresaContext() {
 
   const { data, error } = await supabaseClient
     .from("usuarios_empresas")
-    .select("empresa_id, empresas(nome)")
+    .select("empresa_id, role, empresas(nome)")
     .eq("user_id", userId)
     .eq("ativo", true)
     .limit(1)
@@ -200,8 +217,27 @@ async function loadEmpresaContext() {
   }
 
   state.empresaId = data.empresa_id;
+  state.currentRole = data.role || "user";
   state.empresaNome = data.empresas?.nome || "Empresa";
   els.empresaInfo.textContent = `${state.empresaNome} • ${state.session.user.email}`;
+  updateOwnerUsersVisibility();
+}
+
+async function loadOwnerUsers() {
+  const isOwner = state.currentRole === "owner";
+  if (!isOwner) {
+    state.ownerUsers = [];
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("usuarios_empresas")
+    .select("user_id, role, ativo")
+    .eq("empresa_id", state.empresaId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  state.ownerUsers = data || [];
 }
 
 async function loadPlatformAdminStatus() {
@@ -371,6 +407,21 @@ function renderAdminVinculosTable() {
     .join("");
 }
 
+function renderOwnerUsersTable() {
+  if (!els.ownerUsersTable) return;
+  els.ownerUsersTable.innerHTML = state.ownerUsers
+    .map(
+      (item) => `
+      <tr>
+        <td>${escapeHtml(item.user_id)}</td>
+        <td>${escapeHtml(item.role || "user")}</td>
+        <td>${item.ativo ? "Sim" : "Nao"}</td>
+      </tr>
+    `
+    )
+    .join("");
+}
+
 function renderClientesTable() {
   els.clientesTable.innerHTML = state.clientes
     .map(
@@ -486,7 +537,8 @@ async function refreshAll() {
       loadProdutos(),
       loadPedidos(),
       loadOrcamentos(),
-      loadDespesas()
+      loadDespesas(),
+      loadOwnerUsers()
     ];
 
     if (state.isPlatformAdmin) {
@@ -501,6 +553,7 @@ async function refreshAll() {
     renderPedidosTable();
     renderOrcamentosTable();
     renderDespesasTable();
+    renderOwnerUsersTable();
     renderAdminEmpresasSelect();
     renderAdminVinculosTable();
     renderMetrics();
@@ -717,6 +770,44 @@ async function createAdminUserAndVinculo(event) {
   await refreshAll();
 }
 
+async function createOwnerUser(event) {
+  event.preventDefault();
+  if (state.currentRole !== "owner") throw new Error("Acesso restrito ao owner da empresa");
+
+  const formData = new FormData(els.ownerUserForm);
+  const email = String(formData.get("email") || "").trim();
+  const password = String(formData.get("password") || "").trim();
+  const role = String(formData.get("role") || "user").trim();
+
+  if (!email || !password) return;
+
+  const accessToken = state.session?.access_token;
+  if (!accessToken) throw new Error("Sessao invalida. Faca login novamente.");
+
+  const response = await fetch("/api/owner-create-user", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({
+      email,
+      password,
+      role,
+      empresa_id: state.empresaId
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || "Falha ao criar usuario");
+  }
+
+  els.ownerUserForm.reset();
+  showToast("Usuario criado para a empresa");
+  await refreshAll();
+}
+
 async function deleteByTable(table, id) {
   const { error } = await supabaseClient
     .from(table)
@@ -736,8 +827,10 @@ async function handleSession(session) {
   if (!session) {
     state.empresaId = null;
     state.empresaNome = "";
+    state.currentRole = "user";
     state.isPlatformAdmin = false;
     updateAdminVisibility();
+    updateOwnerUsersVisibility();
     return;
   }
 
@@ -813,6 +906,14 @@ function attachEvents() {
       await createDespesa(event);
     } catch (error) {
       showToast(`Erro ao salvar despesa: ${error.message}`, "error");
+    }
+  });
+
+  els.ownerUserForm.addEventListener("submit", async (event) => {
+    try {
+      await createOwnerUser(event);
+    } catch (error) {
+      showToast(`Erro ao criar usuario da empresa: ${error.message}`, "error");
     }
   });
 

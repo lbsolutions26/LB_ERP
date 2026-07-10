@@ -10,6 +10,7 @@ Base SaaS multiempresa para migrar seu AppSheet para web usando HTML, CSS, JavaS
 - Orcamentos
 - Despesas
 - Produtos
+- Usuarios (visivel para role owner da empresa)
 - Relatorios
 - Admin SaaS (apenas platform admin)
 
@@ -44,6 +45,12 @@ insert into public.platform_admins (user_id)
 values ('UUID_DO_AUTH_USER')
 on conflict (user_id) do nothing;
 ```
+
+## Owner criando usuarios da propria empresa
+
+- O usuario com role `owner` ve a aba `Usuarios`.
+- Ele pode criar novos usuarios apenas para a empresa dele.
+- Nao existe selecao de empresa nessa tela (isolamento automatico).
 
 ## 3) Configurar credenciais
 

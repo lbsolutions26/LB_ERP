@@ -177,6 +177,12 @@ on public.usuarios_empresas
 for select
 using (user_id = auth.uid());
 
+drop policy if exists "usuarios_empresas_tenant_read" on public.usuarios_empresas;
+create policy "usuarios_empresas_tenant_read"
+on public.usuarios_empresas
+for select
+using (public.user_belongs_to_empresa(empresa_id));
+
 drop policy if exists "usuarios_empresas_platform_admin" on public.usuarios_empresas;
 create policy "usuarios_empresas_platform_admin"
 on public.usuarios_empresas
