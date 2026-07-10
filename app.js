@@ -53,6 +53,7 @@ const state = {
   produtosSource: "produtos",
   pedidosSource: "pedidos",
   orcamentosSource: "orcamentos",
+  itensDocumento: [],
   produtoSort: {
     field: "nome",
     direction: "asc"
@@ -94,6 +95,10 @@ const els = {
   produtoModal: document.getElementById("produtoModal"),
   produtoModalTitle: document.getElementById("produtoModalTitle"),
   produtoSubmitBtn: document.getElementById("produtoSubmitBtn"),
+  itensDocumentoModal: document.getElementById("itensDocumentoModal"),
+  closeItensDocumentoModalBtn: document.getElementById("closeItensDocumentoModalBtn"),
+  itensDocumentoModalTitle: document.getElementById("itensDocumentoModalTitle"),
+  itensDocumentoTable: document.getElementById("itensDocumentoTable"),
   pedidoForm: document.getElementById("pedidoForm"),
   orcamentoForm: document.getElementById("orcamentoForm"),
   despesaForm: document.getElementById("despesaForm"),
@@ -195,6 +200,106 @@ function openProdutoModal() {
 function closeProdutoModal() {
   if (!els.produtoModal) return;
   els.produtoModal.classList.add("hidden");
+}
+
+function openItensDocumentoModal() {
+  if (!els.itensDocumentoModal) return;
+  els.itensDocumentoModal.classList.remove("hidden");
+}
+
+function closeItensDocumentoModal() {
+  if (!els.itensDocumentoModal) return;
+  els.itensDocumentoModal.classList.add("hidden");
+}
+
+function renderItensDocumentoTable() {
+  if (!els.itensDocumentoTable) return;
+
+  if (!state.itensDocumento.length) {
+    els.itensDocumentoTable.innerHTML = '<tr><td colspan="4">Sem itens para este documento.</td></tr>';
+    return;
+  }
+
+  els.itensDocumentoTable.innerHTML = state.itensDocumento
+    .map(
+      (item) => `
+      <tr>
+        <td>${escapeHtml(item.descricao_item || item.nome_produto || "-")}</td>
+        <td>${escapeHtml(item.quantidade ?? 0)}</td>
+        <td>${moeda.format(item.valor_unitario || 0)}</td>
+        <td>${moeda.format(item.valor_total || 0)}</td>
+      </tr>
+    `
+    )
+    .join("");
+}
+
+async function openDocumentoItens(tipoDocumento, documentoId) {
+  let itens = [];
+
+  if (tipoDocumento === "pedido") {
+    if (state.pedidosSource === "documentos_venda") {
+      const { data, error } = await supabaseClient
+        .from("documento_venda_itens")
+        .select("id, descricao_item, quantidade, valor_unitario, valor_total")
+        .eq("empresa_id", state.empresaId)
+        .eq("documento_id", documentoId)
+        .order("id", { ascending: true });
+      if (error) throw error;
+      itens = data || [];
+    } else {
+      const { data, error } = await supabaseClient
+        .from("pedido_itens")
+        .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
+        .eq("empresa_id", state.empresaId)
+        .eq("pedido_id", documentoId)
+        .order("id", { ascending: true });
+      if (error) throw error;
+      itens = (data || []).map((item) => ({
+        id: item.id,
+        descricao_item: item.produto?.nome || null,
+        nome_produto: item.produto?.nome || null,
+        quantidade: item.quantidade,
+        valor_unitario: item.valor_unitario,
+        valor_total: item.total
+      }));
+    }
+  } else {
+    if (state.orcamentosSource === "documentos_venda") {
+      const { data, error } = await supabaseClient
+        .from("documento_venda_itens")
+        .select("id, descricao_item, quantidade, valor_unitario, valor_total")
+        .eq("empresa_id", state.empresaId)
+        .eq("documento_id", documentoId)
+        .order("id", { ascending: true });
+      if (error) throw error;
+      itens = data || [];
+    } else {
+      const { data, error } = await supabaseClient
+        .from("orcamento_itens")
+        .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
+        .eq("empresa_id", state.empresaId)
+        .eq("orcamento_id", documentoId)
+        .order("id", { ascending: true });
+      if (error) throw error;
+      itens = (data || []).map((item) => ({
+        id: item.id,
+        descricao_item: item.produto?.nome || null,
+        nome_produto: item.produto?.nome || null,
+        quantidade: item.quantidade,
+        valor_unitario: item.valor_unitario,
+        valor_total: item.total
+      }));
+    }
+  }
+
+  state.itensDocumento = itens;
+  if (els.itensDocumentoModalTitle) {
+    const titulo = tipoDocumento === "pedido" ? "Itens do Pedido" : "Itens do Orcamento";
+    els.itensDocumentoModalTitle.textContent = `${titulo} #${documentoId}`;
+  }
+  renderItensDocumentoTable();
+  openItensDocumentoModal();
 }
 
 function setProdutoFormMode({ editing = false, produto = null } = {}) {
@@ -752,7 +857,10 @@ function renderPedidosTable() {
         <td>${clienteNome}</td>
         <td>${escapeHtml(pedido.status || "-")}</td>
         <td>${moeda.format(pedido.valor_total || 0)}</td>
-        <td><button class="action-delete" data-del-pedido="${pedido.id}">Excluir</button></td>
+        <td>
+          <button class="action-edit" data-view-pedido-itens="${pedido.id}">Itens</button>
+          <button class="action-delete" data-del-pedido="${pedido.id}">Excluir</button>
+        </td>
       </tr>
     `;
     })
@@ -770,7 +878,10 @@ function renderOrcamentosTable() {
         <td>${clienteNome}</td>
         <td>${escapeHtml(orcamento.status || "-")}</td>
         <td>${moeda.format(orcamento.valor_total || 0)}</td>
-        <td><button class="action-delete" data-del-orcamento="${orcamento.id}">Excluir</button></td>
+        <td>
+          <button class="action-edit" data-view-orcamento-itens="${orcamento.id}">Itens</button>
+          <button class="action-delete" data-del-orcamento="${orcamento.id}">Excluir</button>
+        </td>
       </tr>
     `;
     })
@@ -1311,6 +1422,18 @@ function attachEvents() {
     });
   }
 
+  if (els.closeItensDocumentoModalBtn) {
+    els.closeItensDocumentoModalBtn.addEventListener("click", closeItensDocumentoModal);
+  }
+
+  if (els.itensDocumentoModal) {
+    els.itensDocumentoModal.addEventListener("click", (event) => {
+      if (event.target === els.itensDocumentoModal) {
+        closeItensDocumentoModal();
+      }
+    });
+  }
+
   const filterBindings = [
     ["nome", els.filtroProdutoNome],
     ["categoria", els.filtroProdutoCategoria],
@@ -1404,11 +1527,21 @@ function attachEvents() {
     const produtoId = target.getAttribute("data-del-produto");
     const pedidoId = target.getAttribute("data-del-pedido");
     const orcamentoId = target.getAttribute("data-del-orcamento");
+    const pedidoItensId = target.getAttribute("data-view-pedido-itens");
+    const orcamentoItensId = target.getAttribute("data-view-orcamento-itens");
     const despesaId = target.getAttribute("data-del-despesa");
 
     try {
       if (produtoEditId) {
         openProdutoEditModal(Number(produtoEditId));
+        return;
+      }
+      if (pedidoItensId) {
+        await openDocumentoItens("pedido", Number(pedidoItensId));
+        return;
+      }
+      if (orcamentoItensId) {
+        await openDocumentoItens("orcamento", Number(orcamentoItensId));
         return;
       }
       if (clienteId) {
