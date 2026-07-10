@@ -206,9 +206,22 @@
           <div class="form-block">
             <form id="produtoForm">
               <input name="nome" placeholder="Produto" required />
+              <input name="categoria" placeholder="Categoria" />
               <input name="preco" placeholder="Preco" type="number" min="0" step="0.01" required />
+              <input name="custo" placeholder="Custo" type="number" min="0" step="0.01" />
+              <input name="margem" placeholder="Margem (%)" type="number" step="0.01" />
               <input name="estoque" placeholder="Estoque" type="number" min="0" step="1" value="0" />
               <input name="ponto_pedido" placeholder="Ponto de pedido" type="number" min="0" step="1" value="0" />
+              <input name="descricao" placeholder="Descricao" />
+              <input name="imagem_path" placeholder="Imagem (path/url)" />
+              <select name="controla_estoque">
+                <option value="sim">Controla estoque: Sim</option>
+                <option value="nao">Controla estoque: Nao</option>
+              </select>
+              <select name="ativo">
+                <option value="sim">Ativo: Sim</option>
+                <option value="nao">Ativo: Nao</option>
+              </select>
               <button type="submit" class="btn">Salvar Produto</button>
             </form>
           </div>
@@ -216,10 +229,25 @@
             <table>
               <thead>
                 <tr>
-                  <th>Produto</th>
-                  <th>Preco</th>
-                  <th>Estoque</th>
-                  <th>Ponto</th>
+                  <th class="sortable" data-sort="nome">Produto</th>
+                  <th class="sortable" data-sort="categoria">Categoria</th>
+                  <th class="sortable" data-sort="preco">Preco</th>
+                  <th class="sortable" data-sort="custo">Custo</th>
+                  <th class="sortable" data-sort="margem">Margem</th>
+                  <th class="sortable" data-sort="estoque">Estoque</th>
+                  <th class="sortable" data-sort="ponto_pedido">Ponto</th>
+                  <th class="sortable" data-sort="ativo">Ativo</th>
+                  <th></th>
+                </tr>
+                <tr>
+                  <th><input id="filtroProdutoNome" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoCategoria" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoPreco" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoCusto" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoMargem" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoEstoque" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoPonto" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoAtivo" placeholder="Filtrar" /></th>
                   <th></th>
                 </tr>
               </thead>

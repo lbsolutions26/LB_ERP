@@ -311,6 +311,26 @@ th {
   font-weight: 600;
 }
 
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+th.sortable:hover {
+  color: var(--brand-strong);
+}
+
+th.sortable.sorted {
+  color: var(--brand-strong);
+}
+
+#section-produtos thead input {
+  width: 100%;
+  min-width: 90px;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+}
+
 .action-delete {
   border: 0;
   border-radius: 8px;

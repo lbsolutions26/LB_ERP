@@ -50,6 +50,21 @@ const state = {
   isPlatformAdmin: false,
   clientes: [],
   produtos: [],
+  produtosSource: "produtos",
+  produtoSort: {
+    field: "nome",
+    direction: "asc"
+  },
+  produtoFilters: {
+    nome: "",
+    categoria: "",
+    preco: "",
+    custo: "",
+    margem: "",
+    estoque: "",
+    ponto_pedido: "",
+    ativo: ""
+  },
   pedidos: [],
   orcamentos: [],
   despesas: [],
@@ -85,6 +100,14 @@ const els = {
   adminInviteEmpresaSelect: document.getElementById("adminInviteEmpresaSelect"),
   clientesTable: document.getElementById("clientesTable"),
   produtosTable: document.getElementById("produtosTable"),
+  filtroProdutoNome: document.getElementById("filtroProdutoNome"),
+  filtroProdutoCategoria: document.getElementById("filtroProdutoCategoria"),
+  filtroProdutoPreco: document.getElementById("filtroProdutoPreco"),
+  filtroProdutoCusto: document.getElementById("filtroProdutoCusto"),
+  filtroProdutoMargem: document.getElementById("filtroProdutoMargem"),
+  filtroProdutoEstoque: document.getElementById("filtroProdutoEstoque"),
+  filtroProdutoPonto: document.getElementById("filtroProdutoPonto"),
+  filtroProdutoAtivo: document.getElementById("filtroProdutoAtivo"),
   pedidosTable: document.getElementById("pedidosTable"),
   orcamentosTable: document.getElementById("orcamentosTable"),
   despesasTable: document.getElementById("despesasTable"),
@@ -134,6 +157,12 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function isMissingRelationError(error) {
+  if (!error) return false;
+  if (error.code === "42P01") return true;
+  return String(error.message || "").toLowerCase().includes("does not exist");
 }
 
 function setSection(sectionName) {
@@ -307,6 +336,35 @@ async function loadClientes() {
 }
 
 async function loadProdutos() {
+  const { data: catalogData, error: catalogError } = await supabaseClient
+    .from("produto_catalogo")
+    .select(
+      "id, nome, preco_venda, custo, margem_percentual, estoque_atual, estoque_minimo, ativo, controla_estoque, categoria:produto_categorias(nome)"
+    )
+    .eq("empresa_id", state.empresaId)
+    .order("nome");
+
+  if (!catalogError) {
+    state.produtosSource = "produto_catalogo";
+    state.produtos = (catalogData || []).map((item) => ({
+      id: item.id,
+      nome: item.nome,
+      categoria: item.categoria?.nome || "-",
+      preco: Number(item.preco_venda || 0),
+      custo: item.custo == null ? null : Number(item.custo),
+      margem: item.margem_percentual == null ? null : Number(item.margem_percentual),
+      estoque: Number(item.estoque_atual || 0),
+      ponto_pedido: Number(item.estoque_minimo || 0),
+      ativo: Boolean(item.ativo),
+      controla_estoque: Boolean(item.controla_estoque)
+    }));
+    return;
+  }
+
+  if (!isMissingRelationError(catalogError)) {
+    throw catalogError;
+  }
+
   const { data, error } = await supabaseClient
     .from("produtos")
     .select("id, nome, preco, estoque, ponto_pedido")
@@ -314,7 +372,15 @@ async function loadProdutos() {
     .order("nome");
 
   if (error) throw error;
-  state.produtos = data || [];
+  state.produtosSource = "produtos";
+  state.produtos = (data || []).map((item) => ({
+    ...item,
+    categoria: "-",
+    custo: null,
+    margem: null,
+    ativo: true,
+    controla_estoque: true
+  }));
 }
 
 async function loadPedidos() {
@@ -438,19 +504,101 @@ function renderClientesTable() {
 }
 
 function renderProdutosTable() {
-  els.produtosTable.innerHTML = state.produtos
+  const produtos = getFilteredAndSortedProdutos();
+
+  els.produtosTable.innerHTML = produtos
     .map(
       (produto) => `
       <tr>
         <td>${escapeHtml(produto.nome)}</td>
+        <td>${escapeHtml(produto.categoria || "-")}</td>
         <td>${moeda.format(produto.preco || 0)}</td>
+        <td>${produto.custo == null ? "-" : moeda.format(produto.custo)}</td>
+        <td>${produto.margem == null ? "-" : `${escapeHtml(produto.margem)}%`}</td>
         <td>${escapeHtml(produto.estoque ?? 0)}</td>
         <td>${escapeHtml(produto.ponto_pedido ?? 0)}</td>
+        <td>${produto.ativo ? "Sim" : "Nao"}</td>
         <td><button class="action-delete" data-del-produto="${produto.id}">Excluir</button></td>
       </tr>
     `
     )
     .join("");
+
+  updateProdutoSortHeaders();
+}
+
+function updateProdutoSortHeaders() {
+  const headers = Array.from(document.querySelectorAll("#section-produtos th.sortable[data-sort]"));
+  for (const th of headers) {
+    const field = th.getAttribute("data-sort") || "";
+    const baseLabel = th.getAttribute("data-label") || th.textContent || "";
+
+    if (!th.getAttribute("data-label")) {
+      th.setAttribute("data-label", baseLabel.trim());
+    }
+
+    if (field === state.produtoSort.field) {
+      const marker = state.produtoSort.direction === "asc" ? " ▲" : " ▼";
+      th.textContent = `${th.getAttribute("data-label")}${marker}`;
+      th.classList.add("sorted");
+    } else {
+      th.textContent = th.getAttribute("data-label") || "";
+      th.classList.remove("sorted");
+    }
+  }
+}
+
+function getProdutoFieldValue(produto, field) {
+  if (field === "ativo") {
+    return produto.ativo ? "sim" : "nao";
+  }
+
+  const value = produto[field];
+  return value == null ? "" : String(value);
+}
+
+function getFilteredAndSortedProdutos() {
+  const filtered = state.produtos.filter((produto) => {
+    return Object.entries(state.produtoFilters).every(([field, filterValue]) => {
+      const needle = String(filterValue || "").trim().toLowerCase();
+      if (!needle) return true;
+      const haystack = getProdutoFieldValue(produto, field).toLowerCase();
+      return haystack.includes(needle);
+    });
+  });
+
+  const { field, direction } = state.produtoSort;
+  const factor = direction === "desc" ? -1 : 1;
+
+  filtered.sort((a, b) => {
+    const av = a[field];
+    const bv = b[field];
+
+    const aNum = Number(av);
+    const bNum = Number(bv);
+    const bothNumbers = Number.isFinite(aNum) && Number.isFinite(bNum);
+
+    if (bothNumbers) {
+      return (aNum - bNum) * factor;
+    }
+
+    const aText = getProdutoFieldValue(a, field).toLowerCase();
+    const bText = getProdutoFieldValue(b, field).toLowerCase();
+    return aText.localeCompare(bText, "pt-BR") * factor;
+  });
+
+  return filtered;
+}
+
+function setProdutoSort(field) {
+  if (state.produtoSort.field === field) {
+    state.produtoSort.direction = state.produtoSort.direction === "asc" ? "desc" : "asc";
+  } else {
+    state.produtoSort.field = field;
+    state.produtoSort.direction = "asc";
+  }
+
+  renderProdutosTable();
 }
 
 function renderPedidosTable() {
@@ -515,9 +663,10 @@ function renderMetrics() {
   els.faturamentoValue.textContent = moeda.format(faturamento);
 
   const estoqueTotal = state.produtos.length;
-  const estoqueComSaldo = state.produtos.filter((produto) => Number(produto.estoque || 0) > 0).length;
+  const produtosComEstoque = state.produtos.filter((produto) => produto.controla_estoque !== false);
+  const estoqueComSaldo = produtosComEstoque.filter((produto) => Number(produto.estoque || 0) > 0).length;
   const estoquePontoPedido = state.produtos.filter(
-    (produto) => Number(produto.estoque || 0) <= Number(produto.ponto_pedido || 0)
+    (produto) => produto.controla_estoque !== false && Number(produto.estoque || 0) <= Number(produto.ponto_pedido || 0)
   ).length;
   const orcamentoAberto = state.orcamentos
     .filter((orcamento) => orcamento.status === "aberto")
@@ -586,18 +735,62 @@ async function createCliente(event) {
 async function createProduto(event) {
   event.preventDefault();
   const formData = new FormData(els.produtoForm);
-  const payload = {
-    empresa_id: state.empresaId,
-    nome: String(formData.get("nome") || "").trim(),
-    preco: Number(formData.get("preco") || 0),
-    estoque: Number(formData.get("estoque") || 0),
-    ponto_pedido: Number(formData.get("ponto_pedido") || 0)
-  };
+  const nome = String(formData.get("nome") || "").trim();
+  if (!nome) return;
 
-  if (!payload.nome) return;
+  if (state.produtosSource === "produto_catalogo") {
+    const categoriaNome = String(formData.get("categoria") || "").trim();
+    let categoriaId = null;
 
-  const { error } = await supabaseClient.from("produtos").insert(payload);
-  if (error) throw error;
+    if (categoriaNome) {
+      const { data: categoriaData, error: categoriaError } = await supabaseClient
+        .from("produto_categorias")
+        .upsert(
+          {
+            empresa_id: state.empresaId,
+            nome: categoriaNome
+          },
+          { onConflict: "empresa_id,nome" }
+        )
+        .select("id")
+        .single();
+
+      if (categoriaError) throw categoriaError;
+      categoriaId = categoriaData?.id ?? null;
+    }
+
+    const payloadCatalogo = {
+      empresa_id: state.empresaId,
+      categoria_id: categoriaId,
+      nome,
+      preco_venda: Number(formData.get("preco") || 0),
+      custo: String(formData.get("custo") || "").trim() ? Number(formData.get("custo")) : null,
+      margem_percentual: String(formData.get("margem") || "").trim() ? Number(formData.get("margem")) : null,
+      estoque_atual: Number(formData.get("estoque") || 0),
+      estoque_minimo: Number(formData.get("ponto_pedido") || 0),
+      ativo: String(formData.get("ativo") || "sim") === "sim",
+      controla_estoque: String(formData.get("controla_estoque") || "sim") === "sim",
+      descricao: String(formData.get("descricao") || "").trim() || null,
+      imagem_path: String(formData.get("imagem_path") || "").trim() || null
+    };
+
+    const { error: insertCatalogError } = await supabaseClient
+      .from("produto_catalogo")
+      .insert(payloadCatalogo);
+
+    if (insertCatalogError) throw insertCatalogError;
+  } else {
+    const payload = {
+      empresa_id: state.empresaId,
+      nome,
+      preco: Number(formData.get("preco") || 0),
+      estoque: Number(formData.get("estoque") || 0),
+      ponto_pedido: Number(formData.get("ponto_pedido") || 0)
+    };
+
+    const { error } = await supabaseClient.from("produtos").insert(payload);
+    if (error) throw error;
+  }
 
   els.produtoForm.reset();
   showToast("Produto salvo");
@@ -885,6 +1078,34 @@ function attachEvents() {
     }
   });
 
+  const filterBindings = [
+    ["nome", els.filtroProdutoNome],
+    ["categoria", els.filtroProdutoCategoria],
+    ["preco", els.filtroProdutoPreco],
+    ["custo", els.filtroProdutoCusto],
+    ["margem", els.filtroProdutoMargem],
+    ["estoque", els.filtroProdutoEstoque],
+    ["ponto_pedido", els.filtroProdutoPonto],
+    ["ativo", els.filtroProdutoAtivo]
+  ];
+
+  for (const [field, input] of filterBindings) {
+    if (!input) continue;
+    input.addEventListener("input", () => {
+      state.produtoFilters[field] = input.value || "";
+      renderProdutosTable();
+    });
+  }
+
+  const sortHeaders = Array.from(document.querySelectorAll("#section-produtos th.sortable[data-sort]"));
+  for (const th of sortHeaders) {
+    th.addEventListener("click", () => {
+      const field = th.getAttribute("data-sort");
+      if (!field) return;
+      setProdutoSort(field);
+    });
+  }
+
   els.pedidoForm.addEventListener("submit", async (event) => {
     try {
       await createPedido(event);
@@ -956,7 +1177,7 @@ function attachEvents() {
         await deleteByTable("clientes", Number(clienteId));
       }
       if (produtoId) {
-        await deleteByTable("produtos", Number(produtoId));
+        await deleteByTable(state.produtosSource, Number(produtoId));
       }
       if (pedidoId) {
         await deleteByTable("pedidos", Number(pedidoId));
