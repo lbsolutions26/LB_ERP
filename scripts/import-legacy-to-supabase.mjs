@@ -155,15 +155,25 @@ async function main() {
 
   try {
     const forcedEmpresaId = getEnv("IMPORT_EMPRESA_ID");
-    const empresaResult = forcedEmpresaId
-      ? { rows: [{ id: forcedEmpresaId }] }
-      : await client.query("select id from public.empresas order by created_at asc limit 1");
+    const empresasResult = await client.query("select id, nome from public.empresas order by created_at asc");
 
-    if (!empresaResult.rows.length) {
+    if (!empresasResult.rows.length) {
       throw new Error("Nenhuma empresa encontrada para importacao.");
     }
 
-    const empresaId = empresaResult.rows[0].id;
+    let empresaId;
+    if (forcedEmpresaId) {
+      const found = empresasResult.rows.find((row) => String(row.id) === forcedEmpresaId);
+      if (!found) {
+        throw new Error(`IMPORT_EMPRESA_ID ${forcedEmpresaId} nao existe em public.empresas.`);
+      }
+      empresaId = found.id;
+    } else if (empresasResult.rows.length === 1) {
+      empresaId = empresasResult.rows[0].id;
+    } else {
+      const options = empresasResult.rows.map((row) => `${row.nome} (${row.id})`).join(", ");
+      throw new Error(`Multiplas empresas encontradas. Defina IMPORT_EMPRESA_ID para evitar importacao no tenant errado. Opcoes: ${options}`);
+    }
 
     const clientesSheet = getSheetByName(config, "clientes");
     const produtosSheet = getSheetByName(config, "produtos");
