@@ -524,25 +524,20 @@ h3 {
 }
 
 .cash-month-chart.daily-chart {
-  grid-auto-columns: 32px;
-  gap: 0.25rem;
-  min-height: 180px;
+  grid-auto-columns: 44px;
+  gap: 0.35rem;
+  min-height: 220px;
 }
 
 .dashboard-daily-grid {
-  margin-top: 1rem;
+  margin-bottom: 1.25rem;
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.daily-bar-value {
-  font-size: 0.62rem;
-  min-height: 1.1rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+.daily-bar-wrap {
+  cursor: help;
 }
 
 @media (max-width: 900px) {

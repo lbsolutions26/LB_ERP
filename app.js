@@ -4182,11 +4182,11 @@ function renderDespesasTable() {
 
 function renderMetrics() {
   const clientesTotal = state.clientesLoaded ? state.clientes.length : state.dashboardCounts.clientes;
-  els.clientesCount.textContent = String(clientesTotal);
+  if (els.clientesCount) els.clientesCount.textContent = String(clientesTotal);
   const pedidosTotal = state.pedidosLoaded ? state.pedidos.length : state.pedidosCountTotal;
-  els.pedidosCount.textContent = String(pedidosTotal);
+  if (els.pedidosCount) els.pedidosCount.textContent = String(pedidosTotal);
   const despesasTotal = state.despesasLoaded ? state.despesas.length : state.dashboardCounts.despesas;
-  els.despesasCount.textContent = String(despesasTotal);
+  if (els.despesasCount) els.despesasCount.textContent = String(despesasTotal);
 
   if (els.pedidosCount) {
     els.pedidosCount.title = pedidosTotal >= 1000
@@ -4199,7 +4199,7 @@ function renderMetrics() {
         .filter((pedido) => pedido.status === "fechado")
         .reduce((sum, pedido) => sum + Number(pedido.valor_total || 0), 0)
     : Number(state.pedidosFaturamentoTotal || 0);
-  els.faturamentoValue.textContent = moeda.format(faturamento);
+  if (els.faturamentoValue) els.faturamentoValue.textContent = moeda.format(faturamento);
 
   const estoqueTotal = state.produtosLoaded ? state.produtos.length : state.dashboardCounts.produtosTotal;
   const estoqueComSaldo = state.produtosLoaded
@@ -4444,7 +4444,6 @@ function renderDashboardDailyCharts() {
           : formatValue(value);
         return `
           <div class="cash-bar-wrap daily-bar-wrap${isToday ? " cash-bar-wrap-current" : ""}" title="${escapeHtml(title)}">
-            <div class="cash-bar-value daily-bar-value">${value > 0 ? escapeHtml(formatValue(value)) : ""}</div>
             <div class="cash-bar-track" aria-hidden="true">
               <div class="cash-bar-fill ${colorClass}${isToday ? " cash-bar-fill-current" : ""}" style="height:${height}%"></div>
             </div>

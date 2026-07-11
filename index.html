@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260711d" />
+    <link rel="stylesheet" href="styles.css?v=20260711e" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -62,54 +62,6 @@
       <main class="layout">
         <section id="section-dashboard" class="card app-section active-section">
           <h2>Dashboard</h2>
-          <div class="metric-grid">
-            <article>
-              <span>Clientes</span>
-              <strong id="clientesCount">0</strong>
-            </article>
-            <article>
-              <span>Pedidos</span>
-              <strong id="pedidosCount">0</strong>
-              <div class="metric-months" data-metric-months="pedidos"></div>
-            </article>
-            <article>
-              <span>Despesas</span>
-              <strong id="despesasCount">0</strong>
-            </article>
-            <article>
-              <span>Faturamento</span>
-              <strong id="faturamentoValue">R$ 0,00</strong>
-              <div class="metric-months" data-metric-months="faturamento"></div>
-            </article>
-          </div>
-
-          <div class="dashboard-cash-panel">
-            <div class="section-head dashboard-cash-head">
-              <div>
-                <div class="dashboard-cash-title-row">
-                  <h3 id="entradasCaixaTitulo">Recebimentos por Mês</h3>
-                  <div class="dashboard-cash-toggle" role="tablist" aria-label="Alternar visão do gráfico">
-                    <button type="button" class="dashboard-cash-toggle-btn active" data-dashboard-cash-mode="recebimentos">Recebimentos</button>
-                    <button type="button" class="dashboard-cash-toggle-btn" data-dashboard-cash-mode="faturamento">Faturamento</button>
-                  </div>
-                  <div class="dashboard-cash-range" role="tablist" aria-label="Período do gráfico">
-                    <button type="button" class="dashboard-cash-range-btn active" data-dashboard-cash-range="11">12M</button>
-                    <button type="button" class="dashboard-cash-range-btn" data-dashboard-cash-range="23">24M</button>
-                    <button type="button" class="dashboard-cash-range-btn" data-dashboard-cash-range="35">36M</button>
-                    <button type="button" class="dashboard-cash-range-btn" data-dashboard-cash-range="59">60M</button>
-                  </div>
-                </div>
-                <p id="entradasCaixaSubtitulo" class="section-subtitle">Previsto e realizado considerando recebimentos e títulos em aberto.</p>
-                <div id="entradasCaixaLegenda" class="cash-chart-legend"></div>
-              </div>
-              <div class="dashboard-cash-summary">
-                <span>Este mês</span>
-                <strong id="entradasCaixaResumo">R$ 0,00</strong>
-              </div>
-            </div>
-            <div id="entradasCaixaChart" class="cash-month-chart" aria-label="Gráfico de entradas de caixa por mês"></div>
-            <div id="entradasCaixaGrid" class="cash-month-grid"></div>
-          </div>
 
           <div class="dashboard-daily-grid">
             <div class="dashboard-cash-panel">
@@ -139,6 +91,34 @@
               </div>
               <div id="dailyPedidosChart" class="cash-month-chart daily-chart" aria-label="Gráfico de pedidos por dia"></div>
             </div>
+          </div>
+
+          <div class="dashboard-cash-panel">
+            <div class="section-head dashboard-cash-head">
+              <div>
+                <div class="dashboard-cash-title-row">
+                  <h3 id="entradasCaixaTitulo">Recebimentos por Mês</h3>
+                  <div class="dashboard-cash-toggle" role="tablist" aria-label="Alternar visão do gráfico">
+                    <button type="button" class="dashboard-cash-toggle-btn active" data-dashboard-cash-mode="recebimentos">Recebimentos</button>
+                    <button type="button" class="dashboard-cash-toggle-btn" data-dashboard-cash-mode="faturamento">Faturamento</button>
+                  </div>
+                  <div class="dashboard-cash-range" role="tablist" aria-label="Período do gráfico">
+                    <button type="button" class="dashboard-cash-range-btn active" data-dashboard-cash-range="11">12M</button>
+                    <button type="button" class="dashboard-cash-range-btn" data-dashboard-cash-range="23">24M</button>
+                    <button type="button" class="dashboard-cash-range-btn" data-dashboard-cash-range="35">36M</button>
+                    <button type="button" class="dashboard-cash-range-btn" data-dashboard-cash-range="59">60M</button>
+                  </div>
+                </div>
+                <p id="entradasCaixaSubtitulo" class="section-subtitle">Previsto e realizado considerando recebimentos e títulos em aberto.</p>
+                <div id="entradasCaixaLegenda" class="cash-chart-legend"></div>
+              </div>
+              <div class="dashboard-cash-summary">
+                <span>Este mês</span>
+                <strong id="entradasCaixaResumo">R$ 0,00</strong>
+              </div>
+            </div>
+            <div id="entradasCaixaChart" class="cash-month-chart" aria-label="Gráfico de entradas de caixa por mês"></div>
+            <div id="entradasCaixaGrid" class="cash-month-grid"></div>
           </div>
         </section>
 
@@ -836,6 +816,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260711d"></script>
+    <script type="module" src="app.js?v=20260711e"></script>
   </body>
 </html>
