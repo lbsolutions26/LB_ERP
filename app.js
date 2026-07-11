@@ -942,6 +942,24 @@ async function loadDashboardMonthlyCash() {
 }
 
 async function cleanupOrphanDocumentoFinanceiro() {
+  // Primeiro verifica se ha contas geradas pelo fluxo novo (prefixo DOC-*).
+  // Se nao houver, pulamos toda a varredura de documentos.
+  const { data: contasDocPreview, error: previewError } = await supabaseClient
+    .from("contas_receber")
+    .select("id")
+    .eq("empresa_id", state.empresaId)
+    .like("numero_titulo", "DOC-%")
+    .limit(1);
+
+  if (previewError) {
+    if (isMissingRelationError(previewError)) return;
+    throw previewError;
+  }
+
+  if (!contasDocPreview?.length) {
+    return;
+  }
+
   const docsResponse = await fetchAllSupabaseRows(() => supabaseClient
     .from("documentos_venda")
     .select("id")
@@ -3743,49 +3761,66 @@ function getMonthlyCashEntries(mode = "recebimentos") {
 }
 
 async function refreshAll() {
+  if (refreshAll._running) {
+    refreshAll._pending = true;
+    return refreshAll._running;
+  }
+
+  refreshAll._running = (async () => {
+    try {
+      if (!state.session || !state.empresaId) return;
+
+      await cleanupOrphanDocumentoFinanceiro();
+
+      const baseLoads = [
+        loadClientes(),
+        loadProdutos(),
+        loadPedidos(),
+        loadOrcamentos(),
+        loadDespesas(),
+        loadFormasPagamento(),
+        loadRecebimentos(),
+        loadParcelasReceberPrevistas(),
+        loadContasReceber(),
+        loadDashboardMonthlyCash(),
+        loadOwnerUsers()
+      ];
+
+      if (state.isPlatformAdmin) {
+        baseLoads.push(loadAdminEmpresas(), loadAdminVinculos());
+      }
+
+      await Promise.all(baseLoads);
+
+      renderSelects();
+      renderClientesTable();
+      renderProdutosTable();
+      renderPedidosSection();
+      renderContasReceberTable();
+      renderOrcamentosTable();
+      renderDespesasTable();
+      renderOwnerUsersTable();
+      renderAdminEmpresasSelect();
+      renderAdminVinculosTable();
+      renderMetrics();
+      if (els.novoDocumentoModal && !els.novoDocumentoModal.classList.contains("hidden")) {
+        renderNovoDocumentoFormaPagamentoSelect();
+        renderNovoDocumentoPagamentoSection();
+      }
+    } catch (error) {
+      console.error(error);
+      showToast(`Erro ao carregar dados: ${error.message}`, "error");
+    }
+  })();
+
   try {
-    if (!state.session || !state.empresaId) return;
-
-    await cleanupOrphanDocumentoFinanceiro();
-
-    const baseLoads = [
-      loadClientes(),
-      loadProdutos(),
-      loadPedidos(),
-      loadOrcamentos(),
-      loadDespesas(),
-      loadFormasPagamento(),
-      loadRecebimentos(),
-      loadParcelasReceberPrevistas(),
-      loadContasReceber(),
-      loadDashboardMonthlyCash(),
-      loadOwnerUsers()
-    ];
-
-    if (state.isPlatformAdmin) {
-      baseLoads.push(loadAdminEmpresas(), loadAdminVinculos());
+    await refreshAll._running;
+  } finally {
+    refreshAll._running = null;
+    if (refreshAll._pending) {
+      refreshAll._pending = false;
+      refreshAll();
     }
-
-    await Promise.all(baseLoads);
-
-    renderSelects();
-    renderClientesTable();
-    renderProdutosTable();
-    renderPedidosSection();
-    renderContasReceberTable();
-    renderOrcamentosTable();
-    renderDespesasTable();
-    renderOwnerUsersTable();
-    renderAdminEmpresasSelect();
-    renderAdminVinculosTable();
-    renderMetrics();
-    if (els.novoDocumentoModal && !els.novoDocumentoModal.classList.contains("hidden")) {
-      renderNovoDocumentoFormaPagamentoSelect();
-      renderNovoDocumentoPagamentoSection();
-    }
-  } catch (error) {
-    console.error(error);
-    showToast(`Erro ao carregar dados: ${error.message}`, "error");
   }
 }
 
@@ -4195,9 +4230,11 @@ async function deleteDocumentoVenda(id, tipoDocumento) {
 }
 
 async function handleSession(session) {
+  const previousUserId = state.session?.user?.id || null;
+  const nextUserId = session?.user?.id || null;
+
   state.session = session;
   updateShellVisibility();
-  setSection("dashboard");
 
   if (!session) {
     state.empresaId = null;
@@ -4206,8 +4243,16 @@ async function handleSession(session) {
     state.isPlatformAdmin = false;
     updateAdminVisibility();
     updateOwnerUsersVisibility();
+    setSection("dashboard");
     return;
   }
+
+  // Evita rodar tudo de novo se o mesmo usuario ja esta carregado.
+  if (previousUserId && previousUserId === nextUserId && state.empresaId) {
+    return;
+  }
+
+  setSection("dashboard");
 
   try {
     await loadPlatformAdminStatus();
