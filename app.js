@@ -2773,15 +2773,17 @@ function renderMetrics() {
 
   if (els.entradasCaixaChart) {
     const maxValue = Math.max(...monthlyCashEntries.map((item) => Number(item.total || 0)), 0);
+    const currentMonthKey = formatMonthKey(new Date());
     const chartBars = monthlyCashEntries
       .map((item) => {
         const value = Number(item.total || 0);
         const height = maxValue > 0 ? Math.max(6, Math.round((value / maxValue) * 100)) : 6;
+        const isCurrentMonth = item.monthKey === currentMonthKey;
         return `
-          <div class="cash-bar-wrap">
+          <div class="cash-bar-wrap${isCurrentMonth ? " cash-bar-wrap-current" : ""}" title="${escapeHtml(item.label)}: ${moeda.format(value)}">
             <div class="cash-bar-value">${moeda.format(value)}</div>
             <div class="cash-bar-track" aria-hidden="true">
-              <div class="cash-bar-fill" style="height:${height}%"></div>
+              <div class="cash-bar-fill${isCurrentMonth ? " cash-bar-fill-current" : ""}" style="height:${height}%"></div>
             </div>
             <div class="cash-bar-label">${escapeHtml(item.label)}</div>
           </div>
