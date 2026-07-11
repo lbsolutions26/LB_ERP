@@ -88,7 +88,7 @@ const state = {
     },
     pedidosSintetico: {
       sort: { field: "data", direction: "desc" },
-      filters: { data: "", cliente: "", status: "", total: "" }
+      filters: { pedido: "", data: "", cliente: "", status: "", total: "" }
     },
     pedidosAnalitico: {
       sort: { field: "data", direction: "desc" },
@@ -2524,11 +2524,9 @@ async function loadPedidosProdutos() {
       metaById: pedidoMetaById
     });
     const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
-    const fallbackItems = state.pedidos
-      .filter((pedido) => !pedidosComItens.has(Number(pedido.id)))
-      .map(buildFallbackItemFromPedidoMeta)
-      .filter(Boolean);
-    state.pedidosProdutosRaw = [...normalizedItems, ...fallbackItems];
+    const missingPedidos = state.pedidos.filter((pedido) => !pedidosComItens.has(Number(pedido.id)));
+    const recoveredItems = await loadMissingPedidoProdutoRows(missingPedidos, pedidoMetaById);
+    state.pedidosProdutosRaw = [...normalizedItems, ...recoveredItems];
     state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
     return;
   }
@@ -2547,11 +2545,9 @@ async function loadPedidosProdutos() {
     metaById: pedidoMetaById
   });
   const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
-  const fallbackItems = state.pedidos
-    .filter((pedido) => !pedidosComItens.has(Number(pedido.id)))
-    .map(buildFallbackItemFromPedidoMeta)
-    .filter(Boolean);
-  state.pedidosProdutosRaw = [...normalizedItems, ...fallbackItems];
+  const missingPedidos = state.pedidos.filter((pedido) => !pedidosComItens.has(Number(pedido.id)));
+  const recoveredItems = await loadMissingPedidoProdutoRows(missingPedidos, pedidoMetaById);
+  state.pedidosProdutosRaw = [...normalizedItems, ...recoveredItems];
   state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
 }
 
@@ -2619,6 +2615,66 @@ function buildFallbackItemFromPedidoMeta(pedido) {
     status: pedido.status || "-",
     pedidoValorTotal: Number(pedido.valor_total || 0)
   };
+}
+
+async function loadMissingPedidoProdutoRows(missingPedidos, metaById) {
+  if (!missingPedidos.length) return [];
+
+  const fallbackRows = [];
+
+  for (const pedido of missingPedidos) {
+    const pedidoId = Number(pedido.id);
+    if (!Number.isFinite(pedidoId)) continue;
+
+    if (state.pedidosSource === "documentos_venda") {
+      const { data, error } = await supabaseClient
+        .from("documento_venda_itens")
+        .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
+        .eq("empresa_id", state.empresaId)
+        .eq("documento_id", pedidoId)
+        .order("id", { ascending: true });
+
+      if (error) throw error;
+
+      const normalized = normalizePedidoProdutoRows(data || [], {
+        idField: "documento_id",
+        totalField: "valor_total",
+        metaById
+      });
+
+      if (normalized.length) {
+        fallbackRows.push(...normalized);
+        continue;
+      }
+    } else {
+      const { data, error } = await supabaseClient
+        .from("pedido_itens")
+        .select("pedido_id, produto_id, quantidade, valor_unitario, total, produto:produtos(nome)")
+        .eq("empresa_id", state.empresaId)
+        .eq("pedido_id", pedidoId)
+        .order("id", { ascending: true });
+
+      if (error) throw error;
+
+      const normalized = normalizePedidoProdutoRows(data || [], {
+        idField: "pedido_id",
+        totalField: "total",
+        metaById
+      });
+
+      if (normalized.length) {
+        fallbackRows.push(...normalized);
+        continue;
+      }
+    }
+
+    const fallbackItem = buildFallbackItemFromPedidoMeta(pedido);
+    if (fallbackItem) {
+      fallbackRows.push(fallbackItem);
+    }
+  }
+
+  return fallbackRows;
 }
 
 function aggregatePedidoItemsByProduto(items) {
@@ -2965,6 +3021,7 @@ function renderPedidosTableHead() {
 
   els.pedidosTableHead.innerHTML = `
     <tr>
+      <th class="sortable" data-table="pedidosSintetico" data-sort="pedido">Pedido</th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="data">Data</th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="cliente">Cliente</th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="status">Status</th>
@@ -2972,6 +3029,7 @@ function renderPedidosTableHead() {
       <th></th>
     </tr>
     <tr>
+      <th><input data-table-filter="pedidosSintetico" data-field="pedido" value="${getTableFilterValue("pedidosSintetico", "pedido")}" placeholder="Filtrar" /></th>
       <th><input data-table-filter="pedidosSintetico" data-field="data" value="${getTableFilterValue("pedidosSintetico", "data")}" placeholder="Filtrar" /></th>
       <th><input data-table-filter="pedidosSintetico" data-field="cliente" value="${getTableFilterValue("pedidosSintetico", "cliente")}" placeholder="Filtrar" /></th>
       <th><input data-table-filter="pedidosSintetico" data-field="status" value="${getTableFilterValue("pedidosSintetico", "status")}" placeholder="Filtrar" /></th>
@@ -3462,6 +3520,10 @@ function renderPedidosTable() {
   }
 
   const rows = getFilteredAndSortedTableRows(state.pedidos, "pedidosSintetico", {
+    pedido: {
+      filter: (pedido) => `#${pedido.id || ""}`,
+      sort: (pedido) => Number(pedido.id || 0)
+    },
     data: {
       filter: (pedido) => pedido.data_pedido ? new Date(pedido.data_pedido).toLocaleDateString("pt-BR") : "-",
       sort: (pedido) => pedido.data_pedido ? new Date(pedido.data_pedido).getTime() : 0
@@ -3475,7 +3537,7 @@ function renderPedidosTable() {
   });
 
   if (!rows.length) {
-    els.pedidosTable.innerHTML = '<tr><td colspan="5">Nenhum pedido encontrado para os filtros selecionados.</td></tr>';
+    els.pedidosTable.innerHTML = '<tr><td colspan="6">Nenhum pedido encontrado para os filtros selecionados.</td></tr>';
     return;
   }
 
@@ -3485,6 +3547,7 @@ function renderPedidosTable() {
       const clienteNome = pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${escapeHtml(pedido.cliente_legacy_id)}` : "-");
       return `
       <tr>
+        <td>#${escapeHtml(pedido.id)}</td>
         <td>${data}</td>
         <td>${clienteNome}</td>
         <td>${escapeHtml(pedido.status || "-")}</td>
