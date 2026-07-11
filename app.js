@@ -71,6 +71,14 @@ const state = {
   pedidos: [],
   orcamentos: [],
   despesas: [],
+  novoDocumentoModal: {
+    tipo: "pedido",
+    documentoId: null,
+    clienteId: "",
+    status: "aberto",
+    observacoes: "",
+    itens: []
+  },
   ownerUsers: [],
   adminEmpresas: [],
   adminVinculos: []
@@ -95,6 +103,21 @@ const els = {
   produtoModal: document.getElementById("produtoModal"),
   produtoModalTitle: document.getElementById("produtoModalTitle"),
   produtoSubmitBtn: document.getElementById("produtoSubmitBtn"),
+  openPedidoModalBtn: document.getElementById("openPedidoModalBtn"),
+  novoDocumentoModal: document.getElementById("novoDocumentoModal"),
+  closeNovoDocumentoModalBtn: document.getElementById("closeNovoDocumentoModalBtn"),
+  novoDocumentoForm: document.getElementById("novoDocumentoForm"),
+  novoDocumentoModalTitle: document.getElementById("novoDocumentoModalTitle"),
+  novoDocumentoModalSubtitle: document.getElementById("novoDocumentoModalSubtitle"),
+  novoDocumentoClienteSelect: document.getElementById("novoDocumentoClienteSelect"),
+  novoDocumentoStatusSelect: document.getElementById("novoDocumentoStatusSelect"),
+  novoDocumentoObservacoes: document.getElementById("novoDocumentoObservacoes"),
+  novoDocumentoItemsGrid: document.getElementById("novoDocumentoItemsGrid"),
+  addDocumentoItemBtn: document.getElementById("addDocumentoItemBtn"),
+  novoDocumentoSubtotal: document.getElementById("novoDocumentoSubtotal"),
+  novoDocumentoResumoTexto: document.getElementById("novoDocumentoResumoTexto"),
+  novoDocumentoTotal: document.getElementById("novoDocumentoTotal"),
+  novoDocumentoSubmitBtn: document.getElementById("novoDocumentoSubmitBtn"),
   itensDocumentoModal: document.getElementById("itensDocumentoModal"),
   closeItensDocumentoModalBtn: document.getElementById("closeItensDocumentoModalBtn"),
   itensDocumentoModalTitle: document.getElementById("itensDocumentoModalTitle"),
@@ -210,6 +233,437 @@ function openItensDocumentoModal() {
 function closeItensDocumentoModal() {
   if (!els.itensDocumentoModal) return;
   els.itensDocumentoModal.classList.add("hidden");
+}
+
+function getDocumentoModalConfig(tipo = "pedido") {
+  const isOrcamento = tipo === "orcamento";
+  return {
+    tipo: isOrcamento ? "orcamento" : "pedido",
+    titulo: isOrcamento ? "Novo Orçamento" : "Novo Pedido",
+    subtitulo: isOrcamento
+      ? "Monte um orçamento com itens em grade e total calculado automaticamente."
+      : "Monte um pedido com itens em grade e total calculado automaticamente.",
+    submitLabel: isOrcamento ? "Salvar Orçamento" : "Salvar Pedido",
+    defaultStatus: "aberto",
+    statuses: isOrcamento
+      ? [
+          { value: "aberto", label: "Aberto" },
+          { value: "aprovado", label: "Aprovado" },
+          { value: "reprovado", label: "Reprovado" }
+        ]
+      : [
+          { value: "aberto", label: "Aberto" },
+          { value: "fechado", label: "Fechado" },
+          { value: "cancelado", label: "Cancelado" }
+        ]
+  };
+}
+
+function createDocumentoDraftItem(produto = null) {
+  return {
+    rowId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    produtoId: produto?.id ? String(produto.id) : "",
+    descricao: produto?.nome || "",
+    quantidade: 1,
+    valorUnitario: Number(produto?.preco || 0)
+  };
+}
+
+function createDocumentoDraft(tipo = "pedido") {
+  const config = getDocumentoModalConfig(tipo);
+  return {
+    tipo: config.tipo,
+    documentoId: null,
+    clienteId: "",
+    status: config.defaultStatus,
+    observacoes: "",
+    itens: [createDocumentoDraftItem()]
+  };
+}
+
+function getDocumentoProdutoOptions(selectedValue = "") {
+  const options = ['<option value="">Selecione um produto</option>'];
+  for (const produto of state.produtos) {
+    const label = `${produto.nome}${produto.preco ? ` - ${moeda.format(produto.preco)}` : ""}`;
+    const selected = String(produto.id) === String(selectedValue) ? " selected" : "";
+    options.push(`<option value="${escapeHtml(produto.id)}"${selected}>${escapeHtml(label)}</option>`);
+  }
+  return options.join("");
+}
+
+function getNovoDocumentoItemTotal(item) {
+  const quantidade = Number(item?.quantidade || 0);
+  const valorUnitario = Number(item?.valorUnitario || 0);
+  return quantidade * valorUnitario;
+}
+
+function getNovoDocumentoSubtotal() {
+  return state.novoDocumentoModal.itens.reduce((sum, item) => sum + getNovoDocumentoItemTotal(item), 0);
+}
+
+function renderNovoDocumentoClienteSelect() {
+  if (!els.novoDocumentoClienteSelect) return;
+  els.novoDocumentoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
+  for (const cliente of state.clientes) {
+    els.novoDocumentoClienteSelect.insertAdjacentHTML(
+      "beforeend",
+      `<option value="${cliente.id}">${escapeHtml(cliente.nome)}</option>`
+    );
+  }
+  els.novoDocumentoClienteSelect.value = state.novoDocumentoModal.clienteId || "";
+}
+
+function renderNovoDocumentoStatusSelect() {
+  if (!els.novoDocumentoStatusSelect) return;
+  const config = getDocumentoModalConfig(state.novoDocumentoModal.tipo);
+  els.novoDocumentoStatusSelect.innerHTML = config.statuses
+    .map((status) => `<option value="${status.value}">${status.label}</option>`)
+    .join("");
+  if (!config.statuses.some((status) => status.value === state.novoDocumentoModal.status)) {
+    state.novoDocumentoModal.status = config.defaultStatus;
+  }
+  els.novoDocumentoStatusSelect.value = state.novoDocumentoModal.status;
+}
+
+function renderNovoDocumentoItemRow(item) {
+  const produto = state.produtos.find((produtoItem) => String(produtoItem.id) === String(item.produtoId));
+  const rowTotal = getNovoDocumentoItemTotal(item);
+  return `
+    <article class="documento-item-row" data-documento-item-row="${item.rowId}">
+      <label class="documento-item-field">
+        <span>Produto</span>
+        <select data-documento-item-field="produtoId">${getDocumentoProdutoOptions(item.produtoId)}</select>
+      </label>
+      <label class="documento-item-field">
+        <span>Descricao</span>
+        <input data-documento-item-field="descricao" value="${escapeHtml(item.descricao || produto?.nome || "")}" placeholder="Descricao do item" />
+      </label>
+      <label class="documento-item-field">
+        <span>Qtd</span>
+        <input data-documento-item-field="quantidade" type="number" min="0.001" step="0.001" value="${escapeHtml(item.quantidade ?? 1)}" />
+      </label>
+      <label class="documento-item-field">
+        <span>Valor unit.</span>
+        <input data-documento-item-field="valorUnitario" type="number" min="0" step="0.01" value="${escapeHtml(item.valorUnitario ?? 0)}" />
+      </label>
+      <div class="documento-item-total">
+        <span>Total</span>
+        <strong data-documento-item-total>${moeda.format(rowTotal)}</strong>
+      </div>
+      <button type="button" class="btn btn-ghost documento-item-remove" data-documento-item-remove="${item.rowId}">Remover</button>
+    </article>
+  `;
+}
+
+function updateNovoDocumentoResumo() {
+  const subtotal = getNovoDocumentoSubtotal();
+  const itensCount = state.novoDocumentoModal.itens.filter((item) => {
+    const descricao = String(item.descricao || "").trim();
+    return descricao || item.produtoId;
+  }).length;
+
+  if (els.novoDocumentoSubtotal) {
+    els.novoDocumentoSubtotal.textContent = moeda.format(subtotal);
+  }
+  if (els.novoDocumentoTotal) {
+    els.novoDocumentoTotal.textContent = moeda.format(subtotal);
+  }
+  if (els.novoDocumentoResumoTexto) {
+    els.novoDocumentoResumoTexto.textContent = `${itensCount} item${itensCount === 1 ? "" : "s"} adicionad${itensCount === 1 ? "o" : "os"}`;
+  }
+  if (els.novoDocumentoSubmitBtn) {
+    const config = getDocumentoModalConfig(state.novoDocumentoModal.tipo);
+    els.novoDocumentoSubmitBtn.textContent = config.submitLabel;
+  }
+}
+
+function renderNovoDocumentoItensGrid() {
+  if (!els.novoDocumentoItemsGrid) return;
+  if (!state.novoDocumentoModal.itens.length) {
+    state.novoDocumentoModal.itens = [createDocumentoDraftItem()];
+  }
+
+  els.novoDocumentoItemsGrid.innerHTML = state.novoDocumentoModal.itens
+    .map((item) => renderNovoDocumentoItemRow(item))
+    .join("");
+
+  updateNovoDocumentoResumo();
+}
+
+function renderNovoDocumentoModal() {
+  if (!els.novoDocumentoModal) return;
+  const config = getDocumentoModalConfig(state.novoDocumentoModal.tipo);
+  const isEdit = Boolean(state.novoDocumentoModal.documentoId);
+
+  if (els.novoDocumentoModalTitle) {
+    els.novoDocumentoModalTitle.textContent = isEdit ? config.titulo.replace("Novo", "Editar") : config.titulo;
+  }
+  if (els.novoDocumentoModalSubtitle) {
+    els.novoDocumentoModalSubtitle.textContent = config.subtitulo;
+  }
+  if (els.novoDocumentoObservacoes) {
+    els.novoDocumentoObservacoes.value = state.novoDocumentoModal.observacoes || "";
+  }
+
+  renderNovoDocumentoClienteSelect();
+  renderNovoDocumentoStatusSelect();
+  renderNovoDocumentoItensGrid();
+
+  for (const button of Array.from(document.querySelectorAll("[data-documento-tipo]"))) {
+    button.classList.toggle("active", button.getAttribute("data-documento-tipo") === state.novoDocumentoModal.tipo);
+  }
+}
+
+function openNovoDocumentoModal(tipo = "pedido") {
+  if (!els.novoDocumentoModal) return;
+  state.novoDocumentoModal = createDocumentoDraft(tipo);
+  renderNovoDocumentoModal();
+  els.novoDocumentoModal.classList.remove("hidden");
+}
+
+async function openNovoDocumentoEditModal(tipo, documentoId) {
+  await loadDocumentoForEdit(tipo, documentoId);
+  renderNovoDocumentoModal();
+  if (els.novoDocumentoModal) {
+    els.novoDocumentoModal.classList.remove("hidden");
+  }
+}
+
+function closeNovoDocumentoModal() {
+  if (!els.novoDocumentoModal) return;
+  els.novoDocumentoModal.classList.add("hidden");
+}
+
+function normalizeDocumentoItem(item) {
+  return {
+    rowId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    produtoId: item?.produto_id ? String(item.produto_id) : "",
+    descricao: String(item?.descricao_item || item?.descricao || "").trim(),
+    quantidade: Number(item?.quantidade || 1),
+    valorUnitario: Number(item?.valor_unitario || 0)
+  };
+}
+
+async function loadDocumentoForEdit(tipo, documentoId) {
+  if (state.pedidosSource !== "documentos_venda" && state.orcamentosSource !== "documentos_venda") {
+    throw new Error("Edicao detalhada requer a estrutura documentos_venda no banco.");
+  }
+
+  const { data: documento, error: documentoError } = await supabaseClient
+    .from("documentos_venda")
+    .select("id, cliente_id, status, observacoes, total")
+    .eq("empresa_id", state.empresaId)
+    .eq("id", documentoId)
+    .eq("tipo_documento", tipo)
+    .maybeSingle();
+
+  if (documentoError) throw documentoError;
+  if (!documento) throw new Error("Documento nao encontrado");
+
+  const { data: itensData, error: itensError } = await supabaseClient
+    .from("documento_venda_itens")
+    .select("id, produto_id, descricao_item, quantidade, valor_unitario")
+    .eq("empresa_id", state.empresaId)
+    .eq("documento_id", documentoId)
+    .order("id", { ascending: true });
+
+  if (itensError) throw itensError;
+
+  state.novoDocumentoModal = {
+    tipo,
+    documentoId,
+    clienteId: documento.cliente_id ? String(documento.cliente_id) : "",
+    status: documento.status || "aberto",
+    observacoes: documento.observacoes || "",
+    itens: (itensData || []).length
+      ? (itensData || []).map(normalizeDocumentoItem)
+      : [createDocumentoDraftItem()]
+  };
+}
+
+function setNovoDocumentoTipo(tipo) {
+  state.novoDocumentoModal.tipo = tipo === "orcamento" ? "orcamento" : "pedido";
+  const config = getDocumentoModalConfig(state.novoDocumentoModal.tipo);
+  state.novoDocumentoModal.status = config.defaultStatus;
+  renderNovoDocumentoModal();
+}
+
+function addNovoDocumentoItem(produto = null) {
+  state.novoDocumentoModal.itens.push(createDocumentoDraftItem(produto));
+  renderNovoDocumentoItensGrid();
+}
+
+function removeNovoDocumentoItem(rowId) {
+  state.novoDocumentoModal.itens = state.novoDocumentoModal.itens.filter((item) => item.rowId !== rowId);
+  if (!state.novoDocumentoModal.itens.length) {
+    state.novoDocumentoModal.itens = [createDocumentoDraftItem()];
+  }
+  renderNovoDocumentoItensGrid();
+}
+
+function handleNovoDocumentoItemChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const row = target.closest("[data-documento-item-row]");
+  if (!row) return;
+  const rowId = row.getAttribute("data-documento-item-row");
+  if (!rowId) return;
+
+  const item = state.novoDocumentoModal.itens.find((draftItem) => draftItem.rowId === rowId);
+  if (!item) return;
+
+  const field = target.getAttribute("data-documento-item-field");
+  if (field === "produtoId") {
+    const produto = state.produtos.find((produtoItem) => String(produtoItem.id) === String(target.value));
+    item.produtoId = target.value || "";
+    if (produto) {
+      item.descricao = produto.nome || item.descricao;
+      item.valorUnitario = Number(produto.preco || 0);
+      const descricaoInput = row.querySelector('[data-documento-item-field="descricao"]');
+      const valorInput = row.querySelector('[data-documento-item-field="valorUnitario"]');
+      if (descricaoInput instanceof HTMLInputElement) descricaoInput.value = item.descricao || "";
+      if (valorInput instanceof HTMLInputElement) valorInput.value = String(item.valorUnitario || 0);
+    }
+  } else if (field === "descricao") {
+    item.descricao = target.value || "";
+  } else if (field === "quantidade") {
+    item.quantidade = Math.max(Number(target.value || 0), 0);
+  } else if (field === "valorUnitario") {
+    item.valorUnitario = Math.max(Number(target.value || 0), 0);
+  }
+
+  const totalNode = row.querySelector("[data-documento-item-total]");
+  if (totalNode) {
+    totalNode.textContent = moeda.format(getNovoDocumentoItemTotal(item));
+  }
+  updateNovoDocumentoResumo();
+}
+
+function getDocumentoItensPayload() {
+  return state.novoDocumentoModal.itens
+    .map((item) => ({
+      produtoId: item.produtoId ? Number(item.produtoId) : null,
+      descricao: String(item.descricao || "").trim(),
+      quantidade: Number(item.quantidade || 0),
+      valorUnitario: Number(item.valorUnitario || 0)
+    }))
+    .filter((item) => item.descricao || item.produtoId);
+}
+
+function buildLegacyDocumentoDescricao(itens) {
+  return itens
+    .map((item) => `${item.descricao} x${item.quantidade}`)
+    .filter(Boolean)
+    .join(" | ");
+}
+
+async function saveNovoDocumento(event) {
+  event.preventDefault();
+  const draft = state.novoDocumentoModal;
+  const isEdit = Boolean(draft.documentoId);
+  const formData = new FormData(els.novoDocumentoForm);
+  const clienteIdRaw = Number(formData.get("cliente_id"));
+  const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
+  const status = String(formData.get("status") || draft.status || "aberto");
+  const observacoes = String(formData.get("observacoes") || "").trim();
+  const itens = getDocumentoItensPayload();
+
+  if (!itens.length) {
+    throw new Error("Adicione ao menos um item antes de salvar.");
+  }
+
+  const subtotal = itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
+  const documentoPayload = {
+    empresa_id: state.empresaId,
+    tipo_documento: draft.tipo,
+    origem: "manual",
+    cliente_id: clienteId,
+    status,
+    subtotal,
+    desconto: 0,
+    total: subtotal,
+    observacoes: observacoes || null,
+    raw_payload: {
+      source: "novo-documento-modal",
+      itens: itens.length
+    },
+    data_emissao: new Date().toISOString()
+  };
+
+  if (state.pedidosSource === "documentos_venda" || state.orcamentosSource === "documentos_venda") {
+    let documentoId = draft.documentoId;
+
+    if (documentoId) {
+      const { error: documentoUpdateError } = await supabaseClient
+        .from("documentos_venda")
+        .update(documentoPayload)
+        .eq("empresa_id", state.empresaId)
+        .eq("id", documentoId)
+        .eq("tipo_documento", draft.tipo);
+
+      if (documentoUpdateError) throw documentoUpdateError;
+
+      const { error: deleteItensError } = await supabaseClient
+        .from("documento_venda_itens")
+        .delete()
+        .eq("empresa_id", state.empresaId)
+        .eq("documento_id", documentoId);
+
+      if (deleteItensError) throw deleteItensError;
+    } else {
+      const { data: documentoCriado, error: documentoError } = await supabaseClient
+        .from("documentos_venda")
+        .insert(documentoPayload)
+        .select("id")
+        .single();
+
+      if (documentoError) throw documentoError;
+      documentoId = documentoCriado.id;
+    }
+
+    const itensPayload = itens.map((item) => ({
+      empresa_id: state.empresaId,
+      documento_id: documentoId,
+      produto_id: item.produtoId,
+      descricao_item: item.descricao,
+      quantidade: item.quantidade,
+      valor_unitario: item.valorUnitario,
+      valor_total: item.quantidade * item.valorUnitario,
+      raw_payload: {
+        source: "novo-documento-modal",
+        produto_id: item.produtoId,
+        descricao: item.descricao
+      }
+    }));
+
+    const { error: itensError } = await supabaseClient.from("documento_venda_itens").insert(itensPayload);
+    if (itensError) throw itensError;
+  } else if (draft.tipo === "pedido") {
+    const { error } = await supabaseClient.from("pedidos").insert({
+      empresa_id: state.empresaId,
+      cliente_id: clienteId,
+      descricao: observacoes || buildLegacyDocumentoDescricao(itens),
+      status,
+      valor_total: subtotal,
+      data_pedido: new Date().toISOString()
+    });
+    if (error) throw error;
+  } else {
+    const { error } = await supabaseClient.from("orcamentos").insert({
+      empresa_id: state.empresaId,
+      cliente_id: clienteId,
+      descricao: observacoes || buildLegacyDocumentoDescricao(itens),
+      status,
+      valor_total: subtotal,
+      data_orcamento: new Date().toISOString()
+    });
+    if (error) throw error;
+  }
+
+  closeNovoDocumentoModal();
+  state.novoDocumentoModal = createDocumentoDraft("pedido");
+  showToast(draft.tipo === "orcamento" ? (isEdit ? "Orcamento atualizado" : "Orcamento salvo") : (isEdit ? "Pedido atualizado" : "Pedido salvo"));
+  await refreshAll();
 }
 
 function renderItensDocumentoTable() {
@@ -777,19 +1231,27 @@ async function loadDespesas() {
 }
 
 function renderSelects() {
-  els.pedidoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
-  els.orcamentoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
+  if (els.pedidoClienteSelect) {
+    els.pedidoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
+  }
+  if (els.orcamentoClienteSelect) {
+    els.orcamentoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
+  }
+  if (els.novoDocumentoClienteSelect) {
+    els.novoDocumentoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
+  }
 
   for (const cliente of state.clientes) {
     const optionHtml = `<option value="${cliente.id}">${escapeHtml(cliente.nome)}</option>`;
-    els.pedidoClienteSelect.insertAdjacentHTML(
-      "beforeend",
-      optionHtml
-    );
-    els.orcamentoClienteSelect.insertAdjacentHTML(
-      "beforeend",
-      optionHtml
-    );
+    if (els.pedidoClienteSelect) {
+      els.pedidoClienteSelect.insertAdjacentHTML("beforeend", optionHtml);
+    }
+    if (els.orcamentoClienteSelect) {
+      els.orcamentoClienteSelect.insertAdjacentHTML("beforeend", optionHtml);
+    }
+    if (els.novoDocumentoClienteSelect) {
+      els.novoDocumentoClienteSelect.insertAdjacentHTML("beforeend", optionHtml);
+    }
   }
 }
 
@@ -972,6 +1434,7 @@ function renderPedidosTable() {
         <td>${escapeHtml(pedido.status || "-")}</td>
         <td>${moeda.format(pedido.valor_total || 0)}</td>
         <td>
+            <button class="action-edit" data-edit-pedido="${pedido.id}">Editar</button>
           <button class="action-edit" data-view-pedido-itens="${pedido.id}">Itens</button>
           <button class="action-delete" data-del-pedido="${pedido.id}">Excluir</button>
         </td>
@@ -993,6 +1456,7 @@ function renderOrcamentosTable() {
         <td>${escapeHtml(orcamento.status || "-")}</td>
         <td>${moeda.format(orcamento.valor_total || 0)}</td>
         <td>
+            <button class="action-edit" data-edit-orcamento="${orcamento.id}">Editar</button>
           <button class="action-edit" data-view-orcamento-itens="${orcamento.id}">Itens</button>
           <button class="action-delete" data-del-orcamento="${orcamento.id}">Excluir</button>
         </td>
@@ -1520,6 +1984,10 @@ function attachEvents() {
     els.openProdutoModalBtn.addEventListener("click", openProdutoCreateModal);
   }
 
+  if (els.openPedidoModalBtn) {
+    els.openPedidoModalBtn.addEventListener("click", () => openNovoDocumentoModal("pedido"));
+  }
+
   if (els.closeProdutoModalBtn) {
     els.closeProdutoModalBtn.addEventListener("click", () => {
       setProdutoFormMode({ editing: false });
@@ -1545,6 +2013,69 @@ function attachEvents() {
       if (event.target === els.itensDocumentoModal) {
         closeItensDocumentoModal();
       }
+    });
+  }
+
+  if (els.closeNovoDocumentoModalBtn) {
+    els.closeNovoDocumentoModalBtn.addEventListener("click", closeNovoDocumentoModal);
+  }
+
+  if (els.novoDocumentoModal) {
+    els.novoDocumentoModal.addEventListener("click", (event) => {
+      if (event.target === els.novoDocumentoModal) {
+        closeNovoDocumentoModal();
+      }
+    });
+  }
+
+  if (els.addDocumentoItemBtn) {
+    els.addDocumentoItemBtn.addEventListener("click", () => addNovoDocumentoItem());
+  }
+
+  if (els.novoDocumentoForm) {
+    els.novoDocumentoForm.addEventListener("submit", async (event) => {
+      try {
+        await saveNovoDocumento(event);
+      } catch (error) {
+        showToast(`Erro ao salvar documento: ${error.message}`, "error");
+      }
+    });
+  }
+
+  if (els.novoDocumentoClienteSelect) {
+    els.novoDocumentoClienteSelect.addEventListener("change", () => {
+      state.novoDocumentoModal.clienteId = els.novoDocumentoClienteSelect.value || "";
+    });
+  }
+
+  if (els.novoDocumentoStatusSelect) {
+    els.novoDocumentoStatusSelect.addEventListener("change", () => {
+      state.novoDocumentoModal.status = els.novoDocumentoStatusSelect.value || "aberto";
+    });
+  }
+
+  if (els.novoDocumentoObservacoes) {
+    els.novoDocumentoObservacoes.addEventListener("input", () => {
+      state.novoDocumentoModal.observacoes = els.novoDocumentoObservacoes.value || "";
+    });
+  }
+
+  if (els.novoDocumentoItemsGrid) {
+    els.novoDocumentoItemsGrid.addEventListener("change", handleNovoDocumentoItemChange);
+    els.novoDocumentoItemsGrid.addEventListener("input", handleNovoDocumentoItemChange);
+    els.novoDocumentoItemsGrid.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const rowId = target.getAttribute("data-documento-item-remove");
+      if (!rowId) return;
+      removeNovoDocumentoItem(rowId);
+    });
+  }
+
+  for (const button of Array.from(document.querySelectorAll("[data-documento-tipo]"))) {
+    button.addEventListener("click", () => {
+      const tipo = button.getAttribute("data-documento-tipo") || "pedido";
+      setNovoDocumentoTipo(tipo);
     });
   }
 
@@ -1576,13 +2107,15 @@ function attachEvents() {
     });
   }
 
-  els.pedidoForm.addEventListener("submit", async (event) => {
-    try {
-      await createPedido(event);
-    } catch (error) {
-      showToast(`Erro ao salvar pedido: ${error.message}`, "error");
-    }
-  });
+  if (els.pedidoForm) {
+    els.pedidoForm.addEventListener("submit", async (event) => {
+      try {
+        await createPedido(event);
+      } catch (error) {
+        showToast(`Erro ao salvar pedido: ${error.message}`, "error");
+      }
+    });
+  }
 
   els.orcamentoForm.addEventListener("submit", async (event) => {
     try {
@@ -1648,6 +2181,16 @@ function attachEvents() {
     try {
       if (produtoEditId) {
         openProdutoEditModal(Number(produtoEditId));
+        return;
+      }
+      const pedidoEditId = target.getAttribute("data-edit-pedido");
+      const orcamentoEditId = target.getAttribute("data-edit-orcamento");
+      if (pedidoEditId) {
+        await openNovoDocumentoEditModal("pedido", Number(pedidoEditId));
+        return;
+      }
+      if (orcamentoEditId) {
+        await openNovoDocumentoEditModal("orcamento", Number(orcamentoEditId));
         return;
       }
       if (pedidoItensId) {

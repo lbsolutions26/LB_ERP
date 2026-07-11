@@ -178,6 +178,12 @@ h3 {
   flex-wrap: wrap;
 }
 
+.section-subtitle {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  max-width: 62ch;
+}
+
 .active-section {
   display: grid;
 }
@@ -386,6 +392,204 @@ th.sortable.sorted {
   gap: 0.75rem;
 }
 
+.modal-subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}
+
+.modal-documento-card {
+  width: min(1120px, 100%);
+}
+
+.documento-modal-form {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.documento-type-switch {
+  display: inline-flex;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  background: #efe7da;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.documento-switch-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.55rem 0.9rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.documento-switch-btn.active {
+  background: linear-gradient(140deg, var(--brand) 0%, var(--brand-strong) 100%);
+  color: #fff;
+}
+
+.documento-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.8fr);
+  gap: 1rem;
+}
+
+.documento-meta-panel,
+.documento-summary-panel,
+.documento-items-panel {
+  background: linear-gradient(180deg, #fffdf8 0%, #fbf6ec 100%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem;
+}
+
+.documento-meta-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.documento-meta-panel label,
+.documento-observacoes-field {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #3d372d;
+}
+
+.documento-summary-panel {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  min-height: 100%;
+  background: linear-gradient(160deg, #dbf0ed 0%, #fff7ea 100%);
+}
+
+.summary-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.documento-summary-panel strong,
+.documento-modal-footer strong {
+  font-size: 1.45rem;
+}
+
+.documento-add-item {
+  width: 100%;
+  justify-content: center;
+}
+
+.documento-items-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.documento-items-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.documento-items-panel-head h4 {
+  margin: 0;
+}
+
+.documento-items-hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.documento-items-grid {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.documento-item-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.3fr) minmax(160px, 1fr) 100px 120px 130px auto;
+  gap: 0.6rem;
+  align-items: end;
+  background: #fff;
+  border: 1px solid #e1d8c8;
+  border-radius: 14px;
+  padding: 0.85rem;
+}
+
+.documento-item-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.documento-item-field span,
+.documento-item-total span {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.documento-item-total {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: start;
+}
+
+.documento-item-total strong {
+  font-size: 1rem;
+}
+
+.documento-item-remove {
+  align-self: center;
+  white-space: nowrap;
+}
+
+.documento-empty-state {
+  border: 1px dashed #d0c5b0;
+  border-radius: 12px;
+  padding: 1rem;
+  text-align: center;
+  color: var(--muted);
+  background: #fff;
+}
+
+.documento-modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-top: 0.3rem;
+}
+
+.documento-modal-footer > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.documento-modal-footer .btn {
+  min-width: 180px;
+}
+
+textarea {
+  font: inherit;
+  border: 1px solid #cabfa9;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.6rem 0.7rem;
+  resize: vertical;
+}
+
+textarea:focus {
+  outline: 2px solid rgba(22, 93, 89, 0.25);
+  border-color: var(--brand);
+}
+
 .relatorio-grid article strong {
   font-size: 1rem;
 }
@@ -416,6 +620,18 @@ th.sortable.sorted {
   .admin-grid {
     grid-template-columns: 1fr;
   }
+
+  .documento-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .documento-item-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .documento-item-remove {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 640px) {
@@ -425,6 +641,10 @@ th.sortable.sorted {
   }
 
   .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .documento-item-row {
     grid-template-columns: 1fr;
   }
 }

@@ -106,21 +106,12 @@
         </section>
 
         <section id="section-pedidos" class="card app-section hidden">
-          <h2>Pedidos</h2>
-          <div class="form-block">
-            <form id="pedidoForm">
-              <select name="cliente_id" id="pedidoClienteSelect" required>
-                <option value="">Selecione um cliente</option>
-              </select>
-              <input name="descricao" placeholder="Descricao" />
-              <input name="valor_total" type="number" min="0" step="0.01" placeholder="Valor total" required />
-              <select name="status" required>
-                <option value="aberto">Aberto</option>
-                <option value="fechado">Fechado</option>
-                <option value="cancelado">Cancelado</option>
-              </select>
-              <button type="submit" class="btn">Salvar Pedido</button>
-            </form>
+          <div class="section-head">
+            <div>
+              <h2>Pedidos</h2>
+              <p class="section-subtitle">Crie pedidos e orcamentos com itens em grade, subtotal automatico e salvamento mais claro.</p>
+            </div>
+            <button id="openPedidoModalBtn" class="btn" type="button">Novo Pedido</button>
           </div>
           <div class="table-wrap">
             <table>
@@ -401,6 +392,69 @@
             <tbody id="itensDocumentoTable"></tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <div id="novoDocumentoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="novoDocumentoModalTitle">
+      <div class="modal-card modal-documento-card">
+        <div class="modal-head modal-documento-head">
+          <div>
+            <h3 id="novoDocumentoModalTitle">Novo Pedido</h3>
+            <p id="novoDocumentoModalSubtitle" class="modal-subtitle">Monte os itens como um grid e acompanhe o total em tempo real.</p>
+          </div>
+          <button id="closeNovoDocumentoModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+
+        <form id="novoDocumentoForm" class="documento-modal-form">
+          <div class="documento-type-switch" role="tablist" aria-label="Tipo de documento">
+            <button type="button" class="documento-switch-btn active" data-documento-tipo="pedido">Pedido</button>
+            <button type="button" class="documento-switch-btn" data-documento-tipo="orcamento">Orcamento</button>
+          </div>
+
+          <div class="documento-modal-grid">
+            <section class="documento-meta-panel">
+              <label>
+                Cliente
+                <select id="novoDocumentoClienteSelect" name="cliente_id" required>
+                  <option value="">Selecione um cliente</option>
+                </select>
+              </label>
+
+              <label>
+                Status
+                <select id="novoDocumentoStatusSelect" name="status" required></select>
+              </label>
+
+              <label class="documento-observacoes-field">
+                Observacoes
+                <textarea id="novoDocumentoObservacoes" name="observacoes" rows="4" placeholder="Observacoes, instrucoes ou observacao comercial"></textarea>
+              </label>
+            </section>
+
+            <aside class="documento-summary-panel">
+              <span class="summary-label">Resumo</span>
+              <strong id="novoDocumentoSubtotal">R$ 0,00</strong>
+              <p id="novoDocumentoResumoTexto">0 itens adicionados</p>
+              <button id="addDocumentoItemBtn" class="btn btn-ghost documento-add-item" type="button">Adicionar item</button>
+            </aside>
+          </div>
+
+          <section class="documento-items-panel">
+            <div class="documento-items-panel-head">
+              <h4>Itens do documento</h4>
+              <span class="documento-items-hint">Escolha um produto ou preencha manualmente a descricao.</span>
+            </div>
+            <div id="novoDocumentoItemsGrid" class="documento-items-grid"></div>
+          </section>
+
+          <div class="documento-modal-footer">
+            <div>
+              <span class="summary-label">Total do documento</span>
+              <strong id="novoDocumentoTotal">R$ 0,00</strong>
+            </div>
+            <button id="novoDocumentoSubmitBtn" type="submit" class="btn">Salvar Pedido</button>
+          </div>
+        </form>
       </div>
     </div>
 
