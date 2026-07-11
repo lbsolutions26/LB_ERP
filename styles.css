@@ -442,6 +442,15 @@ th.sortable.sorted {
   gap: 0.35rem;
   font-weight: 600;
   color: #3d372d;
+  min-width: 0;
+}
+
+.recebimento-grid input,
+.recebimento-grid select,
+.recebimento-grid textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .recebimento-observacoes {
