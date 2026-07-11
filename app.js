@@ -2840,12 +2840,10 @@ function getMonthlyCashEntries() {
   let latestMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const forecastParcels = [];
 
-  for (const parcela of state.parcelasReceberPrevistas || []) {
-    const status = String(parcela.status || "").toLowerCase();
-    const saldo = Number(parcela.valor_parcela || 0) - Number(parcela.valor_recebido || 0);
-    if (status === "recebido" || status === "cancelado" || saldo <= 0.00001) continue;
-    const vencimento = parcela.vencimento ? new Date(parcela.vencimento) : null;
-    if (!vencimento || Number.isNaN(vencimento.getTime())) continue;
+  const addForecastFromSource = (vencimentoValue, saldoValue) => {
+    const vencimento = vencimentoValue ? new Date(vencimentoValue) : null;
+    const saldo = Number(saldoValue || 0);
+    if (!vencimento || Number.isNaN(vencimento.getTime()) || saldo <= 0.00001) return;
     const forecastMonth = new Date(vencimento.getFullYear(), vencimento.getMonth(), 1);
     if (forecastMonth > latestMonth) {
       latestMonth = forecastMonth;
@@ -2854,6 +2852,19 @@ function getMonthlyCashEntries() {
       monthKey: formatMonthKey(forecastMonth),
       value: saldo
     });
+  };
+
+  for (const parcela of state.parcelasReceberPrevistas || []) {
+    const status = String(parcela.status || "").toLowerCase();
+    const saldo = Number(parcela.valor_parcela || 0) - Number(parcela.valor_recebido || 0);
+    if (status === "recebido" || status === "cancelado" || saldo <= 0.00001) continue;
+    addForecastFromSource(parcela.vencimento, saldo);
+  }
+
+  for (const conta of state.contasReceber || []) {
+    const status = String(conta.statusNormalizado || conta.status || "").toLowerCase();
+    if (status === "recebido" || Number(conta.valor_aberto || 0) <= 0.00001) continue;
+    addForecastFromSource(conta.vencimentoDate || conta.vencimento_date || conta.vencimento, conta.valor_aberto);
   }
 
   const startMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1);
