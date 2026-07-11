@@ -2449,7 +2449,7 @@ async function loadPedidos() {
   const { data: docsData, error: docsError } = await supabaseClient
     .from("documentos_venda")
     .select(
-      "id, data_emissao, status, total, cliente_legacy_id, cliente:clientes(id,nome)"
+      "id, data_emissao, status, total, observacoes, raw_payload, cliente_legacy_id, cliente:clientes(id,nome)"
     )
     .eq("empresa_id", state.empresaId)
     .eq("tipo_documento", "pedido")
@@ -2462,6 +2462,8 @@ async function loadPedidos() {
       data_pedido: item.data_emissao,
       status: item.status,
       valor_total: item.total,
+      observacoes: item.observacoes || null,
+      raw_payload: item.raw_payload || null,
       cliente: item.cliente,
       cliente_legacy_id: item.cliente_legacy_id
     }));
@@ -2476,7 +2478,7 @@ async function loadPedidos() {
   const { data, error } = await supabaseClient
     .from("pedidos")
     .select(
-      "id, data_pedido, status, valor_total, cliente:clientes(id,nome)"
+      "id, data_pedido, status, descricao, valor_total, cliente:clientes(id,nome)"
     )
     .eq("empresa_id", state.empresaId)
     .order("data_pedido", { ascending: false });
@@ -2516,11 +2518,17 @@ async function loadPedidosProdutos() {
       .in("documento_id", pedidoIds);
 
     if (error) throw error;
-    state.pedidosProdutosRaw = normalizePedidoProdutoRows(data || [], {
+    const normalizedItems = normalizePedidoProdutoRows(data || [], {
       idField: "documento_id",
       totalField: "valor_total",
       metaById: pedidoMetaById
     });
+    const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
+    const fallbackItems = state.pedidos
+      .filter((pedido) => !pedidosComItens.has(Number(pedido.id)))
+      .map(buildFallbackItemFromPedidoMeta)
+      .filter(Boolean);
+    state.pedidosProdutosRaw = [...normalizedItems, ...fallbackItems];
     state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
     return;
   }
@@ -2533,11 +2541,17 @@ async function loadPedidosProdutos() {
     .in("pedido_id", pedidoIds);
 
   if (error) throw error;
-  state.pedidosProdutosRaw = normalizePedidoProdutoRows(data || [], {
+  const normalizedItems = normalizePedidoProdutoRows(data || [], {
     idField: "pedido_id",
     totalField: "total",
     metaById: pedidoMetaById
   });
+  const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
+  const fallbackItems = state.pedidos
+    .filter((pedido) => !pedidosComItens.has(Number(pedido.id)))
+    .map(buildFallbackItemFromPedidoMeta)
+    .filter(Boolean);
+  state.pedidosProdutosRaw = [...normalizedItems, ...fallbackItems];
   state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
 }
 
@@ -2562,6 +2576,49 @@ function normalizePedidoProdutoRows(items, { idField, totalField, metaById }) {
       };
     })
     .filter(Boolean);
+}
+
+function buildFallbackItemFromPedidoMeta(pedido) {
+  if (!pedido) return null;
+
+  if (state.pedidosSource === "documentos_venda") {
+    const fallback = buildFallbackItemFromDocumento({
+      total: pedido.valor_total,
+      observacoes: pedido.observacoes,
+      raw_payload: pedido.raw_payload
+    });
+
+    if (!fallback) return null;
+
+    return {
+      pedidoId: Number(pedido.id),
+      produto_id: null,
+      nome: String(fallback.descricao_item || "Item consolidado do cabecalho").trim(),
+      quantidade: Number(fallback.quantidade || 0),
+      valorUnitario: Number(fallback.valor_unitario || 0),
+      valorTotal: Number(fallback.valor_total || 0),
+      dataPedido: pedido.data_pedido || pedido.data_emissao || null,
+      clienteNome: pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${pedido.cliente_legacy_id}` : "-"),
+      status: pedido.status || "-",
+      pedidoValorTotal: Number(pedido.valor_total || 0)
+    };
+  }
+
+  const descricao = String(pedido.descricao || "").trim();
+  if (!descricao) return null;
+
+  return {
+    pedidoId: Number(pedido.id),
+    produto_id: null,
+    nome: descricao,
+    quantidade: 1,
+    valorUnitario: Number(pedido.valor_total || 0),
+    valorTotal: Number(pedido.valor_total || 0),
+    dataPedido: pedido.data_pedido || pedido.data_emissao || null,
+    clienteNome: pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${pedido.cliente_legacy_id}` : "-"),
+    status: pedido.status || "-",
+    pedidoValorTotal: Number(pedido.valor_total || 0)
+  };
 }
 
 function aggregatePedidoItemsByProduto(items) {
