@@ -1062,7 +1062,6 @@ async function saveRecebimento(event) {
 async function createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, total) {
   if (Number(total || 0) <= 0) return;
 
-  const plano = buildPagamentoPlano(total, pagamentoState);
   const existenteResponse = await supabaseClient
     .from("contas_receber")
     .select("id")
@@ -1073,63 +1072,139 @@ async function createDocumentoFinanceiro(documentoId, clienteId, pagamentoState,
   if (existenteResponse.error) throw existenteResponse.error;
   if (existenteResponse.data?.length) return;
 
-  const { data: contaCriada, error: contaError } = await supabaseClient
-    .from("contas_receber")
-    .insert({
-      empresa_id: state.empresaId,
-      documento_id: documentoId,
-      cliente_id: clienteId,
-      origem: "venda",
-      numero_titulo: `DOC-${documentoId}`,
-      emissao: new Date().toISOString(),
-      valor_original: centsToDbValue(plano.valorOriginal),
-      valor_aberto: centsToDbValue(plano.valorAberto),
-      status: plano.statusConta,
-      observacoes: getFormaPagamentoNome(plano.formaPagamentoId) || null
-    })
-    .select("id")
-    .single();
+  const formaPagamentoId = pagamentoState.formaPagamentoId ? Number(pagamentoState.formaPagamentoId) : null;
 
-  if (contaError) throw contaError;
+  async function createContaComPlano(planoConta, numeroTituloSuffix = "") {
+    const numeroTitulo = numeroTituloSuffix ? `DOC-${documentoId}-${numeroTituloSuffix}` : `DOC-${documentoId}`;
 
-  const parcelasPayload = plano.parcelas.map((parcela) => ({
-    empresa_id: state.empresaId,
-    conta_receber_id: contaCriada.id,
-    numero_parcela: parcela.numero,
-    vencimento: parcela.vencimento.toISOString(),
-    valor_parcela: centsToDbValue(parcela.valor),
-    valor_recebido: centsToDbValue(parcela.valorRecebido || 0),
-    status: parcela.status,
-    forma_pagamento_id: plano.formaPagamentoId,
-    observacoes: parcela.status === "recebido" ? "Recebido na criacao do pedido" : null
-  }));
-
-  const { data: parcelasCriadas, error: parcelasError } = await supabaseClient
-    .from("contas_receber_parcelas")
-    .insert(parcelasPayload)
-    .select("id, numero_parcela");
-
-  if (parcelasError) throw parcelasError;
-
-  const recebimentosPayload = plano.recebimentos
-    .map((recebimento) => {
-      const parcela = parcelasCriadas?.find((item) => Number(item.numero_parcela) === Number(recebimento.numeroParcela));
-      if (!parcela) return null;
-      return {
+    const { data: contaCriada, error: contaError } = await supabaseClient
+      .from("contas_receber")
+      .insert({
         empresa_id: state.empresaId,
-        parcela_id: parcela.id,
-        data_recebimento: recebimento.dataRecebimento.toISOString(),
-        valor: centsToDbValue(recebimento.valor),
-        forma_pagamento_id: recebimento.formaPagamentoId,
-        observacoes: "Lancado automaticamente pelo pedido"
-      };
-    })
-    .filter(Boolean);
+        documento_id: documentoId,
+        cliente_id: clienteId,
+        origem: "venda",
+        numero_titulo: numeroTitulo,
+        emissao: new Date().toISOString(),
+        valor_original: centsToDbValue(planoConta.valorOriginal),
+        valor_aberto: centsToDbValue(planoConta.valorAberto),
+        status: planoConta.statusConta,
+        observacoes: getFormaPagamentoNome(formaPagamentoId) || null
+      })
+      .select("id")
+      .single();
 
-  if (recebimentosPayload.length) {
-    const { error: recebimentoError } = await supabaseClient.from("recebimentos").insert(recebimentosPayload);
-    if (recebimentoError) throw recebimentoError;
+    if (contaError) throw contaError;
+
+    const parcelasPayload = planoConta.parcelas.map((parcela) => ({
+      empresa_id: state.empresaId,
+      conta_receber_id: contaCriada.id,
+      numero_parcela: parcela.numero,
+      vencimento: parcela.vencimento.toISOString(),
+      valor_parcela: centsToDbValue(parcela.valor),
+      valor_recebido: centsToDbValue(parcela.valorRecebido || 0),
+      status: parcela.status,
+      forma_pagamento_id: formaPagamentoId,
+      observacoes: parcela.status === "recebido" ? "Recebido na criacao do pedido" : null
+    }));
+
+    const { data: parcelasCriadas, error: parcelasError } = await supabaseClient
+      .from("contas_receber_parcelas")
+      .insert(parcelasPayload)
+      .select("id, numero_parcela");
+
+    if (parcelasError) throw parcelasError;
+
+    const recebimentosPayload = (planoConta.recebimentos || [])
+      .map((recebimento) => {
+        const parcela = parcelasCriadas?.find((item) => Number(item.numero_parcela) === Number(recebimento.numeroParcela));
+        if (!parcela) return null;
+        return {
+          empresa_id: state.empresaId,
+          parcela_id: parcela.id,
+          data_recebimento: recebimento.dataRecebimento.toISOString(),
+          valor: centsToDbValue(recebimento.valor),
+          forma_pagamento_id: recebimento.formaPagamentoId,
+          observacoes: "Lancado automaticamente pelo pedido"
+        };
+      })
+      .filter(Boolean);
+
+    if (recebimentosPayload.length) {
+      const { error: recebimentoError } = await supabaseClient.from("recebimentos").insert(recebimentosPayload);
+      if (recebimentoError) throw recebimentoError;
+    }
   }
+
+  const totalCents = Math.max(0, Math.round(Number(total || 0) * 100));
+  const modo = pagamentoState.modo || "avista";
+
+  if (modo === "entrada_parcelas") {
+    const entradaCents = Math.max(0, Math.min(totalCents, Math.round(Number(pagamentoState.entrada || 0) * 100)));
+    const restanteCents = Math.max(0, totalCents - entradaCents);
+    const parcelaCount = Math.max(1, Number(pagamentoState.parcelas || 1));
+    const intervaloDias = Math.max(1, Number(pagamentoState.intervaloDias || 30));
+    const vencimentoBase = parseDateInput(pagamentoState.vencimentoPrimeiraParcela) || addDays(new Date(), intervaloDias);
+
+    if (entradaCents > 0 && restanteCents > 0) {
+      const hoje = new Date();
+      const entradaPlano = {
+        valorOriginal: entradaCents,
+        valorAberto: 0,
+        statusConta: "recebido",
+        parcelas: [
+          {
+            numero: 1,
+            vencimento: hoje,
+            valor: entradaCents,
+            status: "recebido",
+            valorRecebido: entradaCents
+          }
+        ],
+        recebimentos: [
+          {
+            numeroParcela: 1,
+            valor: entradaCents,
+            dataRecebimento: hoje,
+            formaPagamentoId
+          }
+        ]
+      };
+
+      const parts = splitAmountIntoParts(restanteCents, parcelaCount);
+      const parcelasRestantes = parts.map((partCents, index) => ({
+        numero: index + 1,
+        vencimento: addDays(vencimentoBase, intervaloDias * index),
+        valor: partCents,
+        status: partCents > 0 ? "pendente" : "cancelado",
+        valorRecebido: 0
+      }));
+
+      const parceladoPlano = {
+        valorOriginal: restanteCents,
+        valorAberto: restanteCents,
+        statusConta: restanteCents > 0 ? "aberto" : "cancelado",
+        parcelas: parcelasRestantes,
+        recebimentos: []
+      };
+
+      await createContaComPlano(entradaPlano, "E");
+      await createContaComPlano(parceladoPlano, "P");
+      return;
+    }
+  }
+
+  const plano = buildPagamentoPlano(total, pagamentoState);
+  await createContaComPlano(
+    {
+      valorOriginal: plano.valorOriginal,
+      valorAberto: plano.valorAberto,
+      statusConta: plano.statusConta,
+      parcelas: plano.parcelas,
+      recebimentos: plano.recebimentos
+    },
+    ""
+  );
 }
 
 function renderNovoDocumentoClienteSelect() {
