@@ -2922,18 +2922,21 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       addForecastFromSource(vencimentoSource, conta.valor_aberto);
     }
 
-    for (const forecast of forecastParcels) {
-      if (!monthMap.has(forecast.monthKey)) continue;
-      const entry = monthMap.get(forecast.monthKey);
-      entry.total += Number(forecast.value || 0);
-      entry.forecast += Number(forecast.value || 0);
-    }
   }
 
   const cursor = new Date(startMonth.getTime());
   while (cursor <= latestMonth) {
     ensureMonth(cursor);
     cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  if (mode === "recebimentos") {
+    for (const forecast of forecastParcels) {
+      if (!monthMap.has(forecast.monthKey)) continue;
+      const entry = monthMap.get(forecast.monthKey);
+      entry.total += Number(forecast.value || 0);
+      entry.forecast += Number(forecast.value || 0);
+    }
   }
 
   if (mode === "faturamento") {
