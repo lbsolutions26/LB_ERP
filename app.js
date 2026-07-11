@@ -50,8 +50,8 @@ const state = {
   isPlatformAdmin: false,
   clientes: [],
   produtos: [],
-  produtosSource: "produtos",
-  pedidosSource: "pedidos",
+  produtosSource: "produto_catalogo",
+  pedidosSource: "documentos_venda",
   pedidosView: "pedidos",
   pedidosListMode: "sintetico",
   pedidosProdutos: [],
@@ -64,7 +64,7 @@ const state = {
     startDate: "",
     endDate: ""
   },
-  orcamentosSource: "orcamentos",
+  orcamentosSource: "documentos_venda",
   itensDocumento: [],
   itensDocumentoModalMode: "itens",
   produtoSort: {
@@ -1628,10 +1628,6 @@ function normalizeDocumentoItem(item) {
 }
 
 async function loadDocumentoForEdit(tipo, documentoId) {
-  if (state.pedidosSource !== "documentos_venda" && state.orcamentosSource !== "documentos_venda") {
-    throw new Error("Edicao detalhada requer a estrutura documentos_venda no banco.");
-  }
-
   const { data: documento, error: documentoError } = await supabaseClient
     .from("documentos_venda")
     .select("id, cliente_id, status, observacoes, total, raw_payload")
@@ -1784,13 +1780,6 @@ function getDocumentoItensPayload() {
     .filter((item) => item.descricao || item.produtoId);
 }
 
-function buildLegacyDocumentoDescricao(itens) {
-  return itens
-    .map((item) => `${item.descricao} x${item.quantidade}`)
-    .filter(Boolean)
-    .join(" | ");
-}
-
 async function saveNovoDocumento(event) {
   event.preventDefault();
   const draft = state.novoDocumentoModal;
@@ -1826,84 +1815,62 @@ async function saveNovoDocumento(event) {
     data_emissao: new Date().toISOString()
   };
 
-  if (state.pedidosSource === "documentos_venda" || state.orcamentosSource === "documentos_venda") {
-    let documentoId = draft.documentoId;
+  let documentoId = draft.documentoId;
 
-    if (documentoId) {
-      const { error: documentoUpdateError } = await supabaseClient
-        .from("documentos_venda")
-        .update(documentoPayload)
-        .eq("empresa_id", state.empresaId)
-        .eq("id", documentoId)
-        .eq("tipo_documento", draft.tipo);
+  if (documentoId) {
+    const { error: documentoUpdateError } = await supabaseClient
+      .from("documentos_venda")
+      .update(documentoPayload)
+      .eq("empresa_id", state.empresaId)
+      .eq("id", documentoId)
+      .eq("tipo_documento", draft.tipo);
 
-      if (documentoUpdateError) throw documentoUpdateError;
+    if (documentoUpdateError) throw documentoUpdateError;
 
-      const { error: deleteItensError } = await supabaseClient
-        .from("documento_venda_itens")
-        .delete()
-        .eq("empresa_id", state.empresaId)
-        .eq("documento_id", documentoId);
+    const { error: deleteItensError } = await supabaseClient
+      .from("documento_venda_itens")
+      .delete()
+      .eq("empresa_id", state.empresaId)
+      .eq("documento_id", documentoId);
 
-      if (deleteItensError) throw deleteItensError;
-    } else {
-      const { data: documentoCriado, error: documentoError } = await supabaseClient
-        .from("documentos_venda")
-        .insert(documentoPayload)
-        .select("id")
-        .single();
-
-      if (documentoError) throw documentoError;
-      documentoId = documentoCriado.id;
-    }
-
-    const itensPayload = itens.map((item) => ({
-      empresa_id: state.empresaId,
-      documento_id: documentoId,
-      produto_id: item.produtoId,
-      descricao_item: item.descricao,
-      quantidade: item.quantidade,
-      valor_unitario: item.valorUnitario,
-      valor_total: item.quantidade * item.valorUnitario,
-      raw_payload: {
-        source: "novo-documento-modal",
-        produto_id: item.produtoId,
-        descricao: item.descricao
-      }
-    }));
-
-    const { error: itensError } = await supabaseClient.from("documento_venda_itens").insert(itensPayload);
-    if (itensError) throw itensError;
-
-    if (!isEdit) {
-      try {
-        await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal);
-      } catch (financeError) {
-        await supabaseClient.from("documento_venda_itens").delete().eq("empresa_id", state.empresaId).eq("documento_id", documentoId);
-        await supabaseClient.from("documentos_venda").delete().eq("empresa_id", state.empresaId).eq("id", documentoId);
-        throw financeError;
-      }
-    }
-  } else if (draft.tipo === "pedido") {
-    const { error } = await supabaseClient.from("pedidos").insert({
-      empresa_id: state.empresaId,
-      cliente_id: clienteId,
-      descricao: observacoes || buildLegacyDocumentoDescricao(itens),
-      status,
-      valor_total: subtotal,
-      data_pedido: new Date().toISOString()
-    });
-    if (error) throw error;
+    if (deleteItensError) throw deleteItensError;
   } else {
-    const { error } = await supabaseClient.from("orcamentos").insert({
-      empresa_id: state.empresaId,
-      cliente_id: clienteId,
-      descricao: observacoes || buildLegacyDocumentoDescricao(itens),
-      status,
-      valor_total: subtotal,
-      data_orcamento: new Date().toISOString()
-    });
-    if (error) throw error;
+    const { data: documentoCriado, error: documentoError } = await supabaseClient
+      .from("documentos_venda")
+      .insert(documentoPayload)
+      .select("id")
+      .single();
+
+    if (documentoError) throw documentoError;
+    documentoId = documentoCriado.id;
+  }
+
+  const itensPayload = itens.map((item) => ({
+    empresa_id: state.empresaId,
+    documento_id: documentoId,
+    produto_id: item.produtoId,
+    descricao_item: item.descricao,
+    quantidade: item.quantidade,
+    valor_unitario: item.valorUnitario,
+    valor_total: item.quantidade * item.valorUnitario,
+    raw_payload: {
+      source: "novo-documento-modal",
+      produto_id: item.produtoId,
+      descricao: item.descricao
+    }
+  }));
+
+  const { error: itensError } = await supabaseClient.from("documento_venda_itens").insert(itensPayload);
+  if (itensError) throw itensError;
+
+  if (!isEdit) {
+    try {
+      await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal);
+    } catch (financeError) {
+      await supabaseClient.from("documento_venda_itens").delete().eq("empresa_id", state.empresaId).eq("documento_id", documentoId);
+      await supabaseClient.from("documentos_venda").delete().eq("empresa_id", state.empresaId).eq("id", documentoId);
+      throw financeError;
+    }
   }
 
   closeNovoDocumentoModal();
@@ -2046,124 +2013,34 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
   let documentoData = null;
   let documentoTemItens = false;
 
-  if (tipoDocumento === "pedido" ? state.pedidosSource === "documentos_venda" : state.orcamentosSource === "documentos_venda") {
-    const { data, error } = await supabaseClient
-      .from("documentos_venda")
-      .select("id, total, observacoes, raw_payload")
-      .eq("empresa_id", state.empresaId)
-      .eq("id", documentoId)
-      .maybeSingle();
+  const { data, error } = await supabaseClient
+    .from("documentos_venda")
+    .select("id, total, observacoes, raw_payload")
+    .eq("empresa_id", state.empresaId)
+    .eq("id", documentoId)
+    .maybeSingle();
 
-    if (error) throw error;
-    documentoData = data || null;
-    documentoTotal = documentoData?.total ?? null;
+  if (error) throw error;
+  documentoData = data || null;
+  documentoTotal = documentoData?.total ?? null;
 
-    if (tipoDocumento === "pedido") {
-      if (state.pedidosSource === "documentos_venda") {
-        const { data: itensData, error: itensError } = await supabaseClient
-          .from("documento_venda_itens")
-          .select("id, descricao_item, quantidade, valor_unitario, valor_total")
-          .eq("empresa_id", state.empresaId)
-          .eq("documento_id", documentoId)
-          .order("id", { ascending: true });
-        if (itensError) throw itensError;
-        const rawItens = itensData || [];
-        documentoTemItens = rawItens.length > 0;
-        itens = rawItens.filter((item) => !isSyntheticLegacyTotalItem(item, documentoTotal));
-      } else {
-        const { data: itensData, error: itensError } = await supabaseClient
-          .from("pedido_itens")
-          .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
-          .eq("empresa_id", state.empresaId)
-          .eq("pedido_id", documentoId)
-          .order("id", { ascending: true });
-        if (itensError) throw itensError;
-        const rawItens = itensData || [];
-        documentoTemItens = rawItens.length > 0;
-        itens = rawItens.map((item) => ({
-          id: item.id,
-          descricao_item: item.produto?.nome || null,
-          nome_produto: item.produto?.nome || null,
-          quantidade: item.quantidade,
-          valor_unitario: item.valor_unitario,
-          valor_total: item.total
-        }));
-      }
-    } else {
-      if (state.orcamentosSource === "documentos_venda") {
-        const { data: itensData, error: itensError } = await supabaseClient
-          .from("documento_venda_itens")
-          .select("id, descricao_item, quantidade, valor_unitario, valor_total")
-          .eq("empresa_id", state.empresaId)
-          .eq("documento_id", documentoId)
-          .order("id", { ascending: true });
-        if (itensError) throw itensError;
-        const rawItens = itensData || [];
-        documentoTemItens = rawItens.length > 0;
-        itens = rawItens.filter((item) => !isSyntheticLegacyTotalItem(item, documentoTotal));
-      } else {
-        const { data: itensData, error: itensError } = await supabaseClient
-          .from("orcamento_itens")
-          .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
-          .eq("empresa_id", state.empresaId)
-          .eq("orcamento_id", documentoId)
-          .order("id", { ascending: true });
-        if (itensError) throw itensError;
-        const rawItens = itensData || [];
-        documentoTemItens = rawItens.length > 0;
-        itens = rawItens.map((item) => ({
-          id: item.id,
-          descricao_item: item.produto?.nome || null,
-          nome_produto: item.produto?.nome || null,
-          quantidade: item.quantidade,
-          valor_unitario: item.valor_unitario,
-          valor_total: item.total
-        }));
-      }
+  const { data: itensData, error: itensError } = await supabaseClient
+    .from("documento_venda_itens")
+    .select("id, descricao_item, quantidade, valor_unitario, valor_total")
+    .eq("empresa_id", state.empresaId)
+    .eq("documento_id", documentoId)
+    .order("id", { ascending: true });
+
+  if (itensError) throw itensError;
+  const rawItens = itensData || [];
+  documentoTemItens = rawItens.length > 0;
+  itens = rawItens.filter((item) => !isSyntheticLegacyTotalItem(item, documentoTotal));
+
+  if (!documentoTemItens) {
+    const fallbackItem = buildFallbackItemFromDocumento(documentoData);
+    if (fallbackItem) {
+      itens = [fallbackItem];
     }
-
-    if (!documentoTemItens) {
-      const fallbackItem = buildFallbackItemFromDocumento(documentoData);
-      if (fallbackItem) {
-        itens = [fallbackItem];
-      }
-    }
-  } else if (tipoDocumento === "pedido") {
-    const { data, error } = await supabaseClient
-      .from("pedido_itens")
-      .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
-      .eq("empresa_id", state.empresaId)
-      .eq("pedido_id", documentoId)
-      .order("id", { ascending: true });
-    if (error) throw error;
-    itens = (data || []).map((item) => ({
-      id: item.id,
-      descricao_item: item.produto?.nome || null,
-      nome_produto: item.produto?.nome || null,
-      quantidade: item.quantidade,
-      valor_unitario: item.valor_unitario,
-      valor_total: item.total
-    }));
-  } else {
-    const { data, error } = await supabaseClient
-      .from("orcamento_itens")
-      .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
-      .eq("empresa_id", state.empresaId)
-      .eq("orcamento_id", documentoId)
-      .order("id", { ascending: true });
-    if (error) throw error;
-    itens = (data || []).map((item) => ({
-      id: item.id,
-      descricao_item: item.produto?.nome || null,
-      nome_produto: item.produto?.nome || null,
-      quantidade: item.quantidade,
-      valor_unitario: item.valor_unitario,
-      valor_total: item.total
-    }));
-  }
-
-  if (!itens.length && (state.pedidosSource === "documentos_venda" || state.orcamentosSource === "documentos_venda")) {
-    // Mantido para compatibilidade quando o documento realmente nao tiver itens.
   }
 
   state.itensDocumento = itens;
@@ -2402,46 +2279,22 @@ async function loadProdutos() {
     .eq("empresa_id", state.empresaId)
     .order("nome");
 
-  if (!catalogError) {
-    state.produtosSource = "produto_catalogo";
-    state.produtos = (catalogData || []).map((item) => ({
-      id: item.id,
-      nome: item.nome,
-      descricao: item.descricao || null,
-      imagem_path: item.imagem_path || null,
-      categoria: item.categoria?.nome || "-",
-      preco: Number(item.preco_venda || 0),
-      custo: item.custo == null ? null : Number(item.custo),
-      margem: item.margem_percentual == null ? null : Number(item.margem_percentual),
-      estoque: Number(item.estoque_atual || 0),
-      ponto_pedido: Number(item.estoque_minimo || 0),
-      ativo: Boolean(item.ativo),
-      controla_estoque: Boolean(item.controla_estoque)
-    }));
-    return;
-  }
+  if (catalogError) throw catalogError;
 
-  if (!isMissingRelationError(catalogError)) {
-    throw catalogError;
-  }
-
-  const { data, error } = await supabaseClient
-    .from("produtos")
-    .select("id, nome, preco, estoque, ponto_pedido")
-    .eq("empresa_id", state.empresaId)
-    .order("nome");
-
-  if (error) throw error;
-  state.produtosSource = "produtos";
-  state.produtos = (data || []).map((item) => ({
-    ...item,
-    descricao: null,
-    imagem_path: null,
-    categoria: "-",
-    custo: null,
-    margem: null,
-    ativo: true,
-    controla_estoque: true
+  state.produtosSource = "produto_catalogo";
+  state.produtos = (catalogData || []).map((item) => ({
+    id: item.id,
+    nome: item.nome,
+    descricao: item.descricao || null,
+    imagem_path: item.imagem_path || null,
+    categoria: item.categoria?.nome || "-",
+    preco: Number(item.preco_venda || 0),
+    custo: item.custo == null ? null : Number(item.custo),
+    margem: item.margem_percentual == null ? null : Number(item.margem_percentual),
+    estoque: Number(item.estoque_atual || 0),
+    ponto_pedido: Number(item.estoque_minimo || 0),
+    ativo: Boolean(item.ativo),
+    controla_estoque: Boolean(item.controla_estoque)
   }));
 }
 
@@ -2455,37 +2308,19 @@ async function loadPedidos() {
     .eq("tipo_documento", "pedido")
     .order("data_emissao", { ascending: false }));
 
-  if (!docsResult.error) {
-    state.pedidosSource = "documentos_venda";
-    state.pedidos = (docsResult.data || []).map((item) => ({
-      id: item.id,
-      data_pedido: item.data_emissao,
-      status: item.status,
-      valor_total: item.total,
-      observacoes: item.observacoes || null,
-      raw_payload: item.raw_payload || null,
-      cliente: item.cliente,
-      cliente_legacy_id: item.cliente_legacy_id
-    }));
-    await loadPedidosProdutos();
-    return;
-  }
+  if (docsResult.error) throw docsResult.error;
 
-  if (!isMissingRelationError(docsResult.error)) {
-    throw docsResult.error;
-  }
-
-  const legacyResult = await fetchAllSupabaseRows(() => supabaseClient
-    .from("pedidos")
-    .select(
-      "id, data_pedido, status, descricao, valor_total, cliente:clientes(id,nome)"
-    )
-    .eq("empresa_id", state.empresaId)
-    .order("data_pedido", { ascending: false }));
-
-  if (legacyResult.error) throw legacyResult.error;
-  state.pedidosSource = "pedidos";
-  state.pedidos = legacyResult.data || [];
+  state.pedidosSource = "documentos_venda";
+  state.pedidos = (docsResult.data || []).map((item) => ({
+    id: item.id,
+    data_pedido: item.data_emissao,
+    status: item.status,
+    valor_total: item.total,
+    observacoes: item.observacoes || null,
+    raw_payload: item.raw_payload || null,
+    cliente: item.cliente,
+    cliente_legacy_id: item.cliente_legacy_id
+  }));
   await loadPedidosProdutos();
 }
 
@@ -2530,39 +2365,17 @@ async function loadPedidosProdutos() {
       ])
     );
 
-    if (state.pedidosSource === "documentos_venda") {
-      const pedidoIds = state.pedidos.map((pedido) => Number(pedido.id)).filter(Number.isFinite);
-      const { data, error } = await supabaseClient
-        .from("documento_venda_itens")
-        .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
-        .eq("empresa_id", state.empresaId)
-        .in("documento_id", pedidoIds);
-
-      if (error) throw error;
-      const normalizedItems = normalizePedidoProdutoRows(data || [], {
-        idField: "documento_id",
-        totalField: "valor_total",
-        metaById: pedidoMetaById
-      });
-      const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
-      const missingPedidos = state.pedidos.filter((pedido) => !pedidosComItens.has(Number(pedido.id)));
-      const recoveredItems = await loadMissingPedidoProdutoRows(missingPedidos, pedidoMetaById);
-      state.pedidosProdutosRaw = [...normalizedItems, ...recoveredItems];
-      state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
-      return;
-    }
-
     const pedidoIds = state.pedidos.map((pedido) => Number(pedido.id)).filter(Number.isFinite);
     const { data, error } = await supabaseClient
-      .from("pedido_itens")
-      .select("pedido_id, produto_id, quantidade, valor_unitario, total, produto:produtos(nome)")
+      .from("documento_venda_itens")
+      .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
       .eq("empresa_id", state.empresaId)
-      .in("pedido_id", pedidoIds);
+      .in("documento_id", pedidoIds);
 
     if (error) throw error;
     const normalizedItems = normalizePedidoProdutoRows(data || [], {
-      idField: "pedido_id",
-      totalField: "total",
+      idField: "documento_id",
+      totalField: "valor_total",
       metaById: pedidoMetaById
     });
     const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
@@ -2602,40 +2415,21 @@ function normalizePedidoProdutoRows(items, { idField, totalField, metaById }) {
 
 function buildFallbackItemFromPedidoMeta(pedido) {
   if (!pedido) return null;
+  const fallback = buildFallbackItemFromDocumento({
+    total: pedido.valor_total,
+    observacoes: pedido.observacoes,
+    raw_payload: pedido.raw_payload
+  });
 
-  if (state.pedidosSource === "documentos_venda") {
-    const fallback = buildFallbackItemFromDocumento({
-      total: pedido.valor_total,
-      observacoes: pedido.observacoes,
-      raw_payload: pedido.raw_payload
-    });
-
-    if (!fallback) return null;
-
-    return {
-      pedidoId: Number(pedido.id),
-      produto_id: null,
-      nome: String(fallback.descricao_item || "Item consolidado do cabecalho").trim(),
-      quantidade: Number(fallback.quantidade || 0),
-      valorUnitario: Number(fallback.valor_unitario || 0),
-      valorTotal: Number(fallback.valor_total || 0),
-      dataPedido: pedido.data_pedido || pedido.data_emissao || null,
-      clienteNome: pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${pedido.cliente_legacy_id}` : "-"),
-      status: pedido.status || "-",
-      pedidoValorTotal: Number(pedido.valor_total || 0)
-    };
-  }
-
-  const descricao = String(pedido.descricao || "").trim();
-  if (!descricao) return null;
+  if (!fallback) return null;
 
   return {
     pedidoId: Number(pedido.id),
     produto_id: null,
-    nome: descricao,
-    quantidade: 1,
-    valorUnitario: Number(pedido.valor_total || 0),
-    valorTotal: Number(pedido.valor_total || 0),
+    nome: String(fallback.descricao_item || "Item consolidado do cabecalho").trim(),
+    quantidade: Number(fallback.quantidade || 0),
+    valorUnitario: Number(fallback.valor_unitario || 0),
+    valorTotal: Number(fallback.valor_total || 0),
     dataPedido: pedido.data_pedido || pedido.data_emissao || null,
     clienteNome: pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${pedido.cliente_legacy_id}` : "-"),
     status: pedido.status || "-",
@@ -2656,54 +2450,28 @@ async function loadMissingPedidoProdutoRows(missingPedidos, metaById) {
     const pedidoId = Number(pedido.id);
     if (!Number.isFinite(pedidoId)) continue;
 
-    if (state.pedidosSource === "documentos_venda") {
-      const { data, error } = await supabaseClient
-        .from("documento_venda_itens")
-        .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
-        .eq("empresa_id", state.empresaId)
-        .eq("documento_id", pedidoId)
-        .order("id", { ascending: true });
+    const { data, error } = await supabaseClient
+      .from("documento_venda_itens")
+      .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
+      .eq("empresa_id", state.empresaId)
+      .eq("documento_id", pedidoId)
+      .order("id", { ascending: true });
 
-      if (error) {
-        const fallbackItem = buildFallbackItemFromPedidoMeta(pedido);
-        if (fallbackItem) fallbackRows.push(fallbackItem);
-        continue;
-      }
+    if (error) {
+      const fallbackItem = buildFallbackItemFromPedidoMeta(pedido);
+      if (fallbackItem) fallbackRows.push(fallbackItem);
+      continue;
+    }
 
-      const normalized = normalizePedidoProdutoRows(data || [], {
-        idField: "documento_id",
-        totalField: "valor_total",
-        metaById
-      });
+    const normalized = normalizePedidoProdutoRows(data || [], {
+      idField: "documento_id",
+      totalField: "valor_total",
+      metaById
+    });
 
-      if (normalized.length) {
-        fallbackRows.push(...normalized);
-        continue;
-      }
-    } else {
-      const { data, error } = await supabaseClient
-        .from("pedido_itens")
-        .select("pedido_id, produto_id, quantidade, valor_unitario, total, produto:produtos(nome)")
-        .eq("empresa_id", state.empresaId)
-        .eq("pedido_id", pedidoId)
-        .order("id", { ascending: true });
-
-      if (error) {
-        const fallbackItem = buildFallbackItemFromPedidoMeta(pedido);
-        if (fallbackItem) fallbackRows.push(fallbackItem);
-        continue;
-      }
-
-      const normalized = normalizePedidoProdutoRows(data || [], {
-        idField: "pedido_id",
-        totalField: "total",
-        metaById
-      });
-
-      if (normalized.length) {
-        fallbackRows.push(...normalized);
-        continue;
-      }
+    if (normalized.length) {
+      fallbackRows.push(...normalized);
+      continue;
     }
 
     const fallbackItem = buildFallbackItemFromPedidoMeta(pedido);
@@ -3121,34 +2889,17 @@ async function loadOrcamentos() {
     .eq("tipo_documento", "orcamento")
     .order("data_emissao", { ascending: false });
 
-  if (!docsError) {
-    state.orcamentosSource = "documentos_venda";
-    state.orcamentos = (docsData || []).map((item) => ({
-      id: item.id,
-      data_orcamento: item.data_emissao,
-      status: item.status,
-      valor_total: item.total,
-      cliente: item.cliente,
-      cliente_legacy_id: item.cliente_legacy_id
-    }));
-    return;
-  }
+  if (docsError) throw docsError;
 
-  if (!isMissingRelationError(docsError)) {
-    throw docsError;
-  }
-
-  const { data, error } = await supabaseClient
-    .from("orcamentos")
-    .select(
-      "id, data_orcamento, status, valor_total, cliente:clientes(id,nome)"
-    )
-    .eq("empresa_id", state.empresaId)
-    .order("data_orcamento", { ascending: false });
-
-  if (error) throw error;
-  state.orcamentosSource = "orcamentos";
-  state.orcamentos = data || [];
+  state.orcamentosSource = "documentos_venda";
+  state.orcamentos = (docsData || []).map((item) => ({
+    id: item.id,
+    data_orcamento: item.data_emissao,
+    status: item.status,
+    valor_total: item.total,
+    cliente: item.cliente,
+    cliente_legacy_id: item.cliente_legacy_id
+  }));
 }
 
 async function loadDespesas() {
@@ -3592,7 +3343,7 @@ function renderPedidosTable() {
         <td>${moeda.format(pedido.valor_total || 0)}</td>
         <td>
           <button class="action-edit" data-edit-pedido="${pedido.id}">Editar</button>
-          ${state.pedidosSource === "documentos_venda" ? `<button class="action-finance" data-open-recebimento-pedido="${pedido.id}">Receber</button>` : ""}
+          <button class="action-finance" data-open-recebimento-pedido="${pedido.id}">Receber</button>
           <button class="action-edit" data-view-pedido-itens="${pedido.id}">Itens</button>
           <button class="action-delete" data-del-pedido="${pedido.id}">Excluir</button>
         </td>
@@ -4086,77 +3837,55 @@ async function createProduto(event) {
   const editId = Number(els.produtoForm?.dataset.editId || 0) || null;
   if (!nome) return;
 
-  if (state.produtosSource === "produto_catalogo") {
-    const categoriaNome = String(formData.get("categoria") || "").trim();
-    let categoriaId = null;
+  const categoriaNome = String(formData.get("categoria") || "").trim();
+  let categoriaId = null;
 
-    if (categoriaNome) {
-      const { data: categoriaData, error: categoriaError } = await supabaseClient
-        .from("produto_categorias")
-        .upsert(
-          {
-            empresa_id: state.empresaId,
-            nome: categoriaNome
-          },
-          { onConflict: "empresa_id,nome" }
-        )
-        .select("id")
-        .single();
+  if (categoriaNome) {
+    const { data: categoriaData, error: categoriaError } = await supabaseClient
+      .from("produto_categorias")
+      .upsert(
+        {
+          empresa_id: state.empresaId,
+          nome: categoriaNome
+        },
+        { onConflict: "empresa_id,nome" }
+      )
+      .select("id")
+      .single();
 
-      if (categoriaError) throw categoriaError;
-      categoriaId = categoriaData?.id ?? null;
-    }
+    if (categoriaError) throw categoriaError;
+    categoriaId = categoriaData?.id ?? null;
+  }
 
-    const payloadCatalogo = {
-      empresa_id: state.empresaId,
-      categoria_id: categoriaId,
-      nome,
-      preco_venda: Number(formData.get("preco") || 0),
-      custo: String(formData.get("custo") || "").trim() ? Number(formData.get("custo")) : null,
-      margem_percentual: String(formData.get("margem") || "").trim() ? Number(formData.get("margem")) : null,
-      estoque_atual: Number(formData.get("estoque") || 0),
-      estoque_minimo: Number(formData.get("ponto_pedido") || 0),
-      ativo: String(formData.get("ativo") || "sim") === "sim",
-      controla_estoque: String(formData.get("controla_estoque") || "sim") === "sim",
-      descricao: String(formData.get("descricao") || "").trim() || null,
-      imagem_path: String(formData.get("imagem_path") || "").trim() || null
-    };
+  const payloadCatalogo = {
+    empresa_id: state.empresaId,
+    categoria_id: categoriaId,
+    nome,
+    preco_venda: Number(formData.get("preco") || 0),
+    custo: String(formData.get("custo") || "").trim() ? Number(formData.get("custo")) : null,
+    margem_percentual: String(formData.get("margem") || "").trim() ? Number(formData.get("margem")) : null,
+    estoque_atual: Number(formData.get("estoque") || 0),
+    estoque_minimo: Number(formData.get("ponto_pedido") || 0),
+    ativo: String(formData.get("ativo") || "sim") === "sim",
+    controla_estoque: String(formData.get("controla_estoque") || "sim") === "sim",
+    descricao: String(formData.get("descricao") || "").trim() || null,
+    imagem_path: String(formData.get("imagem_path") || "").trim() || null
+  };
 
-    if (editId) {
-      const { error: updateCatalogError } = await supabaseClient
-        .from("produto_catalogo")
-        .update(payloadCatalogo)
-        .eq("id", editId)
-        .eq("empresa_id", state.empresaId);
+  if (editId) {
+    const { error: updateCatalogError } = await supabaseClient
+      .from("produto_catalogo")
+      .update(payloadCatalogo)
+      .eq("id", editId)
+      .eq("empresa_id", state.empresaId);
 
-      if (updateCatalogError) throw updateCatalogError;
-    } else {
-      const { error: insertCatalogError } = await supabaseClient
-        .from("produto_catalogo")
-        .insert(payloadCatalogo);
-
-      if (insertCatalogError) throw insertCatalogError;
-    }
+    if (updateCatalogError) throw updateCatalogError;
   } else {
-    const payload = {
-      empresa_id: state.empresaId,
-      nome,
-      preco: Number(formData.get("preco") || 0),
-      estoque: Number(formData.get("estoque") || 0),
-      ponto_pedido: Number(formData.get("ponto_pedido") || 0)
-    };
+    const { error: insertCatalogError } = await supabaseClient
+      .from("produto_catalogo")
+      .insert(payloadCatalogo);
 
-    if (editId) {
-      const { error } = await supabaseClient
-        .from("produtos")
-        .update(payload)
-        .eq("id", editId)
-        .eq("empresa_id", state.empresaId);
-      if (error) throw error;
-    } else {
-      const { error } = await supabaseClient.from("produtos").insert(payload);
-      if (error) throw error;
-    }
+    if (insertCatalogError) throw insertCatalogError;
   }
 
   setProdutoFormMode({ editing: false });
@@ -4171,33 +3900,19 @@ async function createPedido(event) {
   const clienteIdRaw = Number(formData.get("cliente_id"));
   const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
 
-  if (state.pedidosSource === "documentos_venda") {
-    const payload = {
-      empresa_id: state.empresaId,
-      tipo_documento: "pedido",
-      cliente_id: clienteId,
-      observacoes: String(formData.get("descricao") || "").trim() || null,
-      status: String(formData.get("status") || "aberto"),
-      total: Number(formData.get("valor_total") || 0),
-      subtotal: Number(formData.get("valor_total") || 0),
-      data_emissao: new Date().toISOString()
-    };
+  const payload = {
+    empresa_id: state.empresaId,
+    tipo_documento: "pedido",
+    cliente_id: clienteId,
+    observacoes: String(formData.get("descricao") || "").trim() || null,
+    status: String(formData.get("status") || "aberto"),
+    total: Number(formData.get("valor_total") || 0),
+    subtotal: Number(formData.get("valor_total") || 0),
+    data_emissao: new Date().toISOString()
+  };
 
-    const { error } = await supabaseClient.from("documentos_venda").insert(payload);
-    if (error) throw error;
-  } else {
-    const payload = {
-      empresa_id: state.empresaId,
-      cliente_id: clienteId,
-      descricao: String(formData.get("descricao") || "").trim() || null,
-      status: String(formData.get("status") || "aberto"),
-      valor_total: Number(formData.get("valor_total") || 0),
-      data_pedido: new Date().toISOString()
-    };
-
-    const { error } = await supabaseClient.from("pedidos").insert(payload);
-    if (error) throw error;
-  }
+  const { error } = await supabaseClient.from("documentos_venda").insert(payload);
+  if (error) throw error;
 
   els.pedidoForm.reset();
   showToast("Pedido salvo");
@@ -4210,33 +3925,19 @@ async function createOrcamento(event) {
   const clienteIdRaw = Number(formData.get("cliente_id"));
   const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
 
-  if (state.orcamentosSource === "documentos_venda") {
-    const payload = {
-      empresa_id: state.empresaId,
-      tipo_documento: "orcamento",
-      cliente_id: clienteId,
-      observacoes: String(formData.get("descricao") || "").trim() || null,
-      status: String(formData.get("status") || "aberto"),
-      total: Number(formData.get("valor_total") || 0),
-      subtotal: Number(formData.get("valor_total") || 0),
-      data_emissao: new Date().toISOString()
-    };
+  const payload = {
+    empresa_id: state.empresaId,
+    tipo_documento: "orcamento",
+    cliente_id: clienteId,
+    observacoes: String(formData.get("descricao") || "").trim() || null,
+    status: String(formData.get("status") || "aberto"),
+    total: Number(formData.get("valor_total") || 0),
+    subtotal: Number(formData.get("valor_total") || 0),
+    data_emissao: new Date().toISOString()
+  };
 
-    const { error } = await supabaseClient.from("documentos_venda").insert(payload);
-    if (error) throw error;
-  } else {
-    const payload = {
-      empresa_id: state.empresaId,
-      cliente_id: clienteId,
-      descricao: String(formData.get("descricao") || "").trim() || null,
-      status: String(formData.get("status") || "aberto"),
-      valor_total: Number(formData.get("valor_total") || 0),
-      data_orcamento: new Date().toISOString()
-    };
-
-    const { error } = await supabaseClient.from("orcamentos").insert(payload);
-    if (error) throw error;
-  }
+  const { error } = await supabaseClient.from("documentos_venda").insert(payload);
+  if (error) throw error;
 
   els.orcamentoForm.reset();
   showToast("Orcamento salvo");
@@ -5069,27 +4770,19 @@ function attachEvents() {
         await deleteByTable("clientes", Number(clienteId));
       }
       if (produtoId) {
-        await deleteByTable(state.produtosSource, Number(produtoId));
+        await deleteByTable("produto_catalogo", Number(produtoId));
       }
       if (pedidoId) {
         if (!window.confirm("Excluir este pedido? Os lancamentos financeiros vinculados tambem serao excluidos.")) {
           return;
         }
-        if (state.pedidosSource === "documentos_venda") {
-          await deleteDocumentoVenda(Number(pedidoId), "pedido");
-        } else {
-          await deleteByTable("pedidos", Number(pedidoId));
-        }
+        await deleteDocumentoVenda(Number(pedidoId), "pedido");
       }
       if (orcamentoId) {
         if (!window.confirm("Excluir este orcamento? Os lancamentos financeiros vinculados tambem serao excluidos quando existirem.")) {
           return;
         }
-        if (state.orcamentosSource === "documentos_venda") {
-          await deleteDocumentoVenda(Number(orcamentoId), "orcamento");
-        } else {
-          await deleteByTable("orcamentos", Number(orcamentoId));
-        }
+        await deleteDocumentoVenda(Number(orcamentoId), "orcamento");
       }
       if (despesaId) {
         await deleteByTable("despesas", Number(despesaId));
