@@ -2846,6 +2846,9 @@ function formatMonthKey(date) {
 function getMonthlyCashEntries(mode = "recebimentos") {
   const monthMap = new Map();
   const now = new Date();
+  const forecastParcels = [];
+  const forecastMonthKeys = new Set();
+  const sourceParcelCount = (state.parcelasReceberPrevistas || []).length;
 
   const ensureMonth = (reference) => {
     const monthKey = formatMonthKey(reference);
@@ -2873,19 +2876,8 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       if (orderMonth > latestMonth) {
         latestMonth = orderMonth;
       }
-      const monthKey = formatMonthKey(orderMonth);
-      if (!monthMap.has(monthKey)) {
-        ensureMonth(orderMonth);
-      }
-      const entry = monthMap.get(monthKey);
-      entry.total += amount;
-      entry.realized += amount;
     }
   } else {
-    const forecastParcels = [];
-    const forecastMonthKeys = new Set();
-    const sourceParcelCount = (state.parcelasReceberPrevistas || []).length;
-
     const addForecastFromSource = (vencimentoValue, saldoValue) => {
       const vencimento = vencimentoValue ? new Date(vencimentoValue) : null;
       const saldo = Number(saldoValue || 0);
