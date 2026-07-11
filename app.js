@@ -2810,6 +2810,9 @@ function renderMetrics() {
       })
       .join("");
     els.entradasCaixaChart.innerHTML = chartBars || '<div class="documento-empty-state">Sem recebimentos registrados.</div>';
+    window.requestAnimationFrame(() => {
+      els.entradasCaixaChart.scrollLeft = els.entradasCaixaChart.scrollWidth;
+    });
   }
 }
 
