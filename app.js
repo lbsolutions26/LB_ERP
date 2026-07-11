@@ -2796,14 +2796,9 @@ function renderMetrics() {
   if (els.entradasCaixaGrid) {
     const entriesHtml = monthlyCashEntries
       .map((item) => {
-        const monthDate = item.monthKey ? new Date(`${item.monthKey}-01T12:00:00`) : null;
-        const nowMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-        const isFutureMonth = Boolean(monthDate && monthDate >= nowMonth);
         const entryLabel = state.dashboardCashChartMode === "faturamento"
-          ? "Faturamento"
-          : isFutureMonth
-            ? "Previsto"
-            : "Realizado";
+          ? `Faturamento ${moeda.format(item.total || 0)}`
+          : `${moeda.format(item.realized || 0)} realizado • ${moeda.format(item.forecast || 0)} previsto`;
         return `
           <article class="cash-month-card">
             <span>${escapeHtml(item.label)}</span>
@@ -2878,6 +2873,13 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       if (orderMonth > latestMonth) {
         latestMonth = orderMonth;
       }
+      const monthKey = formatMonthKey(orderMonth);
+      if (!monthMap.has(monthKey)) {
+        ensureMonth(orderMonth);
+      }
+      const entry = monthMap.get(monthKey);
+      entry.total += amount;
+      entry.realized += amount;
     }
   } else {
     const forecastParcels = [];
@@ -2934,17 +2936,6 @@ function getMonthlyCashEntries(mode = "recebimentos") {
     cursor.setMonth(cursor.getMonth() + 1);
   }
 
-  for (const recebimento of state.recebimentos || []) {
-    const dataRecebimento = recebimento.data_recebimento ? new Date(recebimento.data_recebimento) : null;
-    if (!dataRecebimento || Number.isNaN(dataRecebimento.getTime())) continue;
-    const monthKey = formatMonthKey(dataRecebimento);
-    if (!monthMap.has(monthKey)) continue;
-    const entry = monthMap.get(monthKey);
-    const value = Number(recebimento.valor || 0);
-    entry.total += value;
-    entry.realized += value;
-  }
-
   if (mode === "faturamento") {
     for (const pedido of state.pedidos || []) {
       const dateValue = pedido.data_pedido || pedido.data_emissao;
@@ -2953,7 +2944,20 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       if (!orderDate || Number.isNaN(orderDate.getTime()) || amount <= 0.00001) continue;
       const monthKey = formatMonthKey(orderDate);
       if (!monthMap.has(monthKey)) continue;
-      monthMap.get(monthKey).total += amount;
+      const entry = monthMap.get(monthKey);
+      entry.total += amount;
+      entry.realized += amount;
+    }
+  } else {
+    for (const recebimento of state.recebimentos || []) {
+      const dataRecebimento = recebimento.data_recebimento ? new Date(recebimento.data_recebimento) : null;
+      if (!dataRecebimento || Number.isNaN(dataRecebimento.getTime())) continue;
+      const monthKey = formatMonthKey(dataRecebimento);
+      if (!monthMap.has(monthKey)) continue;
+      const entry = monthMap.get(monthKey);
+      const value = Number(recebimento.valor || 0);
+      entry.total += value;
+      entry.realized += value;
     }
   }
 
