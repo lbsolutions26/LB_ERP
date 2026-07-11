@@ -806,11 +806,11 @@ function getParcelaSaldo(parcela) {
 }
 
 async function loadContasReceber() {
-  const { data, error } = await supabaseClient
+  const { data, error } = await fetchAllSupabaseRows(() => supabaseClient
     .from("contas_receber")
     .select("id, documento_id, cliente_id, numero_titulo, emissao, valor_original, valor_aberto, status, cliente:clientes(id,nome)")
     .eq("empresa_id", state.empresaId)
-    .order("emissao", { ascending: false });
+    .order("emissao", { ascending: false }));
 
   if (error) {
     if (isMissingRelationError(error)) {
@@ -824,12 +824,12 @@ async function loadContasReceber() {
   const parcelasByConta = new Map();
 
   if (contaIds.length) {
-    const { data: parcelasData, error: parcelasError } = await supabaseClient
+    const { data: parcelasData, error: parcelasError } = await fetchAllSupabaseRows(() => supabaseClient
       .from("contas_receber_parcelas")
       .select("conta_receber_id, vencimento, valor_parcela, valor_recebido")
       .eq("empresa_id", state.empresaId)
       .in("conta_receber_id", contaIds)
-      .order("vencimento", { ascending: true });
+      .order("vencimento", { ascending: true }));
 
     if (parcelasError) {
       if (!isMissingRelationError(parcelasError)) {
@@ -874,11 +874,11 @@ async function loadContasReceber() {
 }
 
 async function loadRecebimentos() {
-  const { data, error } = await supabaseClient
+  const { data, error } = await fetchAllSupabaseRows(() => supabaseClient
     .from("recebimentos")
     .select("id, data_recebimento, valor")
     .eq("empresa_id", state.empresaId)
-    .order("data_recebimento", { ascending: false });
+    .order("data_recebimento", { ascending: false }));
 
   if (error) {
     if (isMissingRelationError(error)) {
@@ -892,11 +892,11 @@ async function loadRecebimentos() {
 }
 
 async function loadParcelasReceberPrevistas() {
-  const { data, error } = await supabaseClient
+  const { data, error } = await fetchAllSupabaseRows(() => supabaseClient
     .from("contas_receber_parcelas")
     .select("id, vencimento, valor_parcela, valor_recebido, status")
     .eq("empresa_id", state.empresaId)
-    .order("vencimento", { ascending: true });
+    .order("vencimento", { ascending: true }));
 
   if (error) {
     if (isMissingRelationError(error)) {
@@ -910,10 +910,10 @@ async function loadParcelasReceberPrevistas() {
 }
 
 async function cleanupOrphanDocumentoFinanceiro() {
-  const docsResponse = await supabaseClient
+  const docsResponse = await fetchAllSupabaseRows(() => supabaseClient
     .from("documentos_venda")
     .select("id")
-    .eq("empresa_id", state.empresaId);
+    .eq("empresa_id", state.empresaId));
 
   if (docsResponse.error) {
     if (isMissingRelationError(docsResponse.error)) return;
@@ -922,11 +922,11 @@ async function cleanupOrphanDocumentoFinanceiro() {
 
   const documentosIds = new Set((docsResponse.data || []).map((item) => Number(item.id)).filter(Number.isFinite));
 
-  const contasResponse = await supabaseClient
+  const contasResponse = await fetchAllSupabaseRows(() => supabaseClient
     .from("contas_receber")
     .select("id, documento_id, numero_titulo")
     .eq("empresa_id", state.empresaId)
-    .like("numero_titulo", "DOC-%");
+    .like("numero_titulo", "DOC-%"));
 
   if (contasResponse.error) {
     if (isMissingRelationError(contasResponse.error)) return;
@@ -2880,14 +2880,14 @@ function renderPedidosSection() {
 }
 
 async function loadOrcamentos() {
-  const { data: docsData, error: docsError } = await supabaseClient
+  const { data: docsData, error: docsError } = await fetchAllSupabaseRows(() => supabaseClient
     .from("documentos_venda")
     .select(
       "id, data_emissao, status, total, cliente_legacy_id, cliente:clientes(id,nome)"
     )
     .eq("empresa_id", state.empresaId)
     .eq("tipo_documento", "orcamento")
-    .order("data_emissao", { ascending: false });
+    .order("data_emissao", { ascending: false }));
 
   if (docsError) throw docsError;
 
