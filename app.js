@@ -53,19 +53,20 @@ const state = {
   produtosSource: "produtos",
   pedidosSource: "pedidos",
   pedidosView: "pedidos",
+  pedidosListMode: "sintetico",
   pedidosProdutos: [],
-    pedidosProdutosRaw: [],
-    pedidosProdutosSort: {
-      field: "total",
-      direction: "desc"
-    },
-    pedidosProdutosFilters: {
-      startDate: "",
-      endDate: ""
-    },
+  pedidosProdutosRaw: [],
+  pedidosProdutosSort: {
+    field: "total",
+    direction: "desc"
+  },
+  pedidosProdutosFilters: {
+    startDate: "",
+    endDate: ""
+  },
   orcamentosSource: "orcamentos",
   itensDocumento: [],
-    itensDocumentoModalMode: "itens",
+  itensDocumentoModalMode: "itens",
   produtoSort: {
     field: "nome",
     direction: "asc"
@@ -194,6 +195,8 @@ const els = {
   pedidosTable: document.getElementById("pedidosTable"),
   pedidosTableHead: document.getElementById("pedidosTableHead"),
   pedidosSectionSubtitle: document.getElementById("pedidosSectionSubtitle"),
+  pedidosListModeToggle: document.getElementById("pedidosListModeToggle"),
+  pedidosListModeButtons: Array.from(document.querySelectorAll("[data-pedidos-list-mode]")),
     pedidosProdutosFilters: document.getElementById("pedidosProdutosFilters"),
     pedidosProdutosStartDate: document.getElementById("pedidosProdutosStartDate"),
     pedidosProdutosEndDate: document.getElementById("pedidosProdutosEndDate"),
@@ -2786,6 +2789,17 @@ function getPedidosProdutoEmptyMessage() {
     : "Nenhum item vendido encontrado nos pedidos.";
 }
 
+function getPedidosAnaliticosRows() {
+  return [...(state.pedidosProdutosRaw || [])].sort((a, b) => {
+    const aTime = a.dataPedido ? new Date(a.dataPedido).getTime() : 0;
+    const bTime = b.dataPedido ? new Date(b.dataPedido).getTime() : 0;
+    if (aTime !== bTime) return bTime - aTime;
+    const pedidoDiff = Number(b.pedidoId || 0) - Number(a.pedidoId || 0);
+    if (pedidoDiff !== 0) return pedidoDiff;
+    return resolvePedidoProdutoNome(a).localeCompare(resolvePedidoProdutoNome(b), "pt-BR");
+  });
+}
+
 function openPedidosProdutoDetalhes(groupKey) {
   const produto = state.pedidosProdutos.find((item) => item.groupKey === groupKey);
   if (!produto) return;
@@ -2842,6 +2856,20 @@ function renderPedidosTableHead() {
     return;
   }
 
+  if (state.pedidosListMode === "analitico") {
+    els.pedidosTableHead.innerHTML = `
+      <tr>
+        <th>Pedido</th>
+        <th>Data</th>
+        <th>Cliente</th>
+        <th>Produto</th>
+        <th>Quantidade</th>
+        <th>Valor</th>
+      </tr>
+    `;
+    return;
+  }
+
   els.pedidosTableHead.innerHTML = `
     <tr>
       <th>Data</th>
@@ -2865,13 +2893,25 @@ function renderPedidosSection() {
   updatePedidosProdutosFilterInputs();
 
   if (els.pedidosSectionSubtitle) {
-    els.pedidosSectionSubtitle.textContent = state.pedidosView === "produtos"
-      ? `Veja o consolidado por produto com quantidade, valor vendido e ultima movimentacao. ${getPedidosProdutoFilterSummary()}`
-      : "Crie pedidos e orcamentos com itens em grade, subtotal automatico e salvamento mais claro.";
+    if (state.pedidosView === "produtos") {
+      els.pedidosSectionSubtitle.textContent = `Veja o consolidado por produto com quantidade, valor vendido e ultima movimentacao. ${getPedidosProdutoFilterSummary()}`;
+    } else if (state.pedidosListMode === "analitico") {
+      els.pedidosSectionSubtitle.textContent = "Veja cada item vendido por pedido com cliente, produto, quantidade e valor.";
+    } else {
+      els.pedidosSectionSubtitle.textContent = "Crie pedidos e orcamentos com itens em grade, subtotal automatico e salvamento mais claro.";
+    }
   }
 
   for (const button of els.pedidosViewButtons || []) {
     button.classList.toggle("active", button.getAttribute("data-pedidos-view") === state.pedidosView);
+  }
+
+  for (const button of els.pedidosListModeButtons || []) {
+    button.classList.toggle("active", button.getAttribute("data-pedidos-list-mode") === state.pedidosListMode);
+  }
+
+  if (els.pedidosListModeToggle) {
+    els.pedidosListModeToggle.classList.toggle("hidden", state.pedidosView !== "pedidos");
   }
 }
 
@@ -3115,6 +3155,31 @@ function setProdutoSort(field) {
 function renderPedidosTable() {
   if (state.pedidosView === "produtos") {
     renderPedidosProdutosRows();
+    return;
+  }
+
+  if (state.pedidosListMode === "analitico") {
+    const rows = getPedidosAnaliticosRows();
+    if (!rows.length) {
+      els.pedidosTable.innerHTML = '<tr><td colspan="6">Nenhum item analitico encontrado nos pedidos.</td></tr>';
+      return;
+    }
+
+    els.pedidosTable.innerHTML = rows
+      .map((item) => {
+        const data = item.dataPedido ? new Date(item.dataPedido).toLocaleDateString("pt-BR") : "-";
+        return `
+        <tr>
+          <td><button type="button" class="action-link" data-view-pedido-itens="${item.pedidoId}">#${escapeHtml(item.pedidoId)}</button></td>
+          <td>${data}</td>
+          <td>${escapeHtml(item.clienteNome || "-")}</td>
+          <td>${escapeHtml(resolvePedidoProdutoNome(item))}</td>
+          <td>${escapeHtml(formatPedidoProdutoQuantidade(item.quantidade))}</td>
+          <td>${moeda.format(item.valorTotal || 0)}</td>
+        </tr>
+      `;
+      })
+      .join("");
     return;
   }
 
@@ -4322,6 +4387,13 @@ function attachEvents() {
   for (const button of els.pedidosViewButtons || []) {
     button.addEventListener("click", () => {
       state.pedidosView = button.getAttribute("data-pedidos-view") === "produtos" ? "produtos" : "pedidos";
+      renderPedidosSection();
+    });
+  }
+
+  for (const button of els.pedidosListModeButtons || []) {
+    button.addEventListener("click", () => {
+      state.pedidosListMode = button.getAttribute("data-pedidos-list-mode") === "analitico" ? "analitico" : "sintetico";
       renderPedidosSection();
     });
   }

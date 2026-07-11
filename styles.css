@@ -230,6 +230,10 @@ h3 {
   font-weight: 600;
 }
 
+.pedidos-subview-toggle {
+  background: #fcf8ee;
+}
+
 .action-link {
   border: 0;
   background: transparent;
