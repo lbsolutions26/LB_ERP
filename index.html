@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260711c" />
+    <link rel="stylesheet" href="styles.css?v=20260711d" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -66,7 +66,6 @@
             <article>
               <span>Clientes</span>
               <strong id="clientesCount">0</strong>
-              <div class="metric-months" data-metric-months="clientes"></div>
             </article>
             <article>
               <span>Pedidos</span>
@@ -76,7 +75,6 @@
             <article>
               <span>Despesas</span>
               <strong id="despesasCount">0</strong>
-              <div class="metric-months" data-metric-months="despesas"></div>
             </article>
             <article>
               <span>Faturamento</span>
@@ -111,6 +109,36 @@
             </div>
             <div id="entradasCaixaChart" class="cash-month-chart" aria-label="Gráfico de entradas de caixa por mês"></div>
             <div id="entradasCaixaGrid" class="cash-month-grid"></div>
+          </div>
+
+          <div class="dashboard-daily-grid">
+            <div class="dashboard-cash-panel">
+              <div class="section-head dashboard-cash-head">
+                <div>
+                  <h3>Faturamento por Dia</h3>
+                  <p id="dailyFaturamentoSubtitulo" class="section-subtitle">Valor dos pedidos emitidos no mês corrente, dia a dia.</p>
+                </div>
+                <div class="dashboard-cash-summary">
+                  <span>Total do mês</span>
+                  <strong id="dailyFaturamentoResumo">R$ 0,00</strong>
+                </div>
+              </div>
+              <div id="dailyFaturamentoChart" class="cash-month-chart daily-chart" aria-label="Gráfico de faturamento por dia"></div>
+            </div>
+
+            <div class="dashboard-cash-panel">
+              <div class="section-head dashboard-cash-head">
+                <div>
+                  <h3>Pedidos por Dia</h3>
+                  <p id="dailyPedidosSubtitulo" class="section-subtitle">Quantidade de pedidos emitidos no mês corrente, dia a dia.</p>
+                </div>
+                <div class="dashboard-cash-summary">
+                  <span>Total do mês</span>
+                  <strong id="dailyPedidosResumo">0</strong>
+                </div>
+              </div>
+              <div id="dailyPedidosChart" class="cash-month-chart daily-chart" aria-label="Gráfico de pedidos por dia"></div>
+            </div>
           </div>
         </section>
 
@@ -808,6 +836,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260711c"></script>
+    <script type="module" src="app.js?v=20260711d"></script>
   </body>
 </html>

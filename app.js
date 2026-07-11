@@ -144,6 +144,7 @@ const state = {
   recebimentos: [],
   parcelasReceberPrevistas: [],
   dashboardMonthlyCash: [],
+  dashboardDaily: [],
   dashboardCashChartMode: "recebimentos",
   dashboardMonthsBack: 11,
   recebimentoModal: {
@@ -290,6 +291,10 @@ const els = {
   dashboardCashRangeButtons: Array.from(document.querySelectorAll("[data-dashboard-cash-range]")),
   entradasCaixaChart: document.getElementById("entradasCaixaChart"),
   entradasCaixaGrid: document.getElementById("entradasCaixaGrid"),
+  dailyFaturamentoChart: document.getElementById("dailyFaturamentoChart"),
+  dailyFaturamentoResumo: document.getElementById("dailyFaturamentoResumo"),
+  dailyPedidosChart: document.getElementById("dailyPedidosChart"),
+  dailyPedidosResumo: document.getElementById("dailyPedidosResumo"),
   estoqueTotalCount: document.getElementById("estoqueTotalCount"),
   estoqueComSaldoCount: document.getElementById("estoqueComSaldoCount"),
   estoquePontoPedidoCount: document.getElementById("estoquePontoPedidoCount"),
@@ -2777,7 +2782,6 @@ async function loadDashboardSnapshot() {
     showToast(`Erro dashboard_snapshot: ${error.message}`, "error");
     return;
   }
-
   const counts = data?.counts || {};
   state.pedidosCountTotal = Number(counts.pedidos || 0);
   state.pedidosFaturamentoTotal = Number(counts.faturamento_total || 0);
@@ -2798,6 +2802,24 @@ async function loadDashboardSnapshot() {
     clientesNovos: Number(row.clientes_novos || 0),
     despesasTotal: Number(row.despesas_total || 0),
     despesasCount: Number(row.despesas_count || 0)
+  }));
+}
+
+async function loadDashboardDaily() {
+  const { data, error } = await supabaseClient.rpc("dashboard_daily_current_month", {
+    target_empresa_id: state.empresaId
+  });
+
+  if (error) {
+    console.warn("Falha ao carregar dashboard_daily_current_month", error.message);
+    state.dashboardDaily = [];
+    return;
+  }
+
+  state.dashboardDaily = (data || []).map((row) => ({
+    dia: row.dia,
+    faturamento: Number(row.faturamento || 0),
+    pedidosCount: Number(row.pedidos_count || 0)
   }));
 }
 
@@ -4228,6 +4250,7 @@ function renderMetrics() {
   els.orcamentoAbertoValue.textContent = moeda.format(orcamentoAberto);
 
   renderDashboardMetricMonths();
+  renderDashboardDailyCharts();
 
   if (els.entradasCaixaResumo) {
     els.entradasCaixaResumo.textContent = moeda.format(currentMonthEntry);
@@ -4388,6 +4411,64 @@ function renderDashboardMetricMonths() {
   }
 }
 
+function renderDashboardDailyCharts() {
+  const rows = state.dashboardDaily || [];
+  const hoje = new Date();
+  const todayKey = formatDateInput(hoje);
+
+  const totalFaturamento = rows.reduce((sum, row) => sum + Number(row.faturamento || 0), 0);
+  const totalPedidos = rows.reduce((sum, row) => sum + Number(row.pedidosCount || 0), 0);
+
+  if (els.dailyFaturamentoResumo) {
+    els.dailyFaturamentoResumo.textContent = moeda.format(totalFaturamento);
+  }
+  if (els.dailyPedidosResumo) {
+    els.dailyPedidosResumo.textContent = formatCompactNumber(totalPedidos);
+  }
+
+  const renderChart = (node, valueOf, formatValue, colorClass) => {
+    if (!node) return;
+    if (!rows.length) {
+      node.innerHTML = '<div class="documento-empty-state">Sem dados para o mes atual.</div>';
+      return;
+    }
+    const maxValue = Math.max(...rows.map((row) => Number(valueOf(row) || 0)), 0);
+    node.innerHTML = rows
+      .map((row) => {
+        const value = Number(valueOf(row) || 0);
+        const height = maxValue > 0 ? Math.max(4, Math.round((value / maxValue) * 100)) : 4;
+        const isToday = row.dia === todayKey;
+        const dayNum = row.dia ? String(Number(row.dia.slice(8, 10))) : "";
+        const title = row.dia
+          ? `${new Date(`${row.dia}T12:00:00`).toLocaleDateString("pt-BR")}: ${formatValue(value)}`
+          : formatValue(value);
+        return `
+          <div class="cash-bar-wrap daily-bar-wrap${isToday ? " cash-bar-wrap-current" : ""}" title="${escapeHtml(title)}">
+            <div class="cash-bar-value daily-bar-value">${value > 0 ? escapeHtml(formatValue(value)) : ""}</div>
+            <div class="cash-bar-track" aria-hidden="true">
+              <div class="cash-bar-fill ${colorClass}${isToday ? " cash-bar-fill-current" : ""}" style="height:${height}%"></div>
+            </div>
+            <div class="cash-bar-label">${escapeHtml(dayNum)}</div>
+          </div>
+        `;
+      })
+      .join("");
+  };
+
+  renderChart(
+    els.dailyFaturamentoChart,
+    (row) => row.faturamento,
+    (value) => moeda.format(value),
+    "cash-bar-fill-realized"
+  );
+  renderChart(
+    els.dailyPedidosChart,
+    (row) => row.pedidosCount,
+    (value) => formatCompactNumber(value),
+    "cash-bar-fill-forecast"
+  );
+}
+
 function getMonthlyCashEntries(mode = "recebimentos") {
   const rows = state.dashboardMonthlyCash || [];
   if (!rows.length) return [];
@@ -4432,6 +4513,7 @@ async function refreshAll() {
 
       const baseLoads = [
         loadDashboardSnapshot(),
+        loadDashboardDaily(),
         loadFormasPagamento()
       ];
 
