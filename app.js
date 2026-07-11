@@ -189,6 +189,7 @@ const els = {
   despesasCount: document.getElementById("despesasCount"),
   faturamentoValue: document.getElementById("faturamentoValue"),
   entradasCaixaResumo: document.getElementById("entradasCaixaResumo"),
+  entradasCaixaChart: document.getElementById("entradasCaixaChart"),
   entradasCaixaGrid: document.getElementById("entradasCaixaGrid"),
   estoqueTotalCount: document.getElementById("estoqueTotalCount"),
   estoqueComSaldoCount: document.getElementById("estoqueComSaldoCount"),
@@ -2768,6 +2769,26 @@ function renderMetrics() {
       })
       .join("");
     els.entradasCaixaGrid.innerHTML = entriesHtml || '<div class="documento-empty-state">Sem recebimentos registrados.</div>';
+  }
+
+  if (els.entradasCaixaChart) {
+    const maxValue = Math.max(...monthlyCashEntries.map((item) => Number(item.total || 0)), 0);
+    const chartBars = monthlyCashEntries
+      .map((item) => {
+        const value = Number(item.total || 0);
+        const height = maxValue > 0 ? Math.max(6, Math.round((value / maxValue) * 100)) : 6;
+        return `
+          <div class="cash-bar-wrap">
+            <div class="cash-bar-value">${moeda.format(value)}</div>
+            <div class="cash-bar-track" aria-hidden="true">
+              <div class="cash-bar-fill" style="height:${height}%"></div>
+            </div>
+            <div class="cash-bar-label">${escapeHtml(item.label)}</div>
+          </div>
+        `;
+      })
+      .join("");
+    els.entradasCaixaChart.innerHTML = chartBars || '<div class="documento-empty-state">Sem recebimentos registrados.</div>';
   }
 }
 
