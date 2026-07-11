@@ -1964,6 +1964,8 @@ function openNovoDocumentoModal(tipo = "pedido") {
 }
 
 async function openNovoDocumentoEditModal(tipo, documentoId) {
+  // Garante que clientes e produtos estao carregados para preencher combos corretamente.
+  await Promise.all([ensureClientesLoaded(), ensureProdutosLoaded()]);
   await loadDocumentoForEdit(tipo, documentoId);
   renderNovoDocumentoModal();
   if (els.novoDocumentoModal) {
@@ -4967,7 +4969,14 @@ function attachEvents() {
   }
 
   if (els.openPedidoModalBtn) {
-    els.openPedidoModalBtn.addEventListener("click", () => openNovoDocumentoModal("pedido"));
+    els.openPedidoModalBtn.addEventListener("click", async () => {
+      try {
+        await Promise.all([ensureClientesLoaded(), ensureProdutosLoaded()]);
+      } catch (error) {
+        showToast(`Erro ao carregar dados para novo pedido: ${error.message}`, "error");
+      }
+      openNovoDocumentoModal("pedido");
+    });
   }
 
   if (els.closeProdutoModalBtn) {
