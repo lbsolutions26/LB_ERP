@@ -421,6 +421,11 @@ th.sortable.sorted {
   border-color: #e2b4b4;
 }
 
+.financeiro-vencimento-atrasado {
+  color: #8a2f2f;
+  font-weight: 700;
+}
+
 .modal-recebimento-card {
   width: min(980px, 100%);
 }

@@ -785,7 +785,15 @@ async function loadContasReceber() {
     const baseVencimento = (parcelasPendentes[0] || parcelas[0])?.vencimento || null;
     const emissaoDate = item.emissao ? new Date(item.emissao) : null;
     const vencimentoDate = baseVencimento ? new Date(baseVencimento) : null;
-    const isVencida = false;
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const vencimentoComparavel = vencimentoDate ? new Date(vencimentoDate.getTime()) : null;
+    if (vencimentoComparavel) {
+      vencimentoComparavel.setHours(0, 0, 0, 0);
+    }
+    const statusOriginal = String(item.status || "").toLowerCase();
+    const isLiquidada = statusOriginal === "recebido" || statusOriginal === "quitado" || Number(item.valor_aberto || 0) <= 0;
+    const isVencida = Boolean(vencimentoComparavel && vencimentoComparavel < hoje && !isLiquidada);
     return {
       ...item,
       emissaoDate,
@@ -2636,10 +2644,11 @@ function renderContasReceberTable() {
       const vencimento = conta.vencimentoDate ? conta.vencimentoDate.toLocaleDateString("pt-BR") : "-";
       const clienteNome = conta.cliente?.nome || "-";
       const statusConta = conta.statusNormalizado || "aberto";
+      const vencimentoClass = statusConta === "vencido" ? "financeiro-vencimento-atrasado" : "";
       return `
         <tr>
           <td>${emissao}</td>
-          <td>${vencimento}</td>
+          <td class="${vencimentoClass}">${vencimento}</td>
           <td>${escapeHtml(clienteNome)}</td>
           <td>${escapeHtml(conta.numero_titulo || `DOC-${conta.documento_id || conta.id}`)}</td>
           <td><span class="status-chip ${statusConta}">${getContaStatusLabel(statusConta)}</span></td>
