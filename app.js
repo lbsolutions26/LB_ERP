@@ -2496,31 +2496,53 @@ async function loadPedidosProdutos() {
     return;
   }
 
-  const pedidoMetaById = new Map(
-    state.pedidos.map((pedido) => [
-      Number(pedido.id),
-      {
-        id: Number(pedido.id),
-        dataPedido: pedido.data_pedido || pedido.data_emissao || null,
-        clienteNome: pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${pedido.cliente_legacy_id}` : "-"),
-        status: pedido.status || "-",
-        valorTotal: Number(pedido.valor_total || 0)
-      }
-    ])
-  );
+  try {
+    const pedidoMetaById = new Map(
+      state.pedidos.map((pedido) => [
+        Number(pedido.id),
+        {
+          id: Number(pedido.id),
+          dataPedido: pedido.data_pedido || pedido.data_emissao || null,
+          clienteNome: pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${pedido.cliente_legacy_id}` : "-"),
+          status: pedido.status || "-",
+          valorTotal: Number(pedido.valor_total || 0)
+        }
+      ])
+    );
 
-  if (state.pedidosSource === "documentos_venda") {
+    if (state.pedidosSource === "documentos_venda") {
+      const pedidoIds = state.pedidos.map((pedido) => Number(pedido.id)).filter(Number.isFinite);
+      const { data, error } = await supabaseClient
+        .from("documento_venda_itens")
+        .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
+        .eq("empresa_id", state.empresaId)
+        .in("documento_id", pedidoIds);
+
+      if (error) throw error;
+      const normalizedItems = normalizePedidoProdutoRows(data || [], {
+        idField: "documento_id",
+        totalField: "valor_total",
+        metaById: pedidoMetaById
+      });
+      const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
+      const missingPedidos = state.pedidos.filter((pedido) => !pedidosComItens.has(Number(pedido.id)));
+      const recoveredItems = await loadMissingPedidoProdutoRows(missingPedidos, pedidoMetaById);
+      state.pedidosProdutosRaw = [...normalizedItems, ...recoveredItems];
+      state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
+      return;
+    }
+
     const pedidoIds = state.pedidos.map((pedido) => Number(pedido.id)).filter(Number.isFinite);
     const { data, error } = await supabaseClient
-      .from("documento_venda_itens")
-      .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
+      .from("pedido_itens")
+      .select("pedido_id, produto_id, quantidade, valor_unitario, total, produto:produtos(nome)")
       .eq("empresa_id", state.empresaId)
-      .in("documento_id", pedidoIds);
+      .in("pedido_id", pedidoIds);
 
     if (error) throw error;
     const normalizedItems = normalizePedidoProdutoRows(data || [], {
-      idField: "documento_id",
-      totalField: "valor_total",
+      idField: "pedido_id",
+      totalField: "total",
       metaById: pedidoMetaById
     });
     const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
@@ -2528,27 +2550,11 @@ async function loadPedidosProdutos() {
     const recoveredItems = await loadMissingPedidoProdutoRows(missingPedidos, pedidoMetaById);
     state.pedidosProdutosRaw = [...normalizedItems, ...recoveredItems];
     state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
-    return;
+  } catch (error) {
+    console.warn("Falha ao carregar itens analiticos de pedidos; usando fallback do cabecalho.", error);
+    state.pedidosProdutosRaw = buildFallbackPedidoProdutoRows(state.pedidos);
+    state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
   }
-
-  const pedidoIds = state.pedidos.map((pedido) => Number(pedido.id)).filter(Number.isFinite);
-  const { data, error } = await supabaseClient
-    .from("pedido_itens")
-    .select("pedido_id, produto_id, quantidade, valor_unitario, total, produto:produtos(nome)")
-    .eq("empresa_id", state.empresaId)
-    .in("pedido_id", pedidoIds);
-
-  if (error) throw error;
-  const normalizedItems = normalizePedidoProdutoRows(data || [], {
-    idField: "pedido_id",
-    totalField: "total",
-    metaById: pedidoMetaById
-  });
-  const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
-  const missingPedidos = state.pedidos.filter((pedido) => !pedidosComItens.has(Number(pedido.id)));
-  const recoveredItems = await loadMissingPedidoProdutoRows(missingPedidos, pedidoMetaById);
-  state.pedidosProdutosRaw = [...normalizedItems, ...recoveredItems];
-  state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
 }
 
 function normalizePedidoProdutoRows(items, { idField, totalField, metaById }) {
@@ -2617,6 +2623,10 @@ function buildFallbackItemFromPedidoMeta(pedido) {
   };
 }
 
+function buildFallbackPedidoProdutoRows(pedidos) {
+  return (pedidos || []).map(buildFallbackItemFromPedidoMeta).filter(Boolean);
+}
+
 async function loadMissingPedidoProdutoRows(missingPedidos, metaById) {
   if (!missingPedidos.length) return [];
 
@@ -2634,7 +2644,11 @@ async function loadMissingPedidoProdutoRows(missingPedidos, metaById) {
         .eq("documento_id", pedidoId)
         .order("id", { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        const fallbackItem = buildFallbackItemFromPedidoMeta(pedido);
+        if (fallbackItem) fallbackRows.push(fallbackItem);
+        continue;
+      }
 
       const normalized = normalizePedidoProdutoRows(data || [], {
         idField: "documento_id",
@@ -2654,7 +2668,11 @@ async function loadMissingPedidoProdutoRows(missingPedidos, metaById) {
         .eq("pedido_id", pedidoId)
         .order("id", { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        const fallbackItem = buildFallbackItemFromPedidoMeta(pedido);
+        if (fallbackItem) fallbackRows.push(fallbackItem);
+        continue;
+      }
 
       const normalized = normalizePedidoProdutoRows(data || [], {
         idField: "pedido_id",
