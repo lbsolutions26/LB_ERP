@@ -123,6 +123,21 @@ const state = {
   pedidosLoaded: false,
   pedidosCountTotal: 0,
   pedidosFaturamentoTotal: 0,
+  clientesLoaded: false,
+  produtosLoaded: false,
+  contasReceberLoaded: false,
+  orcamentosLoaded: false,
+  despesasLoaded: false,
+  ownerUsersLoaded: false,
+  adminLoaded: false,
+  dashboardCounts: {
+    clientes: 0,
+    despesas: 0,
+    produtosTotal: 0,
+    produtosComSaldo: 0,
+    produtosPontoPedido: 0,
+    orcamentoAberto: 0
+  },
   contasReceber: [],
   recebimentos: [],
   parcelasReceberPrevistas: [],
@@ -2384,6 +2399,36 @@ async function loadProdutos() {
   }));
 }
 
+async function loadDashboardSnapshot() {
+  const { data, error } = await supabaseClient.rpc("dashboard_snapshot", {
+    target_empresa_id: state.empresaId,
+    months_back: 11
+  });
+
+  if (error) {
+    console.warn("Falha ao carregar dashboard_snapshot", error.message);
+    return;
+  }
+
+  const counts = data?.counts || {};
+  state.pedidosCountTotal = Number(counts.pedidos || 0);
+  state.pedidosFaturamentoTotal = Number(counts.faturamento_total || 0);
+  state.dashboardCounts = {
+    clientes: Number(counts.clientes || 0),
+    despesas: Number(counts.despesas || 0),
+    produtosTotal: Number(counts.produtos_total || 0),
+    produtosComSaldo: Number(counts.produtos_com_saldo || 0),
+    produtosPontoPedido: Number(counts.produtos_ponto_pedido || 0),
+    orcamentoAberto: Number(counts.orcamento_aberto || 0)
+  };
+  state.dashboardMonthlyCash = (data?.monthly || []).map((row) => ({
+    mes: row.mes,
+    realized: Number(row.realized || 0),
+    forecast: Number(row.forecast || 0),
+    faturamento: Number(row.faturamento || 0)
+  }));
+}
+
 async function loadPedidosSummary() {
   const [countResp, aggregateResp] = await Promise.all([
     supabaseClient
@@ -2416,6 +2461,49 @@ async function ensurePedidosLoaded(options = {}) {
   if (state.pedidosLoaded && !options.force) return;
   await loadPedidos();
   state.pedidosLoaded = true;
+}
+
+async function ensureClientesLoaded(options = {}) {
+  if (state.clientesLoaded && !options.force) return;
+  await loadClientes();
+  state.clientesLoaded = true;
+}
+
+async function ensureProdutosLoaded(options = {}) {
+  if (state.produtosLoaded && !options.force) return;
+  await loadProdutos();
+  state.produtosLoaded = true;
+}
+
+async function ensureOrcamentosLoaded(options = {}) {
+  if (state.orcamentosLoaded && !options.force) return;
+  await loadOrcamentos();
+  state.orcamentosLoaded = true;
+}
+
+async function ensureDespesasLoaded(options = {}) {
+  if (state.despesasLoaded && !options.force) return;
+  await loadDespesas();
+  state.despesasLoaded = true;
+}
+
+async function ensureContasReceberLoaded(options = {}) {
+  if (state.contasReceberLoaded && !options.force) return;
+  await Promise.all([loadContasReceber(), loadRecebimentos(), loadParcelasReceberPrevistas()]);
+  state.contasReceberLoaded = true;
+}
+
+async function ensureOwnerUsersLoaded(options = {}) {
+  if (state.ownerUsersLoaded && !options.force) return;
+  await loadOwnerUsers();
+  state.ownerUsersLoaded = true;
+}
+
+async function ensureAdminLoaded(options = {}) {
+  if (!state.isPlatformAdmin) return;
+  if (state.adminLoaded && !options.force) return;
+  await Promise.all([loadAdminEmpresas(), loadAdminVinculos()]);
+  state.adminLoaded = true;
 }
 
 async function loadPedidos() {
@@ -3631,10 +3719,12 @@ function renderDespesasTable() {
 }
 
 function renderMetrics() {
-  els.clientesCount.textContent = String(state.clientes.length);
+  const clientesTotal = state.clientesLoaded ? state.clientes.length : state.dashboardCounts.clientes;
+  els.clientesCount.textContent = String(clientesTotal);
   const pedidosTotal = state.pedidosLoaded ? state.pedidos.length : state.pedidosCountTotal;
   els.pedidosCount.textContent = String(pedidosTotal);
-  els.despesasCount.textContent = String(state.despesas.length);
+  const despesasTotal = state.despesasLoaded ? state.despesas.length : state.dashboardCounts.despesas;
+  els.despesasCount.textContent = String(despesasTotal);
 
   if (els.pedidosCount) {
     els.pedidosCount.title = pedidosTotal >= 1000
@@ -3649,15 +3739,20 @@ function renderMetrics() {
     : Number(state.pedidosFaturamentoTotal || 0);
   els.faturamentoValue.textContent = moeda.format(faturamento);
 
-  const estoqueTotal = state.produtos.length;
-  const produtosComEstoque = state.produtos.filter((produto) => produto.controla_estoque !== false);
-  const estoqueComSaldo = produtosComEstoque.filter((produto) => Number(produto.estoque || 0) > 0).length;
-  const estoquePontoPedido = state.produtos.filter(
-    (produto) => produto.controla_estoque !== false && Number(produto.estoque || 0) <= Number(produto.ponto_pedido || 0)
-  ).length;
-  const orcamentoAberto = state.orcamentos
-    .filter((orcamento) => orcamento.status === "aberto")
-    .reduce((sum, orcamento) => sum + Number(orcamento.valor_total || 0), 0);
+  const estoqueTotal = state.produtosLoaded ? state.produtos.length : state.dashboardCounts.produtosTotal;
+  const estoqueComSaldo = state.produtosLoaded
+    ? state.produtos.filter((produto) => produto.controla_estoque !== false && Number(produto.estoque || 0) > 0).length
+    : state.dashboardCounts.produtosComSaldo;
+  const estoquePontoPedido = state.produtosLoaded
+    ? state.produtos.filter(
+        (produto) => produto.controla_estoque !== false && Number(produto.estoque || 0) <= Number(produto.ponto_pedido || 0)
+      ).length
+    : state.dashboardCounts.produtosPontoPedido;
+  const orcamentoAberto = state.orcamentosLoaded
+    ? state.orcamentos
+        .filter((orcamento) => orcamento.status === "aberto")
+        .reduce((sum, orcamento) => sum + Number(orcamento.valor_total || 0), 0)
+    : Number(state.dashboardCounts.orcamentoAberto || 0);
 
   const monthlyCashEntries = getMonthlyCashEntries(state.dashboardCashChartMode);
   const currentMonthKey = formatMonthKey(new Date());
@@ -3810,42 +3905,34 @@ async function refreshAll() {
     try {
       if (!state.session || !state.empresaId) return;
 
-      await cleanupOrphanDocumentoFinanceiro();
-
       const baseLoads = [
-        loadClientes(),
-        loadProdutos(),
-        loadPedidosSummary(),
-        loadOrcamentos(),
-        loadDespesas(),
-        loadFormasPagamento(),
-        loadRecebimentos(),
-        loadParcelasReceberPrevistas(),
-        loadContasReceber(),
-        loadDashboardMonthlyCash(),
-        loadOwnerUsers()
+        loadDashboardSnapshot(),
+        loadFormasPagamento()
       ];
 
-      if (state.pedidosLoaded) {
-        baseLoads.push(loadPedidos());
-      }
-
-      if (state.isPlatformAdmin) {
-        baseLoads.push(loadAdminEmpresas(), loadAdminVinculos());
-      }
+      if (state.clientesLoaded) baseLoads.push(loadClientes());
+      if (state.produtosLoaded) baseLoads.push(loadProdutos());
+      if (state.pedidosLoaded) baseLoads.push(loadPedidos());
+      if (state.orcamentosLoaded) baseLoads.push(loadOrcamentos());
+      if (state.despesasLoaded) baseLoads.push(loadDespesas());
+      if (state.contasReceberLoaded) baseLoads.push(loadContasReceber(), loadRecebimentos(), loadParcelasReceberPrevistas());
+      if (state.ownerUsersLoaded) baseLoads.push(loadOwnerUsers());
+      if (state.adminLoaded && state.isPlatformAdmin) baseLoads.push(loadAdminEmpresas(), loadAdminVinculos());
 
       await Promise.all(baseLoads);
 
       renderSelects();
-      renderClientesTable();
-      renderProdutosTable();
-      renderPedidosSection();
-      renderContasReceberTable();
-      renderOrcamentosTable();
-      renderDespesasTable();
-      renderOwnerUsersTable();
-      renderAdminEmpresasSelect();
-      renderAdminVinculosTable();
+      if (state.clientesLoaded) renderClientesTable();
+      if (state.produtosLoaded) renderProdutosTable();
+      if (state.pedidosLoaded) renderPedidosSection();
+      if (state.contasReceberLoaded) renderContasReceberTable();
+      if (state.orcamentosLoaded) renderOrcamentosTable();
+      if (state.despesasLoaded) renderDespesasTable();
+      if (state.ownerUsersLoaded) renderOwnerUsersTable();
+      if (state.adminLoaded) {
+        renderAdminEmpresasSelect();
+        renderAdminVinculosTable();
+      }
       renderMetrics();
       if (els.novoDocumentoModal && !els.novoDocumentoModal.classList.contains("hidden")) {
         renderNovoDocumentoFormaPagamentoSelect();
@@ -4291,6 +4378,14 @@ async function handleSession(session) {
     state.pedidosProdutos = [];
     state.pedidosCountTotal = 0;
     state.pedidosFaturamentoTotal = 0;
+    state.clientesLoaded = false;
+    state.produtosLoaded = false;
+    state.contasReceberLoaded = false;
+    state.orcamentosLoaded = false;
+    state.despesasLoaded = false;
+    state.ownerUsersLoaded = false;
+    state.adminLoaded = false;
+    state.dashboardCounts = { clientes: 0, despesas: 0, produtosTotal: 0, produtosComSaldo: 0, produtosPontoPedido: 0, orcamentoAberto: 0 };
     updateAdminVisibility();
     updateOwnerUsersVisibility();
     setSection("dashboard");
@@ -4377,14 +4472,37 @@ function attachEvents() {
     tab.addEventListener("click", async () => {
       const sectionName = tab.dataset.section || "dashboard";
       setSection(sectionName);
-      if (sectionName === "pedidos" && !state.pedidosLoaded) {
-        try {
+      try {
+        if (sectionName === "pedidos") {
           await ensurePedidosLoaded();
           renderPedidosSection();
-          renderMetrics();
-        } catch (error) {
-          showToast(`Erro ao carregar pedidos: ${error.message}`, "error");
+        } else if (sectionName === "clientes") {
+          await ensureClientesLoaded();
+          renderSelects();
+          renderClientesTable();
+        } else if (sectionName === "produtos") {
+          await ensureProdutosLoaded();
+          renderProdutosTable();
+        } else if (sectionName === "orcamentos") {
+          await ensureOrcamentosLoaded();
+          renderOrcamentosTable();
+        } else if (sectionName === "despesas") {
+          await ensureDespesasLoaded();
+          renderDespesasTable();
+        } else if (sectionName === "financeiro") {
+          await ensureContasReceberLoaded();
+          renderContasReceberTable();
+        } else if (sectionName === "usuarios") {
+          await ensureOwnerUsersLoaded();
+          renderOwnerUsersTable();
+        } else if (sectionName === "admin") {
+          await ensureAdminLoaded();
+          renderAdminEmpresasSelect();
+          renderAdminVinculosTable();
         }
+        renderMetrics();
+      } catch (error) {
+        showToast(`Erro ao carregar ${sectionName}: ${error.message}`, "error");
       }
     });
   }
