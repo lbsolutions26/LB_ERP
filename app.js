@@ -3834,8 +3834,6 @@ function renderMetrics() {
   }
 
   if (els.entradasCaixaGrid) {
-    const totalMeses = monthlyCashEntries.length;
-    els.entradasCaixaGrid.classList.toggle("list-mode", totalMeses > 12);
     const entriesHtml = monthlyCashEntries
       .map((item) => {
         const realized = Number(item.realized || 0);
@@ -3860,7 +3858,6 @@ function renderMetrics() {
   }
 
   if (els.entradasCaixaChart) {
-    els.entradasCaixaChart.classList.toggle("compact", monthlyCashEntries.length > 12);
     const maxValue = Math.max(...monthlyCashEntries.map((item) => Number(item.total || 0)), 0);
     const currentMonthKey = formatMonthKey(new Date());
     const chartBars = monthlyCashEntries
