@@ -786,12 +786,26 @@ async function cleanupOrphanDocumentoFinanceiro() {
   }
 
   const orphanDocumentoIds = new Set();
+  const orphanContaIds = new Set();
   for (const conta of contasResponse.data || []) {
-    const documentoId = Number(conta.documento_id || 0);
-    if (!documentoId) continue;
-    if (!documentosIds.has(documentoId)) {
+    const documentoIdField = Number(conta.documento_id || 0);
+    const documentoIdTitulo = parseDocumentoIdFromNumeroTitulo(conta.numero_titulo);
+    const documentoId = documentoIdField || documentoIdTitulo || 0;
+
+    if (!documentoId || !documentosIds.has(documentoId)) {
+      const contaId = Number(conta.id || 0);
+      if (contaId) {
+        orphanContaIds.add(contaId);
+      }
+    }
+
+    if (documentoId && !documentosIds.has(documentoId)) {
       orphanDocumentoIds.add(documentoId);
     }
+  }
+
+  if (orphanContaIds.size) {
+    await deleteContasFinanceirasByContaIds(Array.from(orphanContaIds));
   }
 
   for (const documentoId of Array.from(orphanDocumentoIds)) {
@@ -3072,31 +3086,25 @@ async function deleteByTable(table, id) {
   await refreshAll();
 }
 
-async function deleteDocumentoFinanceiro(documentoId) {
-  const contasResponse = await supabaseClient
-    .from("contas_receber")
-    .select("id")
-    .eq("empresa_id", state.empresaId)
-    .eq("documento_id", documentoId);
+function parseDocumentoIdFromNumeroTitulo(numeroTitulo) {
+  const match = String(numeroTitulo || "").trim().match(/^DOC-(\d+)/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
-  if (contasResponse.error) {
-    if (isMissingRelationError(contasResponse.error)) return;
-    throw contasResponse.error;
-  }
-
-  const contaIds = (contasResponse.data || []).map((item) => Number(item.id)).filter(Number.isFinite);
-  if (!contaIds.length) return;
+async function deleteContasFinanceirasByContaIds(contaIds) {
+  const ids = (contaIds || []).map((id) => Number(id)).filter(Number.isFinite);
+  if (!ids.length) return;
 
   const parcelasResponse = await supabaseClient
     .from("contas_receber_parcelas")
     .select("id")
     .eq("empresa_id", state.empresaId)
-    .in("conta_receber_id", contaIds);
+    .in("conta_receber_id", ids);
 
-  if (parcelasResponse.error) {
-    if (!isMissingRelationError(parcelasResponse.error)) {
-      throw parcelasResponse.error;
-    }
+  if (parcelasResponse.error && !isMissingRelationError(parcelasResponse.error)) {
+    throw parcelasResponse.error;
   }
 
   const parcelaIds = (parcelasResponse.data || []).map((item) => Number(item.id)).filter(Number.isFinite);
@@ -3117,7 +3125,7 @@ async function deleteDocumentoFinanceiro(documentoId) {
     .from("contas_receber_parcelas")
     .delete()
     .eq("empresa_id", state.empresaId)
-    .in("conta_receber_id", contaIds);
+    .in("conta_receber_id", ids);
 
   if (parcelasDeleteError && !isMissingRelationError(parcelasDeleteError)) {
     throw parcelasDeleteError;
@@ -3127,11 +3135,27 @@ async function deleteDocumentoFinanceiro(documentoId) {
     .from("contas_receber")
     .delete()
     .eq("empresa_id", state.empresaId)
-    .eq("documento_id", documentoId);
+    .in("id", ids);
 
   if (contasDeleteError && !isMissingRelationError(contasDeleteError)) {
     throw contasDeleteError;
   }
+}
+
+async function deleteDocumentoFinanceiro(documentoId) {
+  const contasResponse = await supabaseClient
+    .from("contas_receber")
+    .select("id")
+    .eq("empresa_id", state.empresaId)
+    .eq("documento_id", documentoId);
+
+  if (contasResponse.error) {
+    if (isMissingRelationError(contasResponse.error)) return;
+    throw contasResponse.error;
+  }
+
+  const contaIds = (contasResponse.data || []).map((item) => Number(item.id)).filter(Number.isFinite);
+  await deleteContasFinanceirasByContaIds(contaIds);
 }
 
 async function deleteDocumentoVenda(id, tipoDocumento) {
