@@ -432,9 +432,10 @@ function setNovoDocumentoCliente(clienteId) {
 
 function getNovoDocumentoProdutoComboState(item) {
   const produto = state.produtos.find((produtoItem) => String(produtoItem.id) === String(item.produtoId));
+  const descricaoFallback = String(item?.descricao || "").trim();
   return {
     produto,
-    label: produto?.nome || "Selecionar produto",
+    label: produto?.nome || descricaoFallback || "Selecionar produto",
     search: String(item.produtoSearch || ""),
     query: String(item.produtoSearch || "").trim().toLowerCase()
   };
@@ -1858,15 +1859,11 @@ function renderNovoDocumentoFormaPagamentoSelect() {
 }
 
 function renderNovoDocumentoItemRow(item) {
-  const produto = state.produtos.find((produtoItem) => String(produtoItem.id) === String(item.produtoId));
   const rowTotal = getNovoDocumentoItemTotal(item);
   return `
     <article class="documento-item-row" data-documento-item-row="${item.rowId}">
       <div class="documento-item-cell documento-item-cell--produto">
         ${renderNovoDocumentoProdutoCombo(item)}
-      </div>
-      <div class="documento-item-cell">
-        <input data-documento-item-field="descricao" value="${escapeHtml(item.descricao || produto?.nome || "")}" placeholder="Descricao do item" />
       </div>
       <div class="documento-item-cell documento-item-cell--qty">
         <input data-documento-item-field="quantidade" type="number" min="0.001" step="0.001" value="${escapeHtml(item.quantidade ?? 1)}" />
@@ -1917,7 +1914,6 @@ function renderNovoDocumentoItensGrid() {
   const header = `
     <div class="documento-items-head-row">
       <span>Produto</span>
-      <span>Descricao</span>
       <span>Qtd</span>
       <span>Valor unit.</span>
       <span>Total</span>
