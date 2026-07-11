@@ -879,10 +879,14 @@ function renderNovoDocumentoParcelasEditor() {
   if (!els.novoDocumentoParcelasEditor) return;
   const parcelas = state.novoDocumentoModal.parcelasEditadas;
   const editing = Array.isArray(parcelas);
+  const isEditPedido = Boolean(state.novoDocumentoModal.documentoId);
 
   els.novoDocumentoParcelasEditor.classList.toggle("hidden", !editing);
   if (els.novoDocumentoGerarParcelasBtn) {
     els.novoDocumentoGerarParcelasBtn.classList.toggle("hidden", editing);
+    els.novoDocumentoGerarParcelasBtn.textContent = isEditPedido
+      ? "Editar parcelas deste pedido"
+      : "Gerar parcelas para editar";
   }
   if (els.novoDocumentoLimparParcelasBtn) {
     els.novoDocumentoLimparParcelasBtn.classList.toggle("hidden", !editing);
@@ -896,7 +900,11 @@ function renderNovoDocumentoParcelasEditor() {
     formasHtml.push(`<option value="${forma.id}">${escapeHtml(forma.nome)}</option>`);
   }
 
-  els.novoDocumentoParcelasList.innerHTML = parcelas
+  const aviso = isEditPedido
+    ? '<div class="documento-payment-parcelas-warning">Ao salvar, as parcelas e recebimentos anteriores deste pedido serao substituidos pelos novos titulos.</div>'
+    : "";
+
+  els.novoDocumentoParcelasList.innerHTML = aviso + parcelas
     .map((parcela, index) => `
       <div class="documento-payment-parcela-row" data-parcela-index="${index}">
         <div class="parcela-numero">#${parcela.numero || index + 1}</div>
@@ -2163,17 +2171,28 @@ async function saveNovoDocumento(event) {
   const { error: itensError } = await supabaseClient.from("documento_venda_itens").insert(itensPayload);
   if (itensError) throw itensError;
 
+  const parcelasEditadas = Array.isArray(draft.parcelasEditadas) && draft.parcelasEditadas.length
+    ? draft.parcelasEditadas
+    : null;
+
   if (!isEdit) {
     try {
-      const parcelasEditadas = Array.isArray(draft.parcelasEditadas) && draft.parcelasEditadas.length
-        ? draft.parcelasEditadas
-        : null;
       await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
     } catch (financeError) {
       await supabaseClient.from("documento_venda_itens").delete().eq("empresa_id", state.empresaId).eq("documento_id", documentoId);
       await supabaseClient.from("documentos_venda").delete().eq("empresa_id", state.empresaId).eq("id", documentoId);
       throw financeError;
     }
+  } else if (parcelasEditadas) {
+    const confirmar = window.confirm(
+      "Voce editou as parcelas deste pedido.\n\nAo salvar, as parcelas e recebimentos anteriores deste pedido serao SUBSTITUIDOS pelos novos titulos. Deseja continuar?"
+    );
+    if (!confirmar) {
+      throw new Error("Salvamento cancelado pelo usuario.");
+    }
+    // Apaga o financeiro anterior e recria com os novos titulos.
+    await deleteDocumentoFinanceiro(documentoId);
+    await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
   }
 
   closeNovoDocumentoModal();

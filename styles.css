@@ -1251,6 +1251,15 @@ table thead input {
   gap: 0.45rem;
 }
 
+.documento-payment-parcelas-warning {
+  background: #fdecd8;
+  border: 1px solid #e6b478;
+  color: #7a3f0d;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
 .documento-payment-parcela-row {
   display: grid;
   grid-template-columns: 60px minmax(150px, 1fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(120px, 1fr) auto;
