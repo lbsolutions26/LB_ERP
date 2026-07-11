@@ -703,6 +703,42 @@ th.sortable.sorted {
   margin: 0;
 }
 
+.documento-payment-panel {
+  display: grid;
+  gap: 0.75rem;
+  background: linear-gradient(180deg, #fdfaf3 0%, #f7f2e7 100%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem;
+}
+
+.documento-payment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.documento-payment-grid label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #3d372d;
+}
+
+.documento-payment-grid input,
+.documento-payment-grid select {
+  width: 100%;
+}
+
+.documento-payment-summary {
+  border: 1px dashed #d8ccb6;
+  border-radius: 12px;
+  padding: 0.85rem;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .documento-items-hint {
   color: var(--muted);
   font-size: 0.9rem;
@@ -848,6 +884,10 @@ textarea:focus {
     display: none;
   }
 
+  .documento-payment-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .documento-item-remove {
     grid-column: 1 / -1;
   }
@@ -870,5 +910,9 @@ textarea:focus {
   .documento-item-total,
   .documento-item-remove {
     grid-column: 1 / -1;
+  }
+
+  .documento-payment-grid {
+    grid-template-columns: 1fr;
   }
 }

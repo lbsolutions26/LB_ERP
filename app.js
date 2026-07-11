@@ -71,12 +71,21 @@ const state = {
   pedidos: [],
   orcamentos: [],
   despesas: [],
+  formasPagamento: [],
   novoDocumentoModal: {
     tipo: "pedido",
     documentoId: null,
     clienteId: "",
     status: "aberto",
     observacoes: "",
+    pagamento: {
+      modo: "avista",
+      formaPagamentoId: "",
+      entrada: 0,
+      parcelas: 1,
+      vencimentoPrimeiraParcela: "",
+      intervaloDias: 30
+    },
     itens: []
   },
   ownerUsers: [],
@@ -118,6 +127,14 @@ const els = {
   novoDocumentoStatusSelect: document.getElementById("novoDocumentoStatusSelect"),
   novoDocumentoObservacoes: document.getElementById("novoDocumentoObservacoes"),
   novoDocumentoItemsGrid: document.getElementById("novoDocumentoItemsGrid"),
+  novoDocumentoPagamentoSection: document.getElementById("novoDocumentoPagamentoSection"),
+  novoDocumentoPagamentoModo: document.getElementById("novoDocumentoPagamentoModo"),
+  novoDocumentoPagamentoForma: document.getElementById("novoDocumentoPagamentoForma"),
+  novoDocumentoPagamentoEntrada: document.getElementById("novoDocumentoPagamentoEntrada"),
+  novoDocumentoPagamentoParcelas: document.getElementById("novoDocumentoPagamentoParcelas"),
+  novoDocumentoPagamentoPrimeiroVencimento: document.getElementById("novoDocumentoPagamentoPrimeiroVencimento"),
+  novoDocumentoPagamentoIntervalo: document.getElementById("novoDocumentoPagamentoIntervalo"),
+  novoDocumentoPagamentoResumo: document.getElementById("novoDocumentoPagamentoResumo"),
   addDocumentoItemBtn: document.getElementById("addDocumentoItemBtn"),
   novoDocumentoSubtotal: document.getElementById("novoDocumentoSubtotal"),
   novoDocumentoResumoTexto: document.getElementById("novoDocumentoResumoTexto"),
@@ -412,6 +429,7 @@ function createDocumentoDraft(tipo = "pedido") {
     clienteId: "",
     status: config.defaultStatus,
     observacoes: "",
+    pagamento: createPagamentoDraft(),
     itens: [createDocumentoDraftItem()]
   };
 }
@@ -434,6 +452,303 @@ function getNovoDocumentoItemTotal(item) {
 
 function getNovoDocumentoSubtotal() {
   return state.novoDocumentoModal.itens.reduce((sum, item) => sum + getNovoDocumentoItemTotal(item), 0);
+}
+
+function formatDateInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateInput(dateText) {
+  if (!dateText) return null;
+  const parsed = new Date(`${dateText}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function addDays(date, days) {
+  const next = new Date(date.getTime());
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function splitAmountIntoParts(totalCents, parts) {
+  const safeParts = Math.max(1, Number(parts || 1));
+  const base = Math.floor(totalCents / safeParts);
+  const remainder = totalCents % safeParts;
+  return Array.from({ length: safeParts }, (_, index) => base + (index < remainder ? 1 : 0));
+}
+
+function createPagamentoDraft() {
+  const today = new Date();
+  return {
+    modo: "avista",
+    formaPagamentoId: "",
+    entrada: 0,
+    parcelas: 1,
+    vencimentoPrimeiraParcela: formatDateInput(addDays(today, 30)),
+    intervaloDias: 30
+  };
+}
+
+function getNovoDocumentoPagamentoState() {
+  const pagamento = state.novoDocumentoModal.pagamento || createPagamentoDraft();
+  return {
+    modo: pagamento.modo || "avista",
+    formaPagamentoId: pagamento.formaPagamentoId || "",
+    entrada: Number(pagamento.entrada || 0),
+    parcelas: Math.max(1, Number(pagamento.parcelas || 1)),
+    vencimentoPrimeiraParcela: pagamento.vencimentoPrimeiraParcela || formatDateInput(addDays(new Date(), 30)),
+    intervaloDias: Math.max(1, Number(pagamento.intervaloDias || 30))
+  };
+}
+
+function setNovoDocumentoPagamentoField(field, value) {
+  state.novoDocumentoModal.pagamento = {
+    ...getNovoDocumentoPagamentoState(),
+    [field]: value
+  };
+  renderNovoDocumentoPagamentoSection();
+}
+
+function getPaymentLabels(modo) {
+  if (modo === "entrada_parcelas") {
+    return {
+      parcelasLabel: "Parcelas restantes",
+      helpText: "A entrada é recebida na hora e o restante vira parcelas."
+    };
+  }
+
+  if (modo === "parcelado") {
+    return {
+      parcelasLabel: "Parcelas",
+      helpText: "O valor total sera dividido entre as parcelas."
+    };
+  }
+
+  return {
+    parcelasLabel: "Parcelas",
+    helpText: "Pagamento imediato, com recebimento na hora."
+  };
+}
+
+function buildPagamentoPlano(total, pagamentoState) {
+  const totalCents = Math.max(0, Math.round(Number(total || 0) * 100));
+  const modo = pagamentoState.modo || "avista";
+  const formaPagamentoId = pagamentoState.formaPagamentoId ? Number(pagamentoState.formaPagamentoId) : null;
+  const intervaloDias = Math.max(1, Number(pagamentoState.intervaloDias || 30));
+  const hoje = new Date();
+  const vencimentoBase = parseDateInput(pagamentoState.vencimentoPrimeiraParcela) || addDays(hoje, intervaloDias);
+
+  if (modo === "avista") {
+    return {
+      formaPagamentoId,
+      valorOriginal: totalCents,
+      valorRecebido: totalCents,
+      valorAberto: 0,
+      statusConta: totalCents > 0 ? "recebido" : "cancelado",
+      parcelas: [
+        {
+          numero: 1,
+          vencimento: hoje,
+          valor: totalCents,
+          status: totalCents > 0 ? "recebido" : "cancelado",
+          valorRecebido: totalCents
+        }
+      ],
+      recebimentos: totalCents > 0
+        ? [
+            {
+              numeroParcela: 1,
+              valor: totalCents,
+              dataRecebimento: hoje,
+              formaPagamentoId
+            }
+          ]
+        : []
+    };
+  }
+
+  const entradaCents = modo === "entrada_parcelas" ? Math.max(0, Math.min(totalCents, Math.round(Number(pagamentoState.entrada || 0) * 100))) : 0;
+  const remainingCents = Math.max(0, totalCents - entradaCents);
+  const parcelaCount = Math.max(1, Number(pagamentoState.parcelas || 1));
+  const installmentParts = remainingCents > 0 ? splitAmountIntoParts(remainingCents, parcelaCount) : [];
+
+  const parcelas = [];
+  const recebimentos = [];
+
+  if (modo === "entrada_parcelas" && entradaCents > 0) {
+    parcelas.push({
+      numero: 1,
+      vencimento: hoje,
+      valor: entradaCents,
+      status: "recebido",
+      valorRecebido: entradaCents
+    });
+    recebimentos.push({
+      numeroParcela: 1,
+      valor: entradaCents,
+      dataRecebimento: hoje,
+      formaPagamentoId
+    });
+  }
+
+  const startIndex = parcelas.length;
+  installmentParts.forEach((partCents, index) => {
+    const numeroParcela = startIndex + index + 1;
+    const vencimento = addDays(vencimentoBase, intervaloDias * index);
+    parcelas.push({
+      numero: numeroParcela,
+      vencimento,
+      valor: partCents,
+      status: partCents > 0 ? "pendente" : "cancelado",
+      valorRecebido: 0
+    });
+  });
+
+  return {
+    formaPagamentoId,
+    valorOriginal: totalCents,
+    valorRecebido: entradaCents,
+    valorAberto: Math.max(0, totalCents - entradaCents),
+    statusConta: entradaCents > 0 ? "parcial" : "aberto",
+    parcelas,
+    recebimentos
+  };
+}
+
+function renderNovoDocumentoPagamentoSection() {
+  if (!els.novoDocumentoPagamentoSection) return;
+  const isPedido = state.novoDocumentoModal.tipo === "pedido";
+  els.novoDocumentoPagamentoSection.classList.toggle("hidden", !isPedido);
+  if (!isPedido) return;
+
+  const pagamentoState = getNovoDocumentoPagamentoState();
+  const labels = getPaymentLabels(pagamentoState.modo);
+  const subtotal = getNovoDocumentoSubtotal();
+  const plano = buildPagamentoPlano(subtotal, pagamentoState);
+  const saldo = Math.max(0, subtotal - Number(pagamentoState.modo === "avista" ? subtotal : pagamentoState.entrada || 0));
+  const parcelaBase = plano.parcelas.find((parcela) => parcela.status === "pendente") || plano.parcelas[0];
+
+  if (els.novoDocumentoPagamentoModo) els.novoDocumentoPagamentoModo.value = pagamentoState.modo;
+  if (els.novoDocumentoPagamentoForma) els.novoDocumentoPagamentoForma.value = pagamentoState.formaPagamentoId || "";
+  if (els.novoDocumentoPagamentoEntrada) els.novoDocumentoPagamentoEntrada.value = String(pagamentoState.entrada || 0);
+  if (els.novoDocumentoPagamentoParcelas) els.novoDocumentoPagamentoParcelas.value = String(pagamentoState.parcelas || 1);
+  if (els.novoDocumentoPagamentoPrimeiroVencimento) els.novoDocumentoPagamentoPrimeiroVencimento.value = pagamentoState.vencimentoPrimeiraParcela;
+  if (els.novoDocumentoPagamentoIntervalo) els.novoDocumentoPagamentoIntervalo.value = String(pagamentoState.intervaloDias || 30);
+
+  const parcelasLabelNode = document.querySelector("[data-pagamento-parcelas-label]");
+  const helpTextNode = document.querySelector("[data-pagamento-help]");
+  if (parcelasLabelNode) parcelasLabelNode.textContent = labels.parcelasLabel;
+  if (helpTextNode) helpTextNode.textContent = labels.helpText;
+
+  if (els.novoDocumentoPagamentoEntrada) {
+    els.novoDocumentoPagamentoEntrada.closest("label")?.classList.toggle("hidden", pagamentoState.modo !== "entrada_parcelas");
+  }
+
+  if (els.novoDocumentoPagamentoResumo) {
+    els.novoDocumentoPagamentoResumo.textContent =
+      `Saldo ${moeda.format(saldo)} • ${plano.parcelas.length} registro${plano.parcelas.length === 1 ? "" : "s"}` +
+      (parcelaBase ? ` • ${moeda.format(Number(parcelaBase.valor || 0) / 100)}` : "");
+  }
+
+  return plano;
+}
+
+async function loadFormasPagamento() {
+  const { data, error } = await supabaseClient
+    .from("formas_pagamento")
+    .select("id, nome, tipo, ativo")
+    .eq("empresa_id", state.empresaId)
+    .eq("ativo", true)
+    .order("nome");
+
+  if (error) throw error;
+  state.formasPagamento = data || [];
+}
+
+function centsToDbValue(cents) {
+  return Number((Number(cents || 0) / 100).toFixed(2));
+}
+
+function getFormaPagamentoNome(formaPagamentoId) {
+  if (!formaPagamentoId) return null;
+  const forma = state.formasPagamento.find((item) => String(item.id) === String(formaPagamentoId));
+  return forma?.nome || null;
+}
+
+async function createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, total) {
+  if (Number(total || 0) <= 0) return;
+
+  const plano = buildPagamentoPlano(total, pagamentoState);
+  const existenteResponse = await supabaseClient
+    .from("contas_receber")
+    .select("id")
+    .eq("empresa_id", state.empresaId)
+    .eq("documento_id", documentoId)
+    .limit(1);
+
+  if (existenteResponse.error) throw existenteResponse.error;
+  if (existenteResponse.data?.length) return;
+
+  const { data: contaCriada, error: contaError } = await supabaseClient
+    .from("contas_receber")
+    .insert({
+      empresa_id: state.empresaId,
+      documento_id: documentoId,
+      cliente_id: clienteId,
+      origem: "venda",
+      numero_titulo: `DOC-${documentoId}`,
+      emissao: new Date().toISOString(),
+      valor_original: centsToDbValue(plano.valorOriginal),
+      valor_aberto: centsToDbValue(plano.valorAberto),
+      status: plano.statusConta,
+      observacoes: getFormaPagamentoNome(plano.formaPagamentoId) || null
+    })
+    .select("id")
+    .single();
+
+  if (contaError) throw contaError;
+
+  const parcelasPayload = plano.parcelas.map((parcela) => ({
+    empresa_id: state.empresaId,
+    conta_receber_id: contaCriada.id,
+    numero_parcela: parcela.numero,
+    vencimento: parcela.vencimento.toISOString(),
+    valor_parcela: centsToDbValue(parcela.valor),
+    valor_recebido: centsToDbValue(parcela.valorRecebido || 0),
+    status: parcela.status,
+    forma_pagamento_id: plano.formaPagamentoId,
+    observacoes: parcela.status === "recebido" ? "Recebido na criacao do pedido" : null
+  }));
+
+  const { data: parcelasCriadas, error: parcelasError } = await supabaseClient
+    .from("contas_receber_parcelas")
+    .insert(parcelasPayload)
+    .select("id, numero_parcela");
+
+  if (parcelasError) throw parcelasError;
+
+  const recebimentosPayload = plano.recebimentos
+    .map((recebimento) => {
+      const parcela = parcelasCriadas?.find((item) => Number(item.numero_parcela) === Number(recebimento.numeroParcela));
+      if (!parcela) return null;
+      return {
+        empresa_id: state.empresaId,
+        parcela_id: parcela.id,
+        data_recebimento: recebimento.dataRecebimento.toISOString(),
+        valor: centsToDbValue(recebimento.valor),
+        forma_pagamento_id: recebimento.formaPagamentoId,
+        observacoes: "Lancado automaticamente pelo pedido"
+      };
+    })
+    .filter(Boolean);
+
+  if (recebimentosPayload.length) {
+    const { error: recebimentoError } = await supabaseClient.from("recebimentos").insert(recebimentosPayload);
+    if (recebimentoError) throw recebimentoError;
+  }
 }
 
 function renderNovoDocumentoClienteSelect() {
@@ -496,6 +811,18 @@ function renderNovoDocumentoStatusSelect() {
   els.novoDocumentoStatusSelect.value = state.novoDocumentoModal.status;
 }
 
+function renderNovoDocumentoFormaPagamentoSelect() {
+  if (!els.novoDocumentoPagamentoForma) return;
+  const selectedId = String(getNovoDocumentoPagamentoState().formaPagamentoId || "");
+  const options = ['<option value="">Selecione a forma</option>'];
+  for (const forma of state.formasPagamento) {
+    const selected = String(forma.id) === selectedId ? " selected" : "";
+    options.push(`<option value="${forma.id}"${selected}>${escapeHtml(forma.nome)}</option>`);
+  }
+  els.novoDocumentoPagamentoForma.innerHTML = options.join("");
+  els.novoDocumentoPagamentoForma.value = selectedId;
+}
+
 function renderNovoDocumentoItemRow(item) {
   const produto = state.produtos.find((produtoItem) => String(produtoItem.id) === String(item.produtoId));
   const rowTotal = getNovoDocumentoItemTotal(item);
@@ -541,6 +868,10 @@ function updateNovoDocumentoResumo() {
     const config = getDocumentoModalConfig(state.novoDocumentoModal.tipo);
     els.novoDocumentoSubmitBtn.textContent = config.submitLabel;
   }
+
+  if (state.novoDocumentoModal.tipo === "pedido") {
+    renderNovoDocumentoPagamentoSection();
+  }
 }
 
 function renderNovoDocumentoItensGrid() {
@@ -582,7 +913,9 @@ function renderNovoDocumentoModal() {
 
   renderNovoDocumentoClienteSelect();
   renderNovoDocumentoStatusSelect();
+  renderNovoDocumentoFormaPagamentoSelect();
   renderNovoDocumentoItensGrid();
+  renderNovoDocumentoPagamentoSection();
 
   for (const button of Array.from(document.querySelectorAll("[data-documento-tipo]"))) {
     button.classList.toggle("active", button.getAttribute("data-documento-tipo") === state.novoDocumentoModal.tipo);
@@ -661,6 +994,10 @@ async function loadDocumentoForEdit(tipo, documentoId) {
     clienteId: documento.cliente_id ? String(documento.cliente_id) : "",
     status: documento.status || "aberto",
     observacoes: documento.observacoes || "",
+    pagamento: {
+      ...createPagamentoDraft(),
+      ...(documento.raw_payload?.pagamento || {})
+    },
     itens: (itensData || []).length
       ? (itensData || []).map(normalizeDocumentoItem)
       : [createDocumentoDraftItem()]
@@ -800,6 +1137,7 @@ async function saveNovoDocumento(event) {
   const status = String(formData.get("status") || draft.status || "aberto");
   const observacoes = String(formData.get("observacoes") || "").trim();
   const itens = getDocumentoItensPayload();
+  const pagamentoState = getNovoDocumentoPagamentoState();
 
   if (!itens.length) {
     throw new Error("Adicione ao menos um item antes de salvar.");
@@ -818,7 +1156,8 @@ async function saveNovoDocumento(event) {
     observacoes: observacoes || null,
     raw_payload: {
       source: "novo-documento-modal",
-      itens: itens.length
+      itens: itens.length,
+      pagamento: pagamentoState
     },
     data_emissao: new Date().toISOString()
   };
@@ -871,6 +1210,16 @@ async function saveNovoDocumento(event) {
 
     const { error: itensError } = await supabaseClient.from("documento_venda_itens").insert(itensPayload);
     if (itensError) throw itensError;
+
+    if (!isEdit) {
+      try {
+        await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal);
+      } catch (financeError) {
+        await supabaseClient.from("documento_venda_itens").delete().eq("empresa_id", state.empresaId).eq("documento_id", documentoId);
+        await supabaseClient.from("documentos_venda").delete().eq("empresa_id", state.empresaId).eq("id", documentoId);
+        throw financeError;
+      }
+    }
   } else if (draft.tipo === "pedido") {
     const { error } = await supabaseClient.from("pedidos").insert({
       empresa_id: state.empresaId,
@@ -1779,6 +2128,7 @@ async function refreshAll() {
       loadPedidos(),
       loadOrcamentos(),
       loadDespesas(),
+      loadFormasPagamento(),
       loadOwnerUsers()
     ];
 
@@ -1798,6 +2148,10 @@ async function refreshAll() {
     renderAdminEmpresasSelect();
     renderAdminVinculosTable();
     renderMetrics();
+    if (els.novoDocumentoModal && !els.novoDocumentoModal.classList.contains("hidden")) {
+      renderNovoDocumentoFormaPagamentoSelect();
+      renderNovoDocumentoPagamentoSection();
+    }
   } catch (error) {
     console.error(error);
     showToast(`Erro ao carregar dados: ${error.message}`, "error");
@@ -2369,6 +2723,42 @@ function attachEvents() {
   if (els.novoDocumentoStatusSelect) {
     els.novoDocumentoStatusSelect.addEventListener("change", () => {
       state.novoDocumentoModal.status = els.novoDocumentoStatusSelect.value || "aberto";
+    });
+  }
+
+  if (els.novoDocumentoPagamentoModo) {
+    els.novoDocumentoPagamentoModo.addEventListener("change", () => {
+      setNovoDocumentoPagamentoField("modo", els.novoDocumentoPagamentoModo.value || "avista");
+    });
+  }
+
+  if (els.novoDocumentoPagamentoForma) {
+    els.novoDocumentoPagamentoForma.addEventListener("change", () => {
+      setNovoDocumentoPagamentoField("formaPagamentoId", els.novoDocumentoPagamentoForma.value || "");
+    });
+  }
+
+  if (els.novoDocumentoPagamentoEntrada) {
+    els.novoDocumentoPagamentoEntrada.addEventListener("input", () => {
+      setNovoDocumentoPagamentoField("entrada", Number(els.novoDocumentoPagamentoEntrada.value || 0));
+    });
+  }
+
+  if (els.novoDocumentoPagamentoParcelas) {
+    els.novoDocumentoPagamentoParcelas.addEventListener("input", () => {
+      setNovoDocumentoPagamentoField("parcelas", Number(els.novoDocumentoPagamentoParcelas.value || 1));
+    });
+  }
+
+  if (els.novoDocumentoPagamentoPrimeiroVencimento) {
+    els.novoDocumentoPagamentoPrimeiroVencimento.addEventListener("change", () => {
+      setNovoDocumentoPagamentoField("vencimentoPrimeiraParcela", els.novoDocumentoPagamentoPrimeiroVencimento.value || "");
+    });
+  }
+
+  if (els.novoDocumentoPagamentoIntervalo) {
+    els.novoDocumentoPagamentoIntervalo.addEventListener("input", () => {
+      setNovoDocumentoPagamentoField("intervaloDias", Number(els.novoDocumentoPagamentoIntervalo.value || 30));
     });
   }
 

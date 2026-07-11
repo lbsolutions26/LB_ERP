@@ -455,6 +455,51 @@
             <div id="novoDocumentoItemsGrid" class="documento-items-grid"></div>
           </section>
 
+          <section id="novoDocumentoPagamentoSection" class="documento-payment-panel">
+            <div class="documento-items-panel-head">
+              <h4>Pagamento</h4>
+              <span class="documento-items-hint" data-pagamento-help>Pagamento imediato, com recebimento na hora.</span>
+            </div>
+
+            <div class="documento-payment-grid">
+              <label>
+                Modo de pagamento
+                <select id="novoDocumentoPagamentoModo">
+                  <option value="avista">A vista</option>
+                  <option value="parcelado">Parcelado</option>
+                  <option value="entrada_parcelas">Entrada + parcelas</option>
+                </select>
+              </label>
+
+              <label>
+                Forma de pagamento
+                <select id="novoDocumentoPagamentoForma"></select>
+              </label>
+
+              <label>
+                <span data-pagamento-parcelas-label>Parcelas</span>
+                <input id="novoDocumentoPagamentoParcelas" type="number" min="1" step="1" value="1" />
+              </label>
+
+              <label>
+                Primeiro vencimento
+                <input id="novoDocumentoPagamentoPrimeiroVencimento" type="date" />
+              </label>
+
+              <label>
+                Intervalo entre parcelas (dias)
+                <input id="novoDocumentoPagamentoIntervalo" type="number" min="1" step="1" value="30" />
+              </label>
+
+              <label id="novoDocumentoPagamentoEntradaWrap">
+                Entrada
+                <input id="novoDocumentoPagamentoEntrada" type="number" min="0" step="0.01" value="0" />
+              </label>
+            </div>
+
+            <div class="documento-payment-summary" id="novoDocumentoPagamentoResumo"></div>
+          </section>
+
           <div class="documento-modal-footer">
             <div>
               <span class="summary-label">Total do documento</span>
