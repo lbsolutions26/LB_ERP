@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "schema:pull": "node scripts/pull-supabase-schema.mjs"
+    "schema:pull": "node scripts/pull-supabase-schema.mjs",
+    "db:reset-business": "node scripts/reset-business-data.mjs",
+    "legacy:analyze": "node scripts/analyze-legacy-sheets.mjs",
+    "legacy:import": "node scripts/import-legacy-to-supabase.mjs"
   },
   "dependencies": {
+    "csv-parse": "^5.5.6",
     "dotenv": "^16.4.5",
     "pg": "^8.12.0"
   }

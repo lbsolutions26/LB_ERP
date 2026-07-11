@@ -1,0 +1,24 @@
+{
+  "sheets": [
+    {
+      "name": "clientes",
+      "url": "https://docs.google.com/spreadsheets/d/e/SEU_LINK/pub?output=csv"
+    },
+    {
+      "name": "produtos",
+      "url": "https://docs.google.com/spreadsheets/d/e/SEU_LINK/pub?gid=0&single=true&output=csv"
+    },
+    {
+      "name": "pedidos",
+      "url": "https://docs.google.com/spreadsheets/d/e/SEU_LINK/pub?gid=123456&single=true&output=csv"
+    },
+    {
+      "name": "pedido_itens",
+      "url": "https://docs.google.com/spreadsheets/d/e/SEU_LINK/pub?gid=7891011&single=true&output=csv"
+    },
+    {
+      "name": "pagamentos",
+      "url": "https://docs.google.com/spreadsheets/d/e/SEU_LINK/pub?gid=12131415&single=true&output=csv"
+    }
+  ]
+}
