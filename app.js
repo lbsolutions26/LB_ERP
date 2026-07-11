@@ -70,6 +70,7 @@ const state = {
   },
   pedidos: [],
   contasReceber: [],
+  recebimentos: [],
   recebimentoModal: {
     contaId: null,
     conta: null,
@@ -187,6 +188,8 @@ const els = {
   pedidosCount: document.getElementById("pedidosCount"),
   despesasCount: document.getElementById("despesasCount"),
   faturamentoValue: document.getElementById("faturamentoValue"),
+  entradasCaixaResumo: document.getElementById("entradasCaixaResumo"),
+  entradasCaixaGrid: document.getElementById("entradasCaixaGrid"),
   estoqueTotalCount: document.getElementById("estoqueTotalCount"),
   estoqueComSaldoCount: document.getElementById("estoqueComSaldoCount"),
   estoquePontoPedidoCount: document.getElementById("estoquePontoPedidoCount"),
@@ -801,6 +804,24 @@ async function loadContasReceber() {
       statusNormalizado: normalizeContaStatus(item.status, item.valor_aberto, isVencida)
     };
   });
+}
+
+async function loadRecebimentos() {
+  const { data, error } = await supabaseClient
+    .from("recebimentos")
+    .select("id, data_recebimento, valor")
+    .eq("empresa_id", state.empresaId)
+    .order("data_recebimento", { ascending: false });
+
+  if (error) {
+    if (isMissingRelationError(error)) {
+      state.recebimentos = [];
+      return;
+    }
+    throw error;
+  }
+
+  state.recebimentos = data || [];
 }
 
 async function cleanupOrphanDocumentoFinanceiro() {
@@ -2722,10 +2743,63 @@ function renderMetrics() {
     .filter((orcamento) => orcamento.status === "aberto")
     .reduce((sum, orcamento) => sum + Number(orcamento.valor_total || 0), 0);
 
+  const monthlyCashEntries = getMonthlyCashEntries();
+  const currentMonthKey = formatMonthKey(new Date());
+  const currentMonthEntry = monthlyCashEntries.find((item) => item.monthKey === currentMonthKey)?.total || 0;
+
   els.estoqueTotalCount.textContent = `${estoqueTotal} itens`;
   els.estoqueComSaldoCount.textContent = `${estoqueComSaldo} itens`;
   els.estoquePontoPedidoCount.textContent = `${estoquePontoPedido} itens`;
   els.orcamentoAbertoValue.textContent = moeda.format(orcamentoAberto);
+
+  if (els.entradasCaixaResumo) {
+    els.entradasCaixaResumo.textContent = moeda.format(currentMonthEntry);
+  }
+
+  if (els.entradasCaixaGrid) {
+    const entriesHtml = monthlyCashEntries
+      .map((item) => {
+        return `
+          <article class="cash-month-card">
+            <span>${escapeHtml(item.label)}</span>
+            <strong>${moeda.format(item.total)}</strong>
+          </article>
+        `;
+      })
+      .join("");
+    els.entradasCaixaGrid.innerHTML = entriesHtml || '<div class="documento-empty-state">Sem recebimentos registrados.</div>';
+  }
+}
+
+function formatMonthKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function getMonthlyCashEntries() {
+  const monthMap = new Map();
+  const now = new Date();
+
+  for (let offset = 11; offset >= 0; offset -= 1) {
+    const reference = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    monthMap.set(formatMonthKey(reference), {
+      monthKey: formatMonthKey(reference),
+      label: reference.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
+      total: 0
+    });
+  }
+
+  for (const recebimento of state.recebimentos || []) {
+    const dataRecebimento = recebimento.data_recebimento ? new Date(recebimento.data_recebimento) : null;
+    if (!dataRecebimento || Number.isNaN(dataRecebimento.getTime())) continue;
+    const monthKey = formatMonthKey(dataRecebimento);
+    if (!monthMap.has(monthKey)) continue;
+    const entry = monthMap.get(monthKey);
+    entry.total += Number(recebimento.valor || 0);
+  }
+
+  return Array.from(monthMap.values());
 }
 
 async function refreshAll() {
@@ -2741,6 +2815,7 @@ async function refreshAll() {
       loadOrcamentos(),
       loadDespesas(),
       loadFormasPagamento(),
+      loadRecebimentos(),
       loadContasReceber(),
       loadOwnerUsers()
     ];
