@@ -27,6 +27,17 @@ if (-not $newUrl) {
   throw "SUPABASE_DB_URL nao informada."
 }
 
+$newUrl = $newUrl.Trim()
+if ($newUrl.StartsWith("SUPABASE_DB_URL=")) {
+  $newUrl = $newUrl.Substring("SUPABASE_DB_URL=".Length).Trim()
+}
+if (($newUrl.StartsWith('"') -and $newUrl.EndsWith('"')) -or ($newUrl.StartsWith("'") -and $newUrl.EndsWith("'"))) {
+  $newUrl = $newUrl.Substring(1, $newUrl.Length - 2).Trim()
+}
+if (-not $newUrl) {
+  throw "SUPABASE_DB_URL vazia apos normalizacao."
+}
+
 $lines = @()
 if (Test-Path $envPath) {
   $lines = Get-Content -Path $envPath
