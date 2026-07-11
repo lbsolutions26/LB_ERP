@@ -574,6 +574,7 @@ function createDocumentoDraft(tipo = "pedido") {
     observacoes: "",
     pagamento: createPagamentoDraft(),
     parcelasEditadas: null,
+    parcelasOriginaisSnapshot: null,
     itens: [createDocumentoDraftItem()]
   };
 }
@@ -901,7 +902,7 @@ function renderNovoDocumentoParcelasEditor() {
   }
 
   const aviso = isEditPedido
-    ? '<div class="documento-payment-parcelas-warning">Ao salvar, as parcelas e recebimentos anteriores deste pedido serao substituidos pelos novos titulos.</div>'
+    ? '<div class="documento-payment-parcelas-warning">Se voce alterar as parcelas abaixo, ao salvar as parcelas e recebimentos anteriores deste pedido serao SUBSTITUIDOS pelos novos titulos.</div>'
     : "";
 
   els.novoDocumentoParcelasList.innerHTML = aviso + parcelas
@@ -1004,7 +1005,7 @@ async function loadContasReceber() {
   if (contaIds.length) {
     const { data: parcelasData, error: parcelasError } = await supabaseClient
       .from("contas_receber_parcelas")
-      .select("conta_receber_id, vencimento, valor_parcela, valor_recebido")
+      .select("id, conta_receber_id, numero_parcela, vencimento, valor_parcela, valor_recebido, status, forma_pagamento_id")
       .eq("empresa_id", state.empresaId)
       .in("conta_receber_id", contaIds)
       .order("vencimento", { ascending: true });
@@ -1025,30 +1026,85 @@ async function loadContasReceber() {
     }
   }
 
-  state.contasReceber = (data || []).map((item) => {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const rows = [];
+  for (const item of data || []) {
     const parcelas = parcelasByConta.get(Number(item.id)) || [];
-    const parcelasPendentes = parcelas.filter(
-      (parcela) => Number(parcela.valor_parcela || 0) - Number(parcela.valor_recebido || 0) > 0.00001
-    );
-    const baseVencimento = (parcelasPendentes[0] || parcelas[0])?.vencimento || null;
     const emissaoDate = item.emissao ? new Date(item.emissao) : null;
-    const vencimentoDate = baseVencimento ? new Date(baseVencimento) : null;
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const vencimentoComparavel = vencimentoDate ? new Date(vencimentoDate.getTime()) : null;
-    if (vencimentoComparavel) {
-      vencimentoComparavel.setHours(0, 0, 0, 0);
+    const baseTitulo = item.numero_titulo || `DOC-${item.documento_id || item.id}`;
+
+    if (!parcelas.length) {
+      // Sem parcelas registradas: mostra a conta como uma unica linha.
+      const vencimentoDate = null;
+      const statusNormalizado = normalizeContaStatus(item.status, item.valor_aberto, false);
+      rows.push({
+        id: `conta-${item.id}`,
+        contaId: Number(item.id),
+        parcelaId: null,
+        documento_id: item.documento_id,
+        cliente_id: item.cliente_id,
+        cliente: item.cliente,
+        numero_titulo: baseTitulo,
+        emissao: item.emissao,
+        emissaoDate,
+        vencimento: null,
+        vencimentoDate,
+        valor_original: Number(item.valor_original || 0),
+        valor_aberto: Number(item.valor_aberto || 0),
+        statusNormalizado
+      });
+      continue;
     }
-    const statusOriginal = String(item.status || "").toLowerCase();
-    const isLiquidada = statusOriginal === "recebido" || statusOriginal === "quitado" || Number(item.valor_aberto || 0) <= 0;
-    const isVencida = Boolean(vencimentoComparavel && vencimentoComparavel < hoje && !isLiquidada);
-    return {
-      ...item,
-      emissaoDate,
-      vencimentoDate,
-      statusNormalizado: normalizeContaStatus(item.status, item.valor_aberto, isVencida)
-    };
-  });
+
+    const totalParcelas = parcelas.length;
+    for (const parcela of parcelas) {
+      const valorParcela = Number(parcela.valor_parcela || 0);
+      const valorRecebido = Number(parcela.valor_recebido || 0);
+      const valorAberto = Math.max(0, Number((valorParcela - valorRecebido).toFixed(2)));
+      const vencimentoDate = parcela.vencimento ? new Date(parcela.vencimento) : null;
+      const vencComp = vencimentoDate ? new Date(vencimentoDate.getTime()) : null;
+      if (vencComp) vencComp.setHours(0, 0, 0, 0);
+
+      const statusRaw = String(parcela.status || "").toLowerCase();
+      let parcelaStatus;
+      if (statusRaw === "recebido" || statusRaw === "quitado" || valorAberto <= 0.005) {
+        parcelaStatus = "recebido";
+      } else if (statusRaw === "cancelado") {
+        parcelaStatus = "cancelado";
+      } else if (valorRecebido > 0.005) {
+        parcelaStatus = "parcial";
+      } else if (vencComp && vencComp < hoje) {
+        parcelaStatus = "vencido";
+      } else {
+        parcelaStatus = "aberto";
+      }
+
+      const parcelaLabel = totalParcelas > 1
+        ? `${baseTitulo} • ${parcela.numero_parcela || 1}/${totalParcelas}`
+        : baseTitulo;
+
+      rows.push({
+        id: `parcela-${parcela.id}`,
+        contaId: Number(item.id),
+        parcelaId: Number(parcela.id),
+        documento_id: item.documento_id,
+        cliente_id: item.cliente_id,
+        cliente: item.cliente,
+        numero_titulo: parcelaLabel,
+        emissao: item.emissao,
+        emissaoDate,
+        vencimento: parcela.vencimento,
+        vencimentoDate,
+        valor_original: valorParcela,
+        valor_aberto: valorAberto,
+        statusNormalizado: parcelaStatus
+      });
+    }
+  }
+
+  state.contasReceber = rows;
 }
 
 async function loadRecebimentos() {
@@ -1253,6 +1309,10 @@ function renderRecebimentoModal() {
   }
 
   const pendingParcelas = getPendingParcelas(parcelas);
+  const targetParcelaId = state.recebimentoModal.parcelaIdTarget;
+  const targetParcela = targetParcelaId
+    ? (parcelas || []).find((item) => Number(item.id) === Number(targetParcelaId))
+    : null;
   if (els.recebimentoParcelaSelect) {
     const options = [
       '<option value="">Abater automaticamente (ordem de vencimento)</option>',
@@ -1265,7 +1325,9 @@ function renderRecebimentoModal() {
     els.recebimentoParcelaSelect.innerHTML = options.join("");
   }
 
-  const defaultParcela = pendingParcelas[0] || null;
+  const defaultParcela = (targetParcela && getParcelaSaldo(targetParcela) > 0.005)
+    ? targetParcela
+    : (pendingParcelas[0] || null);
   if (els.recebimentoParcelaSelect) {
     els.recebimentoParcelaSelect.value = defaultParcela ? String(defaultParcela.id) : "";
   }
@@ -1313,13 +1375,14 @@ function renderRecebimentoModal() {
   }
 }
 
-async function openRecebimentoModalByConta(contaId) {
+async function openRecebimentoModalByConta(contaId, parcelaIdTarget = null) {
   const detalhe = await loadContaFinanceiroDetalhe(contaId);
   state.recebimentoModal = {
     contaId,
     conta: detalhe.conta,
     parcelas: detalhe.parcelas,
-    recebimentos: detalhe.recebimentos
+    recebimentos: detalhe.recebimentos,
+    parcelaIdTarget: parcelaIdTarget ? Number(parcelaIdTarget) : null
   };
   renderRecebimentoModal();
   openRecebimentoModal();
@@ -1955,6 +2018,51 @@ async function loadDocumentoForEdit(tipo, documentoId) {
 
   if (itensError) throw itensError;
 
+  // Carrega parcelas ja salvas para esse pedido (se existirem) para pre-preencher o editor.
+  let parcelasEditadas = null;
+  if (tipo === "pedido") {
+    try {
+      const { data: contasVinculadas, error: contasErr } = await supabaseClient
+        .from("contas_receber")
+        .select("id")
+        .eq("empresa_id", state.empresaId)
+        .eq("documento_id", documentoId);
+
+      if (contasErr && !isMissingRelationError(contasErr)) throw contasErr;
+
+      const contaIds = (contasVinculadas || []).map((item) => Number(item.id)).filter(Number.isFinite);
+      if (contaIds.length) {
+        const { data: parcelasSalvas, error: parcelasErr } = await supabaseClient
+          .from("contas_receber_parcelas")
+          .select("numero_parcela, vencimento, valor_parcela, valor_recebido, status, forma_pagamento_id")
+          .eq("empresa_id", state.empresaId)
+          .in("conta_receber_id", contaIds)
+          .order("vencimento", { ascending: true });
+
+        if (parcelasErr && !isMissingRelationError(parcelasErr)) throw parcelasErr;
+
+        const parcelasArr = parcelasSalvas || [];
+        if (parcelasArr.length) {
+          parcelasEditadas = parcelasArr.map((parcela, idx) => {
+            const valor = Number(parcela.valor_parcela || 0);
+            const recebido = Number(parcela.valor_recebido || 0);
+            const statusRaw = String(parcela.status || "").toLowerCase();
+            const isRecebido = statusRaw === "recebido" || statusRaw === "quitado" || (valor > 0 && recebido + 0.005 >= valor);
+            return {
+              numero: Number(parcela.numero_parcela) || idx + 1,
+              vencimento: parcela.vencimento ? formatDateInput(new Date(parcela.vencimento)) : "",
+              valor: Number(valor.toFixed(2)),
+              formaPagamentoId: parcela.forma_pagamento_id ? String(parcela.forma_pagamento_id) : "",
+              status: isRecebido ? "recebido" : "pendente"
+            };
+          });
+        }
+      }
+    } catch (loadErr) {
+      console.warn("Falha ao carregar parcelas salvas do pedido em edicao", loadErr);
+    }
+  }
+
   state.novoDocumentoModal = {
     tipo,
     documentoId,
@@ -1965,7 +2073,8 @@ async function loadDocumentoForEdit(tipo, documentoId) {
       ...createPagamentoDraft(),
       ...(documento.raw_payload?.pagamento || {})
     },
-    parcelasEditadas: null,
+    parcelasEditadas,
+    parcelasOriginaisSnapshot: parcelasEditadas ? JSON.stringify(parcelasEditadas) : null,
     itens: (itensData || []).length
       ? (itensData || []).map(normalizeDocumentoItem)
       : [createDocumentoDraftItem()]
@@ -2184,15 +2293,21 @@ async function saveNovoDocumento(event) {
       throw financeError;
     }
   } else if (parcelasEditadas) {
-    const confirmar = window.confirm(
-      "Voce editou as parcelas deste pedido.\n\nAo salvar, as parcelas e recebimentos anteriores deste pedido serao SUBSTITUIDOS pelos novos titulos. Deseja continuar?"
-    );
-    if (!confirmar) {
-      throw new Error("Salvamento cancelado pelo usuario.");
+    const snapshotOriginal = draft.parcelasOriginaisSnapshot || null;
+    const snapshotAtual = JSON.stringify(parcelasEditadas);
+    if (snapshotOriginal && snapshotOriginal === snapshotAtual) {
+      // Parcelas nao foram alteradas nesta edicao, mantem o financeiro atual.
+    } else {
+      const confirmar = window.confirm(
+        "Voce editou as parcelas deste pedido.\n\nAo salvar, as parcelas e recebimentos anteriores deste pedido serao SUBSTITUIDOS pelos novos titulos. Deseja continuar?"
+      );
+      if (!confirmar) {
+        throw new Error("Salvamento cancelado pelo usuario.");
+      }
+      // Apaga o financeiro anterior e recria com os novos titulos.
+      await deleteDocumentoFinanceiro(documentoId);
+      await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
     }
-    // Apaga o financeiro anterior e recria com os novos titulos.
-    await deleteDocumentoFinanceiro(documentoId);
-    await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
   }
 
   closeNovoDocumentoModal();
@@ -3952,7 +4067,7 @@ function renderContasReceberTable() {
           <td>${moeda.format(conta.valor_original || 0)}</td>
           <td>${moeda.format(conta.valor_aberto || 0)}</td>
           <td>
-            <button class="action-finance" data-open-recebimento-conta="${conta.id}">Registrar recebimento</button>
+            <button class="action-finance" data-open-recebimento-parcela="${conta.parcelaId || ""}" data-open-recebimento-conta="${conta.contaId || conta.id || ""}">Registrar recebimento</button>
           </td>
         </tr>
       `;
@@ -5391,6 +5506,7 @@ function attachEvents() {
     const orcamentoItensId = target.getAttribute("data-view-orcamento-itens");
     const openRecebimentoPedidoId = target.getAttribute("data-open-recebimento-pedido");
     const openRecebimentoContaId = target.getAttribute("data-open-recebimento-conta");
+    const openRecebimentoParcelaId = target.getAttribute("data-open-recebimento-parcela");
     const despesaId = target.getAttribute("data-del-despesa");
 
     try {
@@ -5429,7 +5545,8 @@ function attachEvents() {
         return;
       }
       if (openRecebimentoContaId) {
-        await openRecebimentoModalByConta(Number(openRecebimentoContaId));
+        const parcelaTarget = openRecebimentoParcelaId ? Number(openRecebimentoParcelaId) : null;
+        await openRecebimentoModalByConta(Number(openRecebimentoContaId), parcelaTarget);
         return;
       }
       if (clienteId) {
