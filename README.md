@@ -107,3 +107,11 @@ Fluxo recomendado:
 - Se quiser, no proximo passo eu separo em duas aplicacoes:
   - Admin SaaS (sua equipe) para criar empresas e vender login.
   - Portal Cliente (cada empresa) para operar o ERP.
+
+## Fluxo com agente (Copilot)
+
+- Sempre que eu pedir uma alteracao de codigo, o agente deve:
+  1. aplicar as mudancas;
+  2. fazer commit dos arquivos da tarefa;
+  3. fazer push para o GitHub sem eu precisar pedir novamente.
+- Se houver arquivos locais nao relacionados ja modificados, o commit deve incluir apenas os arquivos da tarefa atual.

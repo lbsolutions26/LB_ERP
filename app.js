@@ -2446,18 +2446,18 @@ async function loadProdutos() {
 }
 
 async function loadPedidos() {
-  const { data: docsData, error: docsError } = await supabaseClient
+  const docsResult = await fetchAllSupabaseRows(() => supabaseClient
     .from("documentos_venda")
     .select(
       "id, data_emissao, status, total, observacoes, raw_payload, cliente_legacy_id, cliente:clientes(id,nome)"
     )
     .eq("empresa_id", state.empresaId)
     .eq("tipo_documento", "pedido")
-    .order("data_emissao", { ascending: false });
+    .order("data_emissao", { ascending: false }));
 
-  if (!docsError) {
+  if (!docsResult.error) {
     state.pedidosSource = "documentos_venda";
-    state.pedidos = (docsData || []).map((item) => ({
+    state.pedidos = (docsResult.data || []).map((item) => ({
       id: item.id,
       data_pedido: item.data_emissao,
       status: item.status,
@@ -2471,22 +2471,42 @@ async function loadPedidos() {
     return;
   }
 
-  if (!isMissingRelationError(docsError)) {
-    throw docsError;
+  if (!isMissingRelationError(docsResult.error)) {
+    throw docsResult.error;
   }
 
-  const { data, error } = await supabaseClient
+  const legacyResult = await fetchAllSupabaseRows(() => supabaseClient
     .from("pedidos")
     .select(
       "id, data_pedido, status, descricao, valor_total, cliente:clientes(id,nome)"
     )
     .eq("empresa_id", state.empresaId)
-    .order("data_pedido", { ascending: false });
+    .order("data_pedido", { ascending: false }));
 
-  if (error) throw error;
+  if (legacyResult.error) throw legacyResult.error;
   state.pedidosSource = "pedidos";
-  state.pedidos = data || [];
+  state.pedidos = legacyResult.data || [];
   await loadPedidosProdutos();
+}
+
+async function fetchAllSupabaseRows(queryFactory, batchSize = 1000) {
+  const allRows = [];
+  let start = 0;
+
+  while (true) {
+    const end = start + batchSize - 1;
+    const { data, error } = await queryFactory().range(start, end);
+    if (error) return { data: null, error };
+
+    const rows = data || [];
+    allRows.push(...rows);
+
+    if (rows.length < batchSize) {
+      return { data: allRows, error: null };
+    }
+
+    start += batchSize;
+  }
 }
 
 async function loadPedidosProdutos() {
@@ -3739,6 +3759,12 @@ function renderMetrics() {
   els.clientesCount.textContent = String(state.clientes.length);
   els.pedidosCount.textContent = String(state.pedidos.length);
   els.despesasCount.textContent = String(state.despesas.length);
+
+  if (els.pedidosCount) {
+    els.pedidosCount.title = state.pedidos.length >= 1000
+      ? "Pedidos carregados por paginação para evitar truncamento em 1000 registros."
+      : "";
+  }
 
   const faturamento = state.pedidos
     .filter((pedido) => pedido.status === "fechado")
