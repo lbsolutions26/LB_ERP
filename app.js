@@ -2792,7 +2792,11 @@ async function loadDashboardSnapshot() {
     mes: row.mes,
     realized: Number(row.realized || 0),
     forecast: Number(row.forecast || 0),
-    faturamento: Number(row.faturamento || 0)
+    faturamento: Number(row.faturamento || 0),
+    pedidosCount: Number(row.pedidos_count || 0),
+    clientesNovos: Number(row.clientes_novos || 0),
+    despesasTotal: Number(row.despesas_total || 0),
+    despesasCount: Number(row.despesas_count || 0)
   }));
 }
 
@@ -4222,6 +4226,8 @@ function renderMetrics() {
   els.estoquePontoPedidoCount.textContent = `${estoquePontoPedido} itens`;
   els.orcamentoAbertoValue.textContent = moeda.format(orcamentoAberto);
 
+  renderDashboardMetricMonths();
+
   if (els.entradasCaixaResumo) {
     els.entradasCaixaResumo.textContent = moeda.format(currentMonthEntry);
   }
@@ -4296,6 +4302,89 @@ function formatMonthKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
+}
+
+function formatCompactNumber(value) {
+  const num = Number(value || 0);
+  if (Number.isInteger(num)) return String(num);
+  return num.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function formatShortMonthLabel(date) {
+  const raw = date.toLocaleDateString("pt-BR", { month: "short" });
+  return raw.replace(/\.$/, "");
+}
+
+function getRecentMonthlyMetrics() {
+  const rows = state.dashboardMonthlyCash || [];
+  if (!rows.length) return [];
+  const currentKey = formatMonthKey(new Date());
+  const byKey = new Map();
+  for (const row of rows) {
+    const reference = new Date(row.mes);
+    if (Number.isNaN(reference.getTime())) continue;
+    byKey.set(formatMonthKey(reference), { reference, row });
+  }
+  const entries = [];
+  const cursor = new Date(`${currentKey}-01T12:00:00`);
+  for (let i = 0; i < 4; i += 1) {
+    const key = formatMonthKey(cursor);
+    const match = byKey.get(key);
+    const reference = match?.reference || new Date(cursor.getTime());
+    const row = match?.row || null;
+    entries.push({
+      key,
+      reference,
+      label: formatShortMonthLabel(reference),
+      isCurrent: i === 0,
+      clientesNovos: Number(row?.clientesNovos || 0),
+      pedidosCount: Number(row?.pedidosCount || 0),
+      despesasCount: Number(row?.despesasCount || 0),
+      despesasTotal: Number(row?.despesasTotal || 0),
+      faturamento: Number(row?.faturamento || 0)
+    });
+    cursor.setMonth(cursor.getMonth() - 1);
+  }
+  return entries;
+}
+
+function renderDashboardMetricMonths() {
+  const nodes = document.querySelectorAll("[data-metric-months]");
+  if (!nodes.length) return;
+  const entries = getRecentMonthlyMetrics();
+  const noData = !entries.length;
+
+  const formatters = {
+    clientes: (entry) => formatCompactNumber(entry.clientesNovos),
+    pedidos: (entry) => formatCompactNumber(entry.pedidosCount),
+    despesas: (entry) => moeda.format(entry.despesasTotal || 0),
+    faturamento: (entry) => moeda.format(entry.faturamento || 0)
+  };
+
+  for (const node of nodes) {
+    const metric = node.getAttribute("data-metric-months");
+    const formatter = formatters[metric];
+    if (!formatter) {
+      node.innerHTML = "";
+      continue;
+    }
+    if (noData) {
+      node.innerHTML = "";
+      continue;
+    }
+    node.innerHTML = entries
+      .map((entry) => {
+        const value = formatter(entry);
+        const cls = entry.isCurrent ? "metric-month metric-month-current" : "metric-month";
+        return `
+          <div class="${cls}" title="${escapeHtml(entry.reference.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }))}">
+            <span class="metric-month-label">${escapeHtml(entry.label)}</span>
+            <span class="metric-month-value">${escapeHtml(value)}</span>
+          </div>
+        `;
+      })
+      .join("");
+  }
 }
 
 function getMonthlyCashEntries(mode = "recebimentos") {

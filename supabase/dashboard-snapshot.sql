@@ -48,10 +48,26 @@ as $$
   ),
   faturado as (
     select date_trunc('month', d.data_emissao)::date as mes,
-           sum(d.total)::numeric as total
+           sum(d.total)::numeric as total,
+           count(*)::int as pedidos_count
     from public.documentos_venda d
     where d.empresa_id = target_empresa_id
       and d.tipo_documento = 'pedido'
+    group by 1
+  ),
+  clientes_mes as (
+    select date_trunc('month', c.created_at)::date as mes,
+           count(*)::int as total
+    from public.clientes c
+    where c.empresa_id = target_empresa_id
+    group by 1
+  ),
+  despesas_mes as (
+    select date_trunc('month', d.data_despesa)::date as mes,
+           sum(d.valor)::numeric as total,
+           count(*)::int as despesas_count
+    from public.despesas d
+    where d.empresa_id = target_empresa_id
     group by 1
   ),
   monthly as (
@@ -59,11 +75,17 @@ as $$
       m.mes,
       coalesce(r.total, 0)::numeric as realized,
       coalesce(p.total, 0)::numeric as forecast,
-      coalesce(f.total, 0)::numeric as faturamento
+      coalesce(f.total, 0)::numeric as faturamento,
+      coalesce(f.pedidos_count, 0)::int as pedidos_count,
+      coalesce(cm.total, 0)::int as clientes_novos,
+      coalesce(dm.total, 0)::numeric as despesas_total,
+      coalesce(dm.despesas_count, 0)::int as despesas_count
     from months m
     left join recebidos r on r.mes = m.mes
     left join previstos p on p.mes = m.mes
     left join faturado  f on f.mes = m.mes
+    left join clientes_mes cm on cm.mes = m.mes
+    left join despesas_mes dm on dm.mes = m.mes
     order by m.mes
   ),
   counts as (
