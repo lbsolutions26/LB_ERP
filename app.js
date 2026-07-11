@@ -52,8 +52,20 @@ const state = {
   produtos: [],
   produtosSource: "produtos",
   pedidosSource: "pedidos",
+  pedidosView: "pedidos",
+  pedidosProdutos: [],
+    pedidosProdutosRaw: [],
+    pedidosProdutosSort: {
+      field: "total",
+      direction: "desc"
+    },
+    pedidosProdutosFilters: {
+      startDate: "",
+      endDate: ""
+    },
   orcamentosSource: "orcamentos",
   itensDocumento: [],
+    itensDocumentoModalMode: "itens",
   produtoSort: {
     field: "nome",
     direction: "asc"
@@ -156,6 +168,7 @@ const els = {
   itensDocumentoModal: document.getElementById("itensDocumentoModal"),
   closeItensDocumentoModalBtn: document.getElementById("closeItensDocumentoModalBtn"),
   itensDocumentoModalTitle: document.getElementById("itensDocumentoModalTitle"),
+    itensDocumentoTableHead: document.getElementById("itensDocumentoTableHead"),
   itensDocumentoTable: document.getElementById("itensDocumentoTable"),
   pedidoForm: document.getElementById("pedidoForm"),
   orcamentoForm: document.getElementById("orcamentoForm"),
@@ -179,6 +192,12 @@ const els = {
   filtroProdutoPonto: document.getElementById("filtroProdutoPonto"),
   filtroProdutoAtivo: document.getElementById("filtroProdutoAtivo"),
   pedidosTable: document.getElementById("pedidosTable"),
+  pedidosTableHead: document.getElementById("pedidosTableHead"),
+  pedidosSectionSubtitle: document.getElementById("pedidosSectionSubtitle"),
+    pedidosProdutosFilters: document.getElementById("pedidosProdutosFilters"),
+    pedidosProdutosStartDate: document.getElementById("pedidosProdutosStartDate"),
+    pedidosProdutosEndDate: document.getElementById("pedidosProdutosEndDate"),
+  pedidosViewButtons: Array.from(document.querySelectorAll("[data-pedidos-view]")),
   contasReceberTable: document.getElementById("contasReceberTable"),
   financeiroStatusFilter: document.getElementById("financeiroStatusFilter"),
   financeiroSearchInput: document.getElementById("financeiroSearchInput"),
@@ -1890,7 +1909,30 @@ function renderItensDocumentoTable() {
   if (!els.itensDocumentoTable) return;
 
   if (!state.itensDocumento.length) {
-    els.itensDocumentoTable.innerHTML = '<tr><td colspan="4">Sem itens para este documento.</td></tr>';
+    const colspan = state.itensDocumentoModalMode === "pedidos_produto" ? 7 : 4;
+    const message = state.itensDocumentoModalMode === "pedidos_produto"
+      ? "Nenhum pedido encontrado para este produto."
+      : "Sem itens para este documento.";
+    els.itensDocumentoTable.innerHTML = `<tr><td colspan="${colspan}">${message}</td></tr>`;
+    return;
+  }
+
+  if (state.itensDocumentoModalMode === "pedidos_produto") {
+    els.itensDocumentoTable.innerHTML = state.itensDocumento
+      .map(
+        (item) => `
+        <tr>
+          <td>${item.dataPedido ? new Date(item.dataPedido).toLocaleDateString("pt-BR") : "-"}</td>
+          <td>${escapeHtml(item.clienteNome || "-")}</td>
+          <td>${escapeHtml(item.status || "-")}</td>
+          <td>${escapeHtml(formatPedidoProdutoQuantidade(item.quantidade))}</td>
+          <td>${moeda.format(item.valorProduto || 0)}</td>
+          <td>${moeda.format(item.pedidoValorTotal || 0)}</td>
+          <td><button type="button" class="action-edit" data-open-pedido-produto-itens="${item.pedidoId}">Itens</button></td>
+        </tr>
+      `
+      )
+      .join("");
     return;
   }
 
@@ -1956,6 +1998,8 @@ function buildFallbackItemFromDocumento(documento) {
 }
 
 async function openDocumentoItens(tipoDocumento, documentoId) {
+  state.itensDocumentoModalMode = "itens";
+  renderItensDocumentoTableHead();
   let itens = [];
   let documentoTotal = null;
   let documentoData = null;
@@ -2086,6 +2130,7 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
     const titulo = tipoDocumento === "pedido" ? "Itens do Pedido" : "Itens do Orcamento";
     els.itensDocumentoModalTitle.textContent = `${titulo} #${documentoId}`;
   }
+  renderItensDocumentoTableHead();
   renderItensDocumentoTable();
   openItensDocumentoModal();
 }
@@ -2379,6 +2424,7 @@ async function loadPedidos() {
       cliente: item.cliente,
       cliente_legacy_id: item.cliente_legacy_id
     }));
+    await loadPedidosProdutos();
     return;
   }
 
@@ -2397,6 +2443,436 @@ async function loadPedidos() {
   if (error) throw error;
   state.pedidosSource = "pedidos";
   state.pedidos = data || [];
+  await loadPedidosProdutos();
+}
+
+async function loadPedidosProdutos() {
+  if (!state.pedidos.length) {
+    state.pedidosProdutosRaw = [];
+    state.pedidosProdutos = [];
+    return;
+  }
+
+  const pedidoMetaById = new Map(
+    state.pedidos.map((pedido) => [
+      Number(pedido.id),
+      {
+        id: Number(pedido.id),
+        dataPedido: pedido.data_pedido || pedido.data_emissao || null,
+        clienteNome: pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${pedido.cliente_legacy_id}` : "-"),
+        status: pedido.status || "-",
+        valorTotal: Number(pedido.valor_total || 0)
+      }
+    ])
+  );
+
+  if (state.pedidosSource === "documentos_venda") {
+    const pedidoIds = state.pedidos.map((pedido) => Number(pedido.id)).filter(Number.isFinite);
+    const { data, error } = await supabaseClient
+      .from("documento_venda_itens")
+      .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
+      .eq("empresa_id", state.empresaId)
+      .in("documento_id", pedidoIds);
+
+    if (error) throw error;
+    state.pedidosProdutosRaw = normalizePedidoProdutoRows(data || [], {
+      idField: "documento_id",
+      totalField: "valor_total",
+      metaById: pedidoMetaById
+    });
+    state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
+    return;
+  }
+
+  const pedidoIds = state.pedidos.map((pedido) => Number(pedido.id)).filter(Number.isFinite);
+  const { data, error } = await supabaseClient
+    .from("pedido_itens")
+    .select("pedido_id, produto_id, quantidade, valor_unitario, total, produto:produtos(nome)")
+    .eq("empresa_id", state.empresaId)
+    .in("pedido_id", pedidoIds);
+
+  if (error) throw error;
+  state.pedidosProdutosRaw = normalizePedidoProdutoRows(data || [], {
+    idField: "pedido_id",
+    totalField: "total",
+    metaById: pedidoMetaById
+  });
+  state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
+}
+
+function normalizePedidoProdutoRows(items, { idField, totalField, metaById }) {
+  return items
+    .map((item) => {
+      const pedidoId = Number(item[idField]);
+      const meta = metaById.get(pedidoId);
+      if (!meta) return null;
+
+      return {
+        pedidoId,
+        produto_id: item.produto_id == null ? null : String(item.produto_id),
+        nome: String(item.descricao_item || item.nome_produto || item.produto?.nome || "").trim(),
+        quantidade: Number(item.quantidade || 0),
+        valorUnitario: Number(item.valor_unitario || 0),
+        valorTotal: Number(item[totalField] ?? (Number(item.quantidade || 0) * Number(item.valor_unitario || 0))),
+        dataPedido: meta.dataPedido,
+        clienteNome: meta.clienteNome,
+        status: meta.status,
+        pedidoValorTotal: meta.valorTotal
+      };
+    })
+    .filter(Boolean);
+}
+
+function aggregatePedidoItemsByProduto(items) {
+  const grouped = new Map();
+
+  for (const item of items) {
+    const produtoId = item.produto_id == null ? "" : String(item.produto_id);
+    const descricaoBase = String(item.nome || "").trim();
+    const groupKey = produtoId ? `produto:${produtoId}` : `descricao:${descricaoBase.toLowerCase()}`;
+    const quantidade = Number(item.quantidade || 0);
+    const valorTotal = Number(item.valorTotal || 0);
+    const pedidoId = Number(item.pedidoId);
+    const dataPedido = item.dataPedido || null;
+
+    if (!grouped.has(groupKey)) {
+      grouped.set(groupKey, {
+        groupKey,
+        produto_id: produtoId || null,
+        nome: descricaoBase,
+        quantidade: 0,
+        total: 0,
+        pedidos: new Set(),
+        pedidosDetalhes: new Map(),
+        ultimaVenda: null
+      });
+    }
+
+    const aggregate = grouped.get(groupKey);
+    aggregate.quantidade += quantidade;
+    aggregate.total += valorTotal;
+    if (Number.isFinite(pedidoId)) {
+      aggregate.pedidos.add(pedidoId);
+      if (!aggregate.pedidosDetalhes.has(pedidoId)) {
+        aggregate.pedidosDetalhes.set(pedidoId, {
+          pedidoId,
+          dataPedido,
+          clienteNome: item.clienteNome || "-",
+          status: item.status || "-",
+          pedidoValorTotal: Number(item.pedidoValorTotal || 0),
+          quantidade: 0,
+          valorProduto: 0
+        });
+      }
+
+      const pedidoDetalhe = aggregate.pedidosDetalhes.get(pedidoId);
+      pedidoDetalhe.quantidade += quantidade;
+      pedidoDetalhe.valorProduto += valorTotal;
+    }
+
+    if (dataPedido) {
+      const currentDate = aggregate.ultimaVenda ? new Date(aggregate.ultimaVenda) : null;
+      const nextDate = new Date(dataPedido);
+      if (!currentDate || nextDate > currentDate) {
+        aggregate.ultimaVenda = dataPedido;
+      }
+    }
+  }
+
+  return Array.from(grouped.values())
+    .map((item) => ({
+      ...item,
+      pedidos: item.pedidos.size,
+      pedidosDetalhes: Array.from(item.pedidosDetalhes.values()).sort(sortPedidosDetalhesByDateDesc)
+    }));
+}
+
+function resolvePedidoProdutoNome(item) {
+  const nome = String(item?.nome || "").trim();
+  if (nome) return nome;
+
+  if (item?.produto_id) {
+    const produto = state.produtos.find((entry) => String(entry.id) === String(item.produto_id));
+    if (produto?.nome) {
+      return produto.nome;
+    }
+  }
+
+  return "Produto sem nome";
+}
+
+function getFilteredPedidoProdutoRows() {
+  const { startDate, endDate } = state.pedidosProdutosFilters;
+  const startTime = startDate ? new Date(`${startDate}T00:00:00`).getTime() : null;
+  const endTime = endDate ? new Date(`${endDate}T23:59:59`).getTime() : null;
+
+  return state.pedidosProdutosRaw.filter((item) => {
+    if (!startTime && !endTime) return true;
+    if (!item.dataPedido) return false;
+    const itemTime = new Date(item.dataPedido).getTime();
+    if (Number.isNaN(itemTime)) return false;
+    if (startTime && itemTime < startTime) return false;
+    if (endTime && itemTime > endTime) return false;
+    return true;
+  });
+}
+
+function getFilteredAndSortedPedidosProdutos() {
+  const grouped = aggregatePedidoItemsByProduto(getFilteredPedidoProdutoRows());
+  const { field, direction } = state.pedidosProdutosSort;
+  const factor = direction === "asc" ? 1 : -1;
+
+  grouped.sort((a, b) => {
+    if (field === "nome") {
+      return resolvePedidoProdutoNome(a).localeCompare(resolvePedidoProdutoNome(b), "pt-BR") * factor;
+    }
+    if (field === "ultimaVenda") {
+      const aTime = a.ultimaVenda ? new Date(a.ultimaVenda).getTime() : 0;
+      const bTime = b.ultimaVenda ? new Date(b.ultimaVenda).getTime() : 0;
+      return (aTime - bTime) * factor;
+    }
+
+    const aValue = Number(a[field] || 0);
+    const bValue = Number(b[field] || 0);
+    if (Math.abs(aValue - bValue) > 0.00001) {
+      return (aValue - bValue) * factor;
+    }
+
+    return resolvePedidoProdutoNome(a).localeCompare(resolvePedidoProdutoNome(b), "pt-BR") * factor;
+  });
+
+  return grouped;
+}
+
+function setPedidosProdutosSort(field) {
+  if (state.pedidosProdutosSort.field === field) {
+    state.pedidosProdutosSort.direction = state.pedidosProdutosSort.direction === "asc" ? "desc" : "asc";
+  } else {
+    state.pedidosProdutosSort.field = field;
+    state.pedidosProdutosSort.direction = field === "nome" ? "asc" : "desc";
+  }
+
+  renderPedidosSection();
+}
+
+function renderItensDocumentoTableHead() {
+  if (!els.itensDocumentoTableHead) return;
+
+  if (state.itensDocumentoModalMode === "pedidos_produto") {
+    els.itensDocumentoTableHead.innerHTML = `
+      <tr>
+        <th>Data</th>
+        <th>Cliente</th>
+        <th>Status</th>
+        <th>Qtd.</th>
+        <th>Total do produto</th>
+        <th>Total do pedido</th>
+        <th></th>
+      </tr>
+    `;
+    return;
+  }
+
+  els.itensDocumentoTableHead.innerHTML = `
+    <tr>
+      <th>Item</th>
+      <th>Qtd</th>
+      <th>Vlr Unit.</th>
+      <th>Total</th>
+    </tr>
+  `;
+}
+
+function updatePedidosProdutosFiltersVisibility() {
+  if (!els.pedidosProdutosFilters) return;
+  els.pedidosProdutosFilters.classList.toggle("hidden", state.pedidosView !== "produtos");
+}
+
+function updatePedidosProdutosSortHeaders() {
+  if (!els.pedidosTableHead || state.pedidosView !== "produtos") return;
+
+  const headers = Array.from(els.pedidosTableHead.querySelectorAll("th.sortable[data-pedidos-produto-sort]"));
+  for (const th of headers) {
+    const field = th.getAttribute("data-pedidos-produto-sort") || "";
+    const baseLabel = th.getAttribute("data-label") || th.textContent || "";
+
+    if (!th.getAttribute("data-label")) {
+      th.setAttribute("data-label", baseLabel.trim());
+    }
+
+    if (field === state.pedidosProdutosSort.field) {
+      const marker = state.pedidosProdutosSort.direction === "asc" ? " ▲" : " ▼";
+      th.textContent = `${th.getAttribute("data-label")}${marker}`;
+      th.classList.add("sorted");
+    } else {
+      th.textContent = th.getAttribute("data-label") || "";
+      th.classList.remove("sorted");
+    }
+  }
+}
+
+function normalizeDateForInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function updatePedidosProdutosFilterInputs() {
+  if (els.pedidosProdutosStartDate) {
+    const normalized = normalizeDateForInput(state.pedidosProdutosFilters.startDate);
+    if (els.pedidosProdutosStartDate.value !== normalized) {
+      els.pedidosProdutosStartDate.value = normalized;
+    }
+  }
+
+  if (els.pedidosProdutosEndDate) {
+    const normalized = normalizeDateForInput(state.pedidosProdutosFilters.endDate);
+    if (els.pedidosProdutosEndDate.value !== normalized) {
+      els.pedidosProdutosEndDate.value = normalized;
+    }
+  }
+}
+
+function maybeSwapPedidosProdutosDateRange() {
+  const { startDate, endDate } = state.pedidosProdutosFilters;
+  if (!startDate || !endDate) return;
+  if (new Date(`${startDate}T00:00:00`).getTime() <= new Date(`${endDate}T00:00:00`).getTime()) return;
+
+  state.pedidosProdutosFilters = {
+    startDate: endDate,
+    endDate: startDate
+  };
+}
+
+function updatePedidosProdutosFilter(field, value) {
+  state.pedidosProdutosFilters[field] = value || "";
+  renderPedidosSection();
+}
+
+function sortPedidosDetalhesByDateDesc(a, b) {
+  const aTime = a.dataPedido ? new Date(a.dataPedido).getTime() : 0;
+  const bTime = b.dataPedido ? new Date(b.dataPedido).getTime() : 0;
+  return bTime - aTime;
+}
+
+function formatPedidoProdutoQuantidade(value) {
+  const quantidade = Number(value || 0);
+  return Number.isInteger(quantidade)
+    ? String(quantidade)
+    : quantidade.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
+function getPedidosProdutoFilterSummary() {
+  const { startDate, endDate } = state.pedidosProdutosFilters;
+  if (startDate && endDate) {
+    return `Periodo de ${new Date(`${startDate}T00:00:00`).toLocaleDateString("pt-BR")} ate ${new Date(`${endDate}T00:00:00`).toLocaleDateString("pt-BR")}.`;
+  }
+  if (startDate) {
+    return `Periodo a partir de ${new Date(`${startDate}T00:00:00`).toLocaleDateString("pt-BR")}.`;
+  }
+  if (endDate) {
+    return `Periodo ate ${new Date(`${endDate}T00:00:00`).toLocaleDateString("pt-BR")}.`;
+  }
+  return "Todos os pedidos carregados entram no consolidado por produto.";
+}
+
+function getPedidosProdutoEmptyMessage() {
+  return state.pedidosProdutosFilters.startDate || state.pedidosProdutosFilters.endDate
+    ? "Nenhum item vendido encontrado no periodo informado."
+    : "Nenhum item vendido encontrado nos pedidos.";
+}
+
+function openPedidosProdutoDetalhes(groupKey) {
+  const produto = state.pedidosProdutos.find((item) => item.groupKey === groupKey);
+  if (!produto) return;
+
+  state.itensDocumentoModalMode = "pedidos_produto";
+  state.itensDocumento = produto.pedidosDetalhes;
+  renderItensDocumentoTableHead();
+  renderItensDocumentoTable();
+  if (els.itensDocumentoModalTitle) {
+    els.itensDocumentoModalTitle.textContent = `Pedidos com ${resolvePedidoProdutoNome(produto)}`;
+  }
+  openItensDocumentoModal();
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(String(value || ""));
+}
+
+function renderPedidosProdutosRows() {
+  if (!state.pedidosProdutos.length) {
+    els.pedidosTable.innerHTML = `<tr><td colspan="5">${getPedidosProdutoEmptyMessage()}</td></tr>`;
+    return;
+  }
+
+  els.pedidosTable.innerHTML = state.pedidosProdutos
+    .map((item) => {
+      const ultimaVenda = item.ultimaVenda ? new Date(item.ultimaVenda).toLocaleDateString("pt-BR") : "-";
+      return `
+        <tr>
+          <td><button type="button" class="action-link" data-open-pedidos-produto="${escapeAttribute(item.groupKey)}">${escapeHtml(resolvePedidoProdutoNome(item))}</button></td>
+          <td>${escapeHtml(formatPedidoProdutoQuantidade(item.quantidade))}</td>
+          <td>${escapeHtml(item.pedidos)}</td>
+          <td>${moeda.format(item.total || 0)}</td>
+          <td>${ultimaVenda}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderPedidosTableHead() {
+  if (!els.pedidosTableHead) return;
+
+  if (state.pedidosView === "produtos") {
+    els.pedidosTableHead.innerHTML = `
+      <tr>
+        <th class="sortable" data-pedidos-produto-sort="nome">Produto</th>
+        <th class="sortable" data-pedidos-produto-sort="quantidade">Qtd. vendida</th>
+        <th class="sortable" data-pedidos-produto-sort="pedidos">Pedidos</th>
+        <th class="sortable" data-pedidos-produto-sort="total">Valor vendido</th>
+        <th class="sortable" data-pedidos-produto-sort="ultimaVenda">Ultima venda</th>
+      </tr>
+    `;
+    return;
+  }
+
+  els.pedidosTableHead.innerHTML = `
+    <tr>
+      <th>Data</th>
+      <th>Cliente</th>
+      <th>Status</th>
+      <th>Total</th>
+      <th></th>
+    </tr>
+  `;
+}
+
+function renderPedidosSection() {
+  maybeSwapPedidosProdutosDateRange();
+  if (state.pedidosView === "produtos") {
+    state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
+  }
+  renderPedidosTableHead();
+  renderPedidosTable();
+  updatePedidosProdutosSortHeaders();
+  updatePedidosProdutosFiltersVisibility();
+  updatePedidosProdutosFilterInputs();
+
+  if (els.pedidosSectionSubtitle) {
+    els.pedidosSectionSubtitle.textContent = state.pedidosView === "produtos"
+      ? `Veja o consolidado por produto com quantidade, valor vendido e ultima movimentacao. ${getPedidosProdutoFilterSummary()}`
+      : "Crie pedidos e orcamentos com itens em grade, subtotal automatico e salvamento mais claro.";
+  }
+
+  for (const button of els.pedidosViewButtons || []) {
+    button.classList.toggle("active", button.getAttribute("data-pedidos-view") === state.pedidosView);
+  }
 }
 
 async function loadOrcamentos() {
@@ -2637,6 +3113,16 @@ function setProdutoSort(field) {
 }
 
 function renderPedidosTable() {
+  if (state.pedidosView === "produtos") {
+    renderPedidosProdutosRows();
+    return;
+  }
+
+  if (!state.pedidos.length) {
+    els.pedidosTable.innerHTML = '<tr><td colspan="5">Nenhum pedido cadastrado.</td></tr>';
+    return;
+  }
+
   els.pedidosTable.innerHTML = state.pedidos
     .map((pedido) => {
       const data = pedido.data_pedido ? new Date(pedido.data_pedido).toLocaleDateString("pt-BR") : "-";
@@ -3018,7 +3504,7 @@ async function refreshAll() {
     renderSelects();
     renderClientesTable();
     renderProdutosTable();
-    renderPedidosTable();
+    renderPedidosSection();
     renderContasReceberTable();
     renderOrcamentosTable();
     renderDespesasTable();
@@ -3809,6 +4295,37 @@ function attachEvents() {
     });
   }
 
+  if (els.pedidosProdutosStartDate) {
+    els.pedidosProdutosStartDate.addEventListener("change", () => {
+      updatePedidosProdutosFilter("startDate", els.pedidosProdutosStartDate.value || "");
+    });
+  }
+
+  if (els.pedidosProdutosEndDate) {
+    els.pedidosProdutosEndDate.addEventListener("change", () => {
+      updatePedidosProdutosFilter("endDate", els.pedidosProdutosEndDate.value || "");
+    });
+  }
+
+  if (els.pedidosTableHead) {
+    els.pedidosTableHead.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const header = target.closest("th[data-pedidos-produto-sort]");
+      if (!header || state.pedidosView !== "produtos") return;
+      const field = header.getAttribute("data-pedidos-produto-sort");
+      if (!field) return;
+      setPedidosProdutosSort(field);
+    });
+  }
+
+  for (const button of els.pedidosViewButtons || []) {
+    button.addEventListener("click", () => {
+      state.pedidosView = button.getAttribute("data-pedidos-view") === "produtos" ? "produtos" : "pedidos";
+      renderPedidosSection();
+    });
+  }
+
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
@@ -3928,6 +4445,8 @@ function attachEvents() {
     const pedidoId = target.getAttribute("data-del-pedido");
     const orcamentoId = target.getAttribute("data-del-orcamento");
     const pedidoItensId = target.getAttribute("data-view-pedido-itens");
+    const pedidoProdutoGroupKey = target.getAttribute("data-open-pedidos-produto");
+    const pedidoProdutoItensId = target.getAttribute("data-open-pedido-produto-itens");
     const orcamentoItensId = target.getAttribute("data-view-orcamento-itens");
     const openRecebimentoPedidoId = target.getAttribute("data-open-recebimento-pedido");
     const openRecebimentoContaId = target.getAttribute("data-open-recebimento-conta");
@@ -3950,6 +4469,14 @@ function attachEvents() {
       }
       if (pedidoItensId) {
         await openDocumentoItens("pedido", Number(pedidoItensId));
+        return;
+      }
+      if (pedidoProdutoGroupKey) {
+        openPedidosProdutoDetalhes(pedidoProdutoGroupKey);
+        return;
+      }
+      if (pedidoProdutoItensId) {
+        await openDocumentoItens("pedido", Number(pedidoProdutoItensId));
         return;
       }
       if (orcamentoItensId) {

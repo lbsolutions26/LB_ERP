@@ -184,6 +184,66 @@ h3 {
   max-width: 62ch;
 }
 
+.pedidos-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.pedidos-view-toggle {
+  display: inline-flex;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f7f1e6;
+  gap: 0.25rem;
+}
+
+.pedidos-view-toggle-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.pedidos-view-toggle-btn.active {
+  background: linear-gradient(140deg, var(--brand) 0%, var(--brand-strong) 100%);
+  color: #fff;
+}
+
+.pedidos-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.pedidos-filters label {
+  display: grid;
+  gap: 0.35rem;
+  color: #3d372d;
+  font-weight: 600;
+}
+
+.action-link {
+  border: 0;
+  background: transparent;
+  color: var(--brand-strong);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+}
+
+.action-link:hover {
+  text-decoration: underline;
+}
+
 .active-section {
   display: grid;
 }
@@ -638,6 +698,27 @@ th.sortable.sorted {
   padding: 0.18rem 0.6rem;
   font-size: 0.8rem;
   font-weight: 700;
+
+@media (max-width: 720px) {
+  .pedidos-toolbar {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .pedidos-filters {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .pedidos-view-toggle {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .pedidos-view-toggle-btn {
+    flex: 1;
+  }
+}
   border: 1px solid transparent;
 }
 

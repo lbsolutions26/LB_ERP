@@ -132,21 +132,29 @@
           <div class="section-head">
             <div>
               <h2>Pedidos</h2>
-              <p class="section-subtitle">Crie pedidos e orcamentos com itens em grade, subtotal automatico e salvamento mais claro.</p>
+              <p id="pedidosSectionSubtitle" class="section-subtitle">Crie pedidos e orcamentos com itens em grade, subtotal automatico e salvamento mais claro.</p>
             </div>
-            <button id="openPedidoModalBtn" class="btn" type="button">Novo Pedido</button>
+            <div class="pedidos-toolbar">
+              <div class="pedidos-view-toggle" role="tablist" aria-label="Alternar visualizacao dos pedidos">
+                <button type="button" class="pedidos-view-toggle-btn active" data-pedidos-view="pedidos">Lista</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-pedidos-view="produtos">Produtos vendidos</button>
+              </div>
+              <button id="openPedidoModalBtn" class="btn" type="button">Novo Pedido</button>
+            </div>
+          </div>
+          <div id="pedidosProdutosFilters" class="pedidos-filters hidden">
+            <label>
+              De
+              <input id="pedidosProdutosStartDate" type="date" />
+            </label>
+            <label>
+              Ate
+              <input id="pedidosProdutosEndDate" type="date" />
+            </label>
           </div>
           <div class="table-wrap">
             <table>
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Cliente</th>
-                  <th>Status</th>
-                  <th>Total</th>
-                  <th></th>
-                </tr>
-              </thead>
+              <thead id="pedidosTableHead"></thead>
               <tbody id="pedidosTable"></tbody>
             </table>
           </div>
@@ -448,7 +456,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead>
+            <thead id="itensDocumentoTableHead">
               <tr>
                 <th>Item</th>
                 <th>Qtd</th>
