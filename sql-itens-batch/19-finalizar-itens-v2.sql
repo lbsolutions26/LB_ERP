@@ -30,6 +30,10 @@ left join lateral (
     and lower(btrim(p.nome)) = lower(btrim(r.produto_nome_raw))
 ) p_by_name on true
 where r.lote_ref = 'itens_vendas_2026_07_10'
+  and not (
+    coalesce(nullif(btrim(r.produto_nome_raw), ''), 'Item legado sem descricao') = 'Item legado sem descricao'
+    and round(coalesce(public.parse_numeric_br(r.total_raw), 0), 2) = round(coalesce(d.total, 0), 2)
+  )
   and not exists (
     select 1
     from public.documento_venda_itens i

@@ -234,6 +234,23 @@ function renderItensDocumentoTable() {
     .join("");
 }
 
+function isSyntheticLegacyTotalItem(item, documentoTotal) {
+  if (!item) return false;
+
+  const descricao = String(item.descricao_item || "").trim().toLowerCase();
+  if (descricao !== "item legado sem descricao") {
+    return false;
+  }
+
+  const itemTotal = Number(item.valor_total || 0);
+  const totalDocumento = Number(documentoTotal || 0);
+  if (!Number.isFinite(itemTotal) || !Number.isFinite(totalDocumento)) {
+    return false;
+  }
+
+  return Math.abs(itemTotal - totalDocumento) < 0.01;
+}
+
 function parseLegacyNumber(value) {
   if (value == null) return null;
   const text = String(value).trim();
@@ -266,77 +283,128 @@ function buildFallbackItemFromDocumento(documento) {
 
 async function openDocumentoItens(tipoDocumento, documentoId) {
   let itens = [];
+  let documentoTotal = null;
+  let documentoData = null;
+  let documentoTemItens = false;
 
-  if (tipoDocumento === "pedido") {
-    if (state.pedidosSource === "documentos_venda") {
-      const { data, error } = await supabaseClient
-        .from("documento_venda_itens")
-        .select("id, descricao_item, quantidade, valor_unitario, valor_total")
-        .eq("empresa_id", state.empresaId)
-        .eq("documento_id", documentoId)
-        .order("id", { ascending: true });
-      if (error) throw error;
-      itens = data || [];
-    } else {
-      const { data, error } = await supabaseClient
-        .from("pedido_itens")
-        .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
-        .eq("empresa_id", state.empresaId)
-        .eq("pedido_id", documentoId)
-        .order("id", { ascending: true });
-      if (error) throw error;
-      itens = (data || []).map((item) => ({
-        id: item.id,
-        descricao_item: item.produto?.nome || null,
-        nome_produto: item.produto?.nome || null,
-        quantidade: item.quantidade,
-        valor_unitario: item.valor_unitario,
-        valor_total: item.total
-      }));
-    }
-  } else {
-    if (state.orcamentosSource === "documentos_venda") {
-      const { data, error } = await supabaseClient
-        .from("documento_venda_itens")
-        .select("id, descricao_item, quantidade, valor_unitario, valor_total")
-        .eq("empresa_id", state.empresaId)
-        .eq("documento_id", documentoId)
-        .order("id", { ascending: true });
-      if (error) throw error;
-      itens = data || [];
-    } else {
-      const { data, error } = await supabaseClient
-        .from("orcamento_itens")
-        .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
-        .eq("empresa_id", state.empresaId)
-        .eq("orcamento_id", documentoId)
-        .order("id", { ascending: true });
-      if (error) throw error;
-      itens = (data || []).map((item) => ({
-        id: item.id,
-        descricao_item: item.produto?.nome || null,
-        nome_produto: item.produto?.nome || null,
-        quantidade: item.quantidade,
-        valor_unitario: item.valor_unitario,
-        valor_total: item.total
-      }));
-    }
-  }
-
-  if (!itens.length && (state.pedidosSource === "documentos_venda" || state.orcamentosSource === "documentos_venda")) {
-    const { data: documentoData, error: documentoError } = await supabaseClient
+  if (tipoDocumento === "pedido" ? state.pedidosSource === "documentos_venda" : state.orcamentosSource === "documentos_venda") {
+    const { data, error } = await supabaseClient
       .from("documentos_venda")
       .select("id, total, observacoes, raw_payload")
       .eq("empresa_id", state.empresaId)
       .eq("id", documentoId)
       .maybeSingle();
 
-    if (documentoError) throw documentoError;
+    if (error) throw error;
+    documentoData = data || null;
+    documentoTotal = documentoData?.total ?? null;
 
-    const fallbackItem = buildFallbackItemFromDocumento(documentoData);
-    if (fallbackItem) {
-      itens = [fallbackItem];
+    if (tipoDocumento === "pedido") {
+      if (state.pedidosSource === "documentos_venda") {
+        const { data: itensData, error: itensError } = await supabaseClient
+          .from("documento_venda_itens")
+          .select("id, descricao_item, quantidade, valor_unitario, valor_total")
+          .eq("empresa_id", state.empresaId)
+          .eq("documento_id", documentoId)
+          .order("id", { ascending: true });
+        if (itensError) throw itensError;
+        const rawItens = itensData || [];
+        documentoTemItens = rawItens.length > 0;
+        itens = rawItens.filter((item) => !isSyntheticLegacyTotalItem(item, documentoTotal));
+      } else {
+        const { data: itensData, error: itensError } = await supabaseClient
+          .from("pedido_itens")
+          .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
+          .eq("empresa_id", state.empresaId)
+          .eq("pedido_id", documentoId)
+          .order("id", { ascending: true });
+        if (itensError) throw itensError;
+        const rawItens = itensData || [];
+        documentoTemItens = rawItens.length > 0;
+        itens = rawItens.map((item) => ({
+          id: item.id,
+          descricao_item: item.produto?.nome || null,
+          nome_produto: item.produto?.nome || null,
+          quantidade: item.quantidade,
+          valor_unitario: item.valor_unitario,
+          valor_total: item.total
+        }));
+      }
+    } else {
+      if (state.orcamentosSource === "documentos_venda") {
+        const { data: itensData, error: itensError } = await supabaseClient
+          .from("documento_venda_itens")
+          .select("id, descricao_item, quantidade, valor_unitario, valor_total")
+          .eq("empresa_id", state.empresaId)
+          .eq("documento_id", documentoId)
+          .order("id", { ascending: true });
+        if (itensError) throw itensError;
+        const rawItens = itensData || [];
+        documentoTemItens = rawItens.length > 0;
+        itens = rawItens.filter((item) => !isSyntheticLegacyTotalItem(item, documentoTotal));
+      } else {
+        const { data: itensData, error: itensError } = await supabaseClient
+          .from("orcamento_itens")
+          .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
+          .eq("empresa_id", state.empresaId)
+          .eq("orcamento_id", documentoId)
+          .order("id", { ascending: true });
+        if (itensError) throw itensError;
+        const rawItens = itensData || [];
+        documentoTemItens = rawItens.length > 0;
+        itens = rawItens.map((item) => ({
+          id: item.id,
+          descricao_item: item.produto?.nome || null,
+          nome_produto: item.produto?.nome || null,
+          quantidade: item.quantidade,
+          valor_unitario: item.valor_unitario,
+          valor_total: item.total
+        }));
+      }
     }
+
+    if (!documentoTemItens) {
+      const fallbackItem = buildFallbackItemFromDocumento(documentoData);
+      if (fallbackItem) {
+        itens = [fallbackItem];
+      }
+    }
+  } else if (tipoDocumento === "pedido") {
+    const { data, error } = await supabaseClient
+      .from("pedido_itens")
+      .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
+      .eq("empresa_id", state.empresaId)
+      .eq("pedido_id", documentoId)
+      .order("id", { ascending: true });
+    if (error) throw error;
+    itens = (data || []).map((item) => ({
+      id: item.id,
+      descricao_item: item.produto?.nome || null,
+      nome_produto: item.produto?.nome || null,
+      quantidade: item.quantidade,
+      valor_unitario: item.valor_unitario,
+      valor_total: item.total
+    }));
+  } else {
+    const { data, error } = await supabaseClient
+      .from("orcamento_itens")
+      .select("id, quantidade, valor_unitario, total, produto:produtos(nome)")
+      .eq("empresa_id", state.empresaId)
+      .eq("orcamento_id", documentoId)
+      .order("id", { ascending: true });
+    if (error) throw error;
+    itens = (data || []).map((item) => ({
+      id: item.id,
+      descricao_item: item.produto?.nome || null,
+      nome_produto: item.produto?.nome || null,
+      quantidade: item.quantidade,
+      valor_unitario: item.valor_unitario,
+      valor_total: item.total
+    }));
+  }
+
+  if (!itens.length && (state.pedidosSource === "documentos_venda" || state.orcamentosSource === "documentos_venda")) {
+    // Mantido para compatibilidade quando o documento realmente nao tiver itens.
   }
 
   state.itensDocumento = itens;
