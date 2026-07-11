@@ -121,6 +121,8 @@ const state = {
   },
   pedidos: [],
   pedidosLoaded: false,
+  pedidosLimit: 50,
+  pedidosTotalCarregado: 0,
   pedidosCountTotal: 0,
   pedidosFaturamentoTotal: 0,
   clientesLoaded: false,
@@ -259,6 +261,10 @@ const els = {
     pedidosProdutosStartDate: document.getElementById("pedidosProdutosStartDate"),
     pedidosProdutosEndDate: document.getElementById("pedidosProdutosEndDate"),
   pedidosViewButtons: Array.from(document.querySelectorAll("[data-pedidos-view]")),
+  pedidosLoadMoreWrap: document.getElementById("pedidosLoadMoreWrap"),
+  pedidosLoadMoreInfo: document.getElementById("pedidosLoadMoreInfo"),
+  pedidosLoadMoreBtn: document.getElementById("pedidosLoadMoreBtn"),
+  pedidosLoadAllBtn: document.getElementById("pedidosLoadAllBtn"),
   contasReceberTable: document.getElementById("contasReceberTable"),
   financeiroStatusFilter: document.getElementById("financeiroStatusFilter"),
   financeiroSearchInput: document.getElementById("financeiroSearchInput"),
@@ -2509,19 +2515,22 @@ async function ensureAdminLoaded(options = {}) {
 }
 
 async function loadPedidos() {
-  const docsResult = await fetchAllSupabaseRows(() => supabaseClient
+  const limit = Math.max(1, Number(state.pedidosLimit || 50));
+
+  const { data: docsData, error: docsError } = await supabaseClient
     .from("documentos_venda")
     .select(
       "id, data_emissao, status, total, observacoes, raw_payload, cliente_legacy_id, cliente:clientes(id,nome)"
     )
     .eq("empresa_id", state.empresaId)
     .eq("tipo_documento", "pedido")
-    .order("data_emissao", { ascending: false }));
+    .order("data_emissao", { ascending: false })
+    .limit(limit);
 
-  if (docsResult.error) throw docsResult.error;
+  if (docsError) throw docsError;
 
   state.pedidosSource = "documentos_venda";
-  state.pedidos = (docsResult.data || []).map((item) => ({
+  state.pedidos = (docsData || []).map((item) => ({
     id: item.id,
     data_pedido: item.data_emissao,
     status: item.status,
@@ -2531,6 +2540,7 @@ async function loadPedidos() {
     cliente: item.cliente,
     cliente_legacy_id: item.cliente_legacy_id
   }));
+  state.pedidosTotalCarregado = state.pedidos.length;
   await loadPedidosProdutos();
 }
 
@@ -2575,11 +2585,14 @@ async function loadPedidosProdutos() {
       ])
     );
 
-    const { data, error } = await fetchAllSupabaseRows(() => supabaseClient
-      .from("documento_venda_itens")
-      .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
-      .eq("empresa_id", state.empresaId)
-      .order("documento_id", { ascending: true }));
+    const pedidoIds = state.pedidos.map((pedido) => Number(pedido.id)).filter(Number.isFinite);
+    const { data, error } = pedidoIds.length
+      ? await supabaseClient
+          .from("documento_venda_itens")
+          .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
+          .eq("empresa_id", state.empresaId)
+          .in("documento_id", pedidoIds)
+      : { data: [], error: null };
 
     if (error) throw error;
 
@@ -3059,6 +3072,31 @@ function renderPedidosTableHead() {
   `;
 }
 
+function updatePedidosLoadMoreUI() {
+  if (!els.pedidosLoadMoreWrap) return;
+  const emListaSintetica = state.pedidosView === "pedidos" && state.pedidosListMode === "sintetico";
+  const carregado = Number(state.pedidosTotalCarregado || 0);
+  const total = Number(state.pedidosCountTotal || 0);
+  const restante = Math.max(0, total - carregado);
+  const deveMostrar = emListaSintetica && total > 0 && restante > 0;
+  els.pedidosLoadMoreWrap.classList.toggle("hidden", !deveMostrar);
+
+  if (!deveMostrar) return;
+
+  if (els.pedidosLoadMoreInfo) {
+    els.pedidosLoadMoreInfo.textContent = `Exibindo ${carregado} de ${total} pedidos. Restantes: ${restante}.`;
+  }
+  if (els.pedidosLoadMoreBtn) {
+    const step = Math.min(50, restante);
+    els.pedidosLoadMoreBtn.textContent = `Mostrar mais ${step}`;
+    els.pedidosLoadMoreBtn.disabled = restante <= 0;
+  }
+  if (els.pedidosLoadAllBtn) {
+    els.pedidosLoadAllBtn.textContent = `Mostrar todos (${total})`;
+    els.pedidosLoadAllBtn.disabled = restante <= 0;
+  }
+}
+
 function renderPedidosSection() {
   maybeSwapPedidosProdutosDateRange();
   if (state.pedidosView === "produtos") {
@@ -3091,6 +3129,8 @@ function renderPedidosSection() {
   if (els.pedidosListModeToggle) {
     els.pedidosListModeToggle.classList.toggle("hidden", state.pedidosView !== "pedidos");
   }
+
+  updatePedidosLoadMoreUI();
 }
 
 async function loadOrcamentos() {
@@ -4379,6 +4419,8 @@ async function handleSession(session) {
     state.isPlatformAdmin = false;
     state.pedidosLoaded = false;
     state.pedidos = [];
+    state.pedidosLimit = 50;
+    state.pedidosTotalCarregado = 0;
     state.pedidosProdutosRaw = [];
     state.pedidosProdutos = [];
     state.pedidosCountTotal = 0;
@@ -4832,6 +4874,34 @@ function attachEvents() {
     button.addEventListener("click", () => {
       state.pedidosListMode = button.getAttribute("data-pedidos-list-mode") === "analitico" ? "analitico" : "sintetico";
       renderPedidosSection();
+    });
+  }
+
+  if (els.pedidosLoadMoreBtn) {
+    els.pedidosLoadMoreBtn.addEventListener("click", async () => {
+      const current = Math.max(50, Number(state.pedidosLimit || 50));
+      state.pedidosLimit = current + 50;
+      try {
+        await loadPedidos();
+        renderPedidosSection();
+        renderMetrics();
+      } catch (error) {
+        showToast(`Erro ao carregar mais pedidos: ${error.message}`, "error");
+      }
+    });
+  }
+
+  if (els.pedidosLoadAllBtn) {
+    els.pedidosLoadAllBtn.addEventListener("click", async () => {
+      const total = Number(state.pedidosCountTotal || 0);
+      state.pedidosLimit = total > 0 ? total : 100000;
+      try {
+        await loadPedidos();
+        renderPedidosSection();
+        renderMetrics();
+      } catch (error) {
+        showToast(`Erro ao carregar todos os pedidos: ${error.message}`, "error");
+      }
     });
   }
 
