@@ -376,6 +376,28 @@ h3 {
   place-items: end center;
 }
 
+.cash-bar-value-split {
+  display: grid;
+  gap: 0.1rem;
+  place-items: end center;
+  min-height: 2.1rem;
+}
+
+.cash-bar-value-realized,
+.cash-bar-value-forecast {
+  font-size: 0.7rem;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+.cash-bar-value-realized {
+  color: #165d59;
+}
+
+.cash-bar-value-forecast {
+  color: #b05f13;
+}
+
 .cash-bar-track {
   width: 100%;
   height: 160px;
@@ -393,6 +415,16 @@ h3 {
   border-radius: 10px 10px 6px 6px;
   background: linear-gradient(180deg, #3a8f89 0%, #165d59 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.cash-bar-fill-realized {
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(180deg, #3a8f89 0%, #165d59 100%);
+}
+
+.cash-bar-fill-forecast {
+  border-radius: 0;
+  background: linear-gradient(180deg, #f2b065 0%, #d67c2f 100%);
 }
 
 .cash-bar-fill-current {
@@ -435,6 +467,21 @@ h3 {
   align-items: center;
   justify-content: flex-start;
   min-height: 0.8rem;
+}
+
+.cash-month-breakdown {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.cash-month-breakdown span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #8a6f3c;
+  text-transform: none;
 }
 
 .forms {

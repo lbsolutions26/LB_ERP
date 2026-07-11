@@ -2808,24 +2808,20 @@ function renderMetrics() {
   if (els.entradasCaixaGrid) {
     const entriesHtml = monthlyCashEntries
       .map((item) => {
-          const monthDate = item.monthKey ? new Date(`${item.monthKey}-01T12:00:00`) : null;
-          const nowMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-          const isFutureMonth = Boolean(monthDate && monthDate >= nowMonth);
-          const dotClass = state.dashboardCashChartMode === "faturamento"
-            ? "cash-dot-faturamento"
-            : isFutureMonth
-              ? "cash-dot-forecast"
-              : "cash-dot-realized";
-          const dotLabel = state.dashboardCashChartMode === "faturamento"
-            ? "Faturamento"
-            : isFutureMonth
-              ? "Previsto"
-              : "Realizado";
+        const realized = Number(item.realized || 0);
+        const forecast = Number(item.forecast || 0);
         return `
           <article class="cash-month-card">
             <span>${escapeHtml(item.label)}</span>
             <strong>${moeda.format(item.total)}</strong>
-           <span class="cash-month-card-dot" title="${escapeHtml(dotLabel)}"><i class="cash-dot ${dotClass}"></i></span>
+            ${state.dashboardCashChartMode === "faturamento"
+              ? '<span class="cash-month-card-dot" title="Faturamento"><i class="cash-dot cash-dot-faturamento"></i></span>'
+              : `
+                <div class="cash-month-breakdown">
+                  <span><i class="cash-dot cash-dot-realized"></i> ${moeda.format(realized)}</span>
+                  <span><i class="cash-dot cash-dot-forecast"></i> ${moeda.format(forecast)}</span>
+                </div>
+              `}
           </article>
         `;
       })
@@ -2839,13 +2835,29 @@ function renderMetrics() {
     const chartBars = monthlyCashEntries
       .map((item) => {
         const value = Number(item.total || 0);
-        const height = maxValue > 0 ? Math.max(6, Math.round((value / maxValue) * 100)) : 6;
+        const realized = Number(item.realized || 0);
+        const forecast = Number(item.forecast || 0);
+        const totalHeight = maxValue > 0 ? Math.max(6, Math.round((value / maxValue) * 100)) : 6;
+        const realizedHeight = value > 0 ? Math.max(0, Math.round((realized / value) * totalHeight)) : 0;
+        const forecastHeight = Math.max(0, totalHeight - realizedHeight);
         const isCurrentMonth = item.monthKey === currentMonthKey;
+        const title = state.dashboardCashChartMode === "faturamento"
+          ? `${item.label}: ${moeda.format(value)}`
+          : `${item.label}: ${moeda.format(value)} | Realizado ${moeda.format(realized)} | Previsto ${moeda.format(forecast)}`;
         return `
-          <div class="cash-bar-wrap${isCurrentMonth ? " cash-bar-wrap-current" : ""}" title="${escapeHtml(item.label)}: ${moeda.format(value)}">
-            <div class="cash-bar-value">${moeda.format(value)}</div>
+          <div class="cash-bar-wrap${isCurrentMonth ? " cash-bar-wrap-current" : ""}" title="${escapeHtml(title)}">
+            <div class="cash-bar-value${state.dashboardCashChartMode === "recebimentos" ? " cash-bar-value-split" : ""}">
+              ${state.dashboardCashChartMode === "recebimentos"
+                ? `<span class="cash-bar-value-realized">${moeda.format(realized)}</span><span class="cash-bar-value-forecast">${moeda.format(forecast)}</span>`
+                : moeda.format(value)}
+            </div>
             <div class="cash-bar-track" aria-hidden="true">
-              <div class="cash-bar-fill${isCurrentMonth ? " cash-bar-fill-current" : ""}" style="height:${height}%"></div>
+              ${state.dashboardCashChartMode === "recebimentos"
+                ? `
+                  <div class="cash-bar-fill cash-bar-fill-realized" style="height:${realizedHeight}%"></div>
+                  <div class="cash-bar-fill cash-bar-fill-forecast" style="height:${forecastHeight}%"></div>
+                `
+                : `<div class="cash-bar-fill${isCurrentMonth ? " cash-bar-fill-current" : ""}" style="height:${totalHeight}%"></div>`}
             </div>
             <div class="cash-bar-label">${escapeHtml(item.label)}</div>
           </div>
@@ -2868,8 +2880,8 @@ function formatMonthKey(date) {
 function getMonthlyCashEntries(mode = "recebimentos") {
   const monthMap = new Map();
   const now = new Date();
-  const forecastParcels = [];
-  const forecastMonthKeys = new Set();
+  const forecastByMonth = new Map();
+  const forecastMonthFromParcelas = new Set();
   const sourceParcelCount = (state.parcelasReceberPrevistas || []).length;
 
   const ensureMonth = (reference) => {
@@ -2900,7 +2912,7 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       }
     }
   } else {
-    const addForecastFromSource = (vencimentoValue, saldoValue) => {
+    const addForecastFromSource = (vencimentoValue, saldoValue, fromParcela = false) => {
       const vencimento = vencimentoValue ? new Date(vencimentoValue) : null;
       const saldo = Number(saldoValue || 0);
       if (!vencimento || Number.isNaN(vencimento.getTime()) || saldo <= 0.00001) return;
@@ -2909,12 +2921,9 @@ function getMonthlyCashEntries(mode = "recebimentos") {
         latestMonth = forecastMonth;
       }
       const monthKey = formatMonthKey(forecastMonth);
-      if (!forecastMonthKeys.has(monthKey)) {
-        forecastMonthKeys.add(monthKey);
-        forecastParcels.push({
-          monthKey,
-          value: saldo
-        });
+      forecastByMonth.set(monthKey, Number(forecastByMonth.get(monthKey) || 0) + saldo);
+      if (fromParcela) {
+        forecastMonthFromParcelas.add(monthKey);
       }
     };
 
@@ -2922,7 +2931,7 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       const status = String(parcela.status || "").toLowerCase();
       const saldo = Number(parcela.valor_parcela || 0) - Number(parcela.valor_recebido || 0);
       if (status === "recebido" || status === "cancelado" || saldo <= 0.00001) continue;
-      addForecastFromSource(parcela.vencimento, saldo);
+      addForecastFromSource(parcela.vencimento, saldo, true);
     }
 
     for (const conta of state.contasReceber || []) {
@@ -2932,7 +2941,7 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       const vencimento = vencimentoSource ? new Date(vencimentoSource) : null;
       if (!vencimento || Number.isNaN(vencimento.getTime())) continue;
       const monthKey = formatMonthKey(new Date(vencimento.getFullYear(), vencimento.getMonth(), 1));
-      if (forecastMonthKeys.has(monthKey)) continue;
+      if (forecastMonthFromParcelas.has(monthKey)) continue;
       addForecastFromSource(vencimentoSource, conta.valor_aberto);
     }
 
@@ -2945,11 +2954,11 @@ function getMonthlyCashEntries(mode = "recebimentos") {
   }
 
   if (mode === "recebimentos") {
-    for (const forecast of forecastParcels) {
-      if (!monthMap.has(forecast.monthKey)) continue;
-      const entry = monthMap.get(forecast.monthKey);
-      entry.total += Number(forecast.value || 0);
-      entry.forecast += Number(forecast.value || 0);
+    for (const [monthKey, forecastValue] of forecastByMonth.entries()) {
+      if (!monthMap.has(monthKey)) continue;
+      const entry = monthMap.get(monthKey);
+      entry.total += Number(forecastValue || 0);
+      entry.forecast += Number(forecastValue || 0);
     }
   }
 
