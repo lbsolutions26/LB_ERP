@@ -193,6 +193,7 @@ const els = {
   entradasCaixaResumo: document.getElementById("entradasCaixaResumo"),
   entradasCaixaTitulo: document.getElementById("entradasCaixaTitulo"),
   entradasCaixaSubtitulo: document.getElementById("entradasCaixaSubtitulo"),
+   entradasCaixaLegenda: document.getElementById("entradasCaixaLegenda"),
   dashboardCashModeButtons: Array.from(document.querySelectorAll("[data-dashboard-cash-mode]")),
   entradasCaixaChart: document.getElementById("entradasCaixaChart"),
   entradasCaixaGrid: document.getElementById("entradasCaixaGrid"),
@@ -2779,6 +2780,17 @@ function renderMetrics() {
       ? "Valor total dos pedidos considerando a data de emissão."
       : "Previsto e realizado considerando recebimentos e títulos em aberto.";
   }
+ 
+   if (els.entradasCaixaLegenda) {
+     els.entradasCaixaLegenda.innerHTML = state.dashboardCashChartMode === "faturamento"
+       ? `
+         <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-faturamento"></i> Faturamento</span>
+       `
+       : `
+         <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-realized"></i> Realizado</span>
+         <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-forecast"></i> Previsto</span>
+       `;
+   }
 
   for (const button of els.dashboardCashModeButtons || []) {
     button.classList.toggle("active", button.getAttribute("data-dashboard-cash-mode") === state.dashboardCashChartMode);
@@ -2796,14 +2808,24 @@ function renderMetrics() {
   if (els.entradasCaixaGrid) {
     const entriesHtml = monthlyCashEntries
       .map((item) => {
-        const entryLabel = state.dashboardCashChartMode === "faturamento"
-          ? `Faturamento ${moeda.format(item.total || 0)}`
-          : `${moeda.format(item.realized || 0)} realizado • ${moeda.format(item.forecast || 0)} previsto`;
+          const monthDate = item.monthKey ? new Date(`${item.monthKey}-01T12:00:00`) : null;
+          const nowMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+          const isFutureMonth = Boolean(monthDate && monthDate >= nowMonth);
+          const dotClass = state.dashboardCashChartMode === "faturamento"
+            ? "cash-dot-faturamento"
+            : isFutureMonth
+              ? "cash-dot-forecast"
+              : "cash-dot-realized";
+          const dotLabel = state.dashboardCashChartMode === "faturamento"
+            ? "Faturamento"
+            : isFutureMonth
+              ? "Previsto"
+              : "Realizado";
         return `
           <article class="cash-month-card">
             <span>${escapeHtml(item.label)}</span>
             <strong>${moeda.format(item.total)}</strong>
-            <small>${escapeHtml(entryLabel)}</small>
+           <span class="cash-month-card-dot" title="${escapeHtml(dotLabel)}"><i class="cash-dot ${dotClass}"></i></span>
           </article>
         `;
       })
