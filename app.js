@@ -270,6 +270,105 @@ function setNovoDocumentoCliente(clienteId) {
   renderNovoDocumentoClienteSelect();
 }
 
+function getNovoDocumentoProdutoComboState(item) {
+  const produto = state.produtos.find((produtoItem) => String(produtoItem.id) === String(item.produtoId));
+  return {
+    produto,
+    label: produto?.nome || "Selecionar produto",
+    search: String(item.produtoSearch || ""),
+    query: String(item.produtoSearch || "").trim().toLowerCase()
+  };
+}
+
+function openNovoDocumentoProdutoPanel(rowId) {
+  const panel = document.querySelector(`[data-produto-combo-panel="${rowId}"]`);
+  const trigger = document.querySelector(`[data-produto-combo-trigger="${rowId}"]`);
+  const search = document.querySelector(`[data-produto-combo-search="${rowId}"]`);
+  if (!(panel instanceof HTMLElement)) return;
+  panel.classList.remove("hidden");
+  if (trigger instanceof HTMLElement) {
+    trigger.setAttribute("aria-expanded", "true");
+  }
+  if (search instanceof HTMLInputElement) {
+    window.requestAnimationFrame(() => search.focus());
+  }
+}
+
+function closeNovoDocumentoProdutoPanel(rowId) {
+  const panel = document.querySelector(`[data-produto-combo-panel="${rowId}"]`);
+  const trigger = document.querySelector(`[data-produto-combo-trigger="${rowId}"]`);
+  if (panel instanceof HTMLElement) {
+    panel.classList.add("hidden");
+  }
+  if (trigger instanceof HTMLElement) {
+    trigger.setAttribute("aria-expanded", "false");
+  }
+}
+
+function setNovoDocumentoProduto(rowId, produtoId) {
+  const item = state.novoDocumentoModal.itens.find((draftItem) => draftItem.rowId === rowId);
+  if (!item) return;
+  const produto = state.produtos.find((produtoItem) => String(produtoItem.id) === String(produtoId));
+  item.produtoId = produtoId ? String(produtoId) : "";
+  item.produtoSearch = produto?.nome || "";
+  if (produto) {
+    item.descricao = produto.nome || item.descricao;
+    item.valorUnitario = Number(produto.preco || 0);
+  }
+  renderNovoDocumentoItensGrid();
+}
+
+function renderNovoDocumentoProdutoCombo(item) {
+  const comboState = getNovoDocumentoProdutoComboState(item);
+  const produtosFiltrados = comboState.query
+    ? state.produtos.filter((produto) => {
+        const nome = String(produto.nome || "").toLowerCase();
+        const categoria = String(produto.categoria || "").toLowerCase();
+        return nome.includes(comboState.query) || categoria.includes(comboState.query);
+      })
+    : state.produtos;
+
+  const optionsHtml = [];
+  if (!produtosFiltrados.length) {
+    optionsHtml.push('<div class="produto-combo-empty">Nenhum produto encontrado</div>');
+  } else {
+    for (const produto of produtosFiltrados) {
+      const isSelected = String(produto.id) === String(item.produtoId);
+      optionsHtml.push(`
+        <button
+          type="button"
+          class="produto-combo-option${isSelected ? " active" : ""}"
+          data-produto-id="${produto.id}"
+          data-produto-row="${item.rowId}"
+        >
+          <span>${escapeHtml(produto.nome)}</span>
+          <small>${moeda.format(produto.preco || 0)}</small>
+        </button>
+      `);
+    }
+  }
+
+  return `
+    <div class="produto-combo" data-produto-combo="${item.rowId}">
+      <button type="button" class="produto-combo-trigger" data-produto-combo-trigger="${item.rowId}" aria-haspopup="listbox" aria-expanded="false">
+        <span data-produto-combo-label="${item.rowId}">${escapeHtml(comboState.label)}</span>
+        <span class="produto-combo-caret">▾</span>
+      </button>
+      <div class="produto-combo-panel hidden" data-produto-combo-panel="${item.rowId}" role="listbox" aria-label="Produtos">
+        <input
+          class="produto-combo-search"
+          data-produto-combo-search="${item.rowId}"
+          type="search"
+          placeholder="Buscar produto..."
+          autocomplete="off"
+          value="${escapeHtml(comboState.search)}"
+        />
+        <div class="produto-combo-options" data-produto-combo-options="${item.rowId}">${optionsHtml.join("")}</div>
+      </div>
+    </div>
+  `;
+}
+
 function getDocumentoModalConfig(tipo = "pedido") {
   const isOrcamento = tipo === "orcamento";
   return {
@@ -299,6 +398,7 @@ function createDocumentoDraftItem(produto = null) {
     rowId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     produtoId: produto?.id ? String(produto.id) : "",
     descricao: produto?.nome || "",
+    produtoSearch: "",
     quantidade: 1,
     valorUnitario: Number(produto?.preco || 0)
   };
@@ -403,7 +503,7 @@ function renderNovoDocumentoItemRow(item) {
     <article class="documento-item-row" data-documento-item-row="${item.rowId}">
       <label class="documento-item-field">
         <span>Produto</span>
-        <select data-documento-item-field="produtoId">${getDocumentoProdutoOptions(item.produtoId)}</select>
+        ${renderNovoDocumentoProdutoCombo(item)}
       </label>
       <label class="documento-item-field">
         <span>Descricao</span>
@@ -520,6 +620,7 @@ function normalizeDocumentoItem(item) {
     rowId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     produtoId: item?.produto_id ? String(item.produto_id) : "",
     descricao: String(item?.descricao_item || item?.descricao || "").trim(),
+    produtoSearch: "",
     quantidade: Number(item?.quantidade || 1),
     valorUnitario: Number(item?.valor_unitario || 0)
   };
@@ -593,10 +694,57 @@ function handleNovoDocumentoItemChange(event) {
   const item = state.novoDocumentoModal.itens.find((draftItem) => draftItem.rowId === rowId);
   if (!item) return;
 
+  const comboSearch = target.getAttribute("data-produto-combo-search");
+  if (comboSearch) {
+    item.produtoSearch = target.value || "";
+    const panel = document.querySelector(`[data-produto-combo-panel="${rowId}"]`);
+    if (panel instanceof HTMLElement) {
+      const query = String(item.produtoSearch || "").trim().toLowerCase();
+      const produtosFiltrados = query
+        ? state.produtos.filter((produto) => {
+            const nome = String(produto.nome || "").toLowerCase();
+            const categoria = String(produto.categoria || "").toLowerCase();
+            return nome.includes(query) || categoria.includes(query);
+          })
+        : state.produtos;
+
+      const optionsNode = panel.querySelector(`[data-produto-combo-options="${rowId}"]`);
+      if (optionsNode instanceof HTMLElement) {
+        optionsNode.innerHTML = produtosFiltrados.length
+          ? produtosFiltrados
+              .map((produto) => {
+                const isSelected = String(produto.id) === String(item.produtoId);
+                return `
+                  <button
+                    type="button"
+                    class="produto-combo-option${isSelected ? " active" : ""}"
+                    data-produto-id="${produto.id}"
+                    data-produto-row="${rowId}"
+                  >
+                    <span>${escapeHtml(produto.nome)}</span>
+                    <small>${moeda.format(produto.preco || 0)}</small>
+                  </button>
+                `;
+              })
+              .join("")
+          : '<div class="produto-combo-empty">Nenhum produto encontrado</div>';
+      }
+    }
+    return;
+  }
+
+  const produtoId = target.getAttribute("data-produto-id");
+  if (produtoId) {
+    setNovoDocumentoProduto(rowId, produtoId);
+    closeNovoDocumentoProdutoPanel(rowId);
+    return;
+  }
+
   const field = target.getAttribute("data-documento-item-field");
   if (field === "produtoId") {
     const produto = state.produtos.find((produtoItem) => String(produtoItem.id) === String(target.value));
     item.produtoId = target.value || "";
+    item.produtoSearch = produto?.nome || "";
     if (produto) {
       item.descricao = produto.nome || item.descricao;
       item.valorUnitario = Number(produto.preco || 0);
@@ -2232,6 +2380,32 @@ function attachEvents() {
     els.novoDocumentoItemsGrid.addEventListener("click", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
+      const comboTrigger = target.closest("[data-produto-combo-trigger]");
+      if (comboTrigger) {
+        const rowId = comboTrigger.getAttribute("data-produto-combo-trigger") || "";
+        const panel = document.querySelector(`[data-produto-combo-panel="${rowId}"]`);
+        if (panel instanceof HTMLElement && panel.classList.contains("hidden")) {
+          openNovoDocumentoProdutoPanel(rowId);
+        } else {
+          closeNovoDocumentoProdutoPanel(rowId);
+        }
+        return;
+      }
+
+      const comboSearch = target.closest("[data-produto-combo-search]");
+      if (comboSearch) {
+        return;
+      }
+
+      const comboOption = target.closest("[data-produto-id][data-produto-row]");
+      if (comboOption) {
+        const rowId = comboOption.getAttribute("data-produto-row") || "";
+        const produtoId = comboOption.getAttribute("data-produto-id") || "";
+        setNovoDocumentoProduto(rowId, produtoId);
+        closeNovoDocumentoProdutoPanel(rowId);
+        return;
+      }
+
       const rowId = target.getAttribute("data-documento-item-remove");
       if (!rowId) return;
       removeNovoDocumentoItem(rowId);
@@ -2254,6 +2428,13 @@ function attachEvents() {
     const combo = target.closest("[data-cliente-combo]");
     if (!combo) {
       closeNovoDocumentoClientePanel();
+    }
+
+    const produtoCombo = target.closest("[data-produto-combo]");
+    if (!produtoCombo) {
+      for (const item of state.novoDocumentoModal.itens) {
+        closeNovoDocumentoProdutoPanel(item.rowId);
+      }
     }
   });
 
