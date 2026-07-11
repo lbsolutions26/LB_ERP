@@ -970,7 +970,7 @@ async function loadDocumentoForEdit(tipo, documentoId) {
 
   const { data: documento, error: documentoError } = await supabaseClient
     .from("documentos_venda")
-    .select("id, cliente_id, status, observacoes, total")
+    .select("id, cliente_id, status, observacoes, total, raw_payload")
     .eq("empresa_id", state.empresaId)
     .eq("id", documentoId)
     .eq("tipo_documento", tipo)
