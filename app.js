@@ -2773,7 +2773,8 @@ async function loadDashboardSnapshot() {
   });
 
   if (error) {
-    console.warn("Falha ao carregar dashboard_snapshot", error.message);
+    console.error("Falha ao carregar dashboard_snapshot", error);
+    showToast(`Erro dashboard_snapshot: ${error.message}`, "error");
     return;
   }
 
