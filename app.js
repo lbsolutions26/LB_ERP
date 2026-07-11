@@ -750,12 +750,46 @@ async function loadContasReceber() {
     throw error;
   }
 
+  const contaIds = (data || []).map((item) => Number(item.id)).filter(Number.isFinite);
+  const parcelasByConta = new Map();
+
+  if (contaIds.length) {
+    const { data: parcelasData, error: parcelasError } = await supabaseClient
+      .from("contas_receber_parcelas")
+      .select("conta_receber_id, vencimento, valor_parcela, valor_recebido")
+      .eq("empresa_id", state.empresaId)
+      .in("conta_receber_id", contaIds)
+      .order("vencimento", { ascending: true });
+
+    if (parcelasError) {
+      if (!isMissingRelationError(parcelasError)) {
+        throw parcelasError;
+      }
+    } else {
+      for (const parcela of parcelasData || []) {
+        const contaId = Number(parcela.conta_receber_id || 0);
+        if (!contaId) continue;
+        if (!parcelasByConta.has(contaId)) {
+          parcelasByConta.set(contaId, []);
+        }
+        parcelasByConta.get(contaId).push(parcela);
+      }
+    }
+  }
+
   state.contasReceber = (data || []).map((item) => {
+    const parcelas = parcelasByConta.get(Number(item.id)) || [];
+    const parcelasPendentes = parcelas.filter(
+      (parcela) => Number(parcela.valor_parcela || 0) - Number(parcela.valor_recebido || 0) > 0.00001
+    );
+    const baseVencimento = (parcelasPendentes[0] || parcelas[0])?.vencimento || null;
     const emissaoDate = item.emissao ? new Date(item.emissao) : null;
+    const vencimentoDate = baseVencimento ? new Date(baseVencimento) : null;
     const isVencida = false;
     return {
       ...item,
       emissaoDate,
+      vencimentoDate,
       statusNormalizado: normalizeContaStatus(item.status, item.valor_aberto, isVencida)
     };
   });
@@ -2579,30 +2613,33 @@ function renderContasReceberTable() {
 
   const filtered = state.contasReceber.filter((conta) => {
     const emissao = conta.emissao ? new Date(conta.emissao).toLocaleDateString("pt-BR") : "";
+    const vencimento = conta.vencimentoDate ? conta.vencimentoDate.toLocaleDateString("pt-BR") : "";
     const clienteNome = String(conta.cliente?.nome || "");
     const titulo = String(conta.numero_titulo || "");
     const documento = String(conta.documento_id || "");
     const statusConta = String(conta.statusNormalizado || "aberto");
 
     const matchStatus = !statusFilter || statusFilter === statusConta;
-    const haystack = `${clienteNome} ${titulo} ${documento} ${emissao}`.toLowerCase();
+    const haystack = `${clienteNome} ${titulo} ${documento} ${emissao} ${vencimento}`.toLowerCase();
     const matchSearch = !search || haystack.includes(search);
     return matchStatus && matchSearch;
   });
 
   if (!filtered.length) {
-    els.contasReceberTable.innerHTML = '<tr><td colspan="7">Nenhuma conta encontrada para os filtros selecionados.</td></tr>';
+    els.contasReceberTable.innerHTML = '<tr><td colspan="8">Nenhuma conta encontrada para os filtros selecionados.</td></tr>';
     return;
   }
 
   els.contasReceberTable.innerHTML = filtered
     .map((conta) => {
       const emissao = conta.emissao ? new Date(conta.emissao).toLocaleDateString("pt-BR") : "-";
+      const vencimento = conta.vencimentoDate ? conta.vencimentoDate.toLocaleDateString("pt-BR") : "-";
       const clienteNome = conta.cliente?.nome || "-";
       const statusConta = conta.statusNormalizado || "aberto";
       return `
         <tr>
           <td>${emissao}</td>
+          <td>${vencimento}</td>
           <td>${escapeHtml(clienteNome)}</td>
           <td>${escapeHtml(conta.numero_titulo || `DOC-${conta.documento_id || conta.id}`)}</td>
           <td><span class="status-chip ${statusConta}">${getContaStatusLabel(statusConta)}</span></td>
