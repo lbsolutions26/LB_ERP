@@ -110,7 +110,11 @@ const els = {
   novoDocumentoModalTitle: document.getElementById("novoDocumentoModalTitle"),
   novoDocumentoModalSubtitle: document.getElementById("novoDocumentoModalSubtitle"),
   novoDocumentoClienteSearch: document.getElementById("novoDocumentoClienteSearch"),
-  novoDocumentoClienteSelect: document.getElementById("novoDocumentoClienteSelect"),
+  novoDocumentoClienteId: document.getElementById("novoDocumentoClienteId"),
+  novoDocumentoClienteTrigger: document.getElementById("novoDocumentoClienteTrigger"),
+  novoDocumentoClienteLabel: document.getElementById("novoDocumentoClienteLabel"),
+  novoDocumentoClientePanel: document.getElementById("novoDocumentoClientePanel"),
+  novoDocumentoClienteOptions: document.getElementById("novoDocumentoClienteOptions"),
   novoDocumentoStatusSelect: document.getElementById("novoDocumentoStatusSelect"),
   novoDocumentoObservacoes: document.getElementById("novoDocumentoObservacoes"),
   novoDocumentoItemsGrid: document.getElementById("novoDocumentoItemsGrid"),
@@ -239,6 +243,33 @@ function closeItensDocumentoModal() {
   els.itensDocumentoModal.classList.add("hidden");
 }
 
+function openNovoDocumentoClientePanel() {
+  if (!els.novoDocumentoClientePanel) return;
+  els.novoDocumentoClientePanel.classList.remove("hidden");
+  if (els.novoDocumentoClienteTrigger) {
+    els.novoDocumentoClienteTrigger.setAttribute("aria-expanded", "true");
+  }
+  if (els.novoDocumentoClienteSearch) {
+    window.requestAnimationFrame(() => els.novoDocumentoClienteSearch.focus());
+  }
+}
+
+function closeNovoDocumentoClientePanel() {
+  if (!els.novoDocumentoClientePanel) return;
+  els.novoDocumentoClientePanel.classList.add("hidden");
+  if (els.novoDocumentoClienteTrigger) {
+    els.novoDocumentoClienteTrigger.setAttribute("aria-expanded", "false");
+  }
+}
+
+function setNovoDocumentoCliente(clienteId) {
+  state.novoDocumentoModal.clienteId = clienteId ? String(clienteId) : "";
+  if (els.novoDocumentoClienteId) {
+    els.novoDocumentoClienteId.value = state.novoDocumentoModal.clienteId;
+  }
+  renderNovoDocumentoClienteSelect();
+}
+
 function getDocumentoModalConfig(tipo = "pedido") {
   const isOrcamento = tipo === "orcamento";
   return {
@@ -306,7 +337,7 @@ function getNovoDocumentoSubtotal() {
 }
 
 function renderNovoDocumentoClienteSelect() {
-  if (!els.novoDocumentoClienteSelect) return;
+  if (!els.novoDocumentoClienteOptions) return;
   const search = String(els.novoDocumentoClienteSearch?.value || "").trim().toLowerCase();
   const clientesFiltrados = search
     ? state.clientes.filter((cliente) => {
@@ -317,14 +348,40 @@ function renderNovoDocumentoClienteSelect() {
       })
     : state.clientes;
 
-  els.novoDocumentoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option><option value="__new__">+ Novo cliente rapido</option>';
-  for (const cliente of clientesFiltrados) {
-    els.novoDocumentoClienteSelect.insertAdjacentHTML(
-      "beforeend",
-      `<option value="${cliente.id}">${escapeHtml(cliente.nome)}</option>`
-    );
+  const selectedClient = state.clientes.find((cliente) => String(cliente.id) === String(state.novoDocumentoModal.clienteId));
+  if (els.novoDocumentoClienteLabel) {
+    els.novoDocumentoClienteLabel.textContent = selectedClient?.nome || "Selecione um cliente";
   }
-  els.novoDocumentoClienteSelect.value = state.novoDocumentoModal.clienteId || "";
+
+  const optionsHtml = [];
+  optionsHtml.push(`
+    <button type="button" class="cliente-combo-option cliente-combo-quick" data-cliente-quick-new>
+      + Novo cliente rapido
+    </button>
+  `);
+
+  if (!clientesFiltrados.length) {
+    optionsHtml.push('<div class="cliente-combo-empty">Nenhum cliente encontrado</div>');
+  } else {
+    for (const cliente of clientesFiltrados) {
+      const isSelected = String(cliente.id) === String(state.novoDocumentoModal.clienteId);
+      optionsHtml.push(`
+        <button
+          type="button"
+          class="cliente-combo-option${isSelected ? " active" : ""}"
+          data-cliente-id="${cliente.id}"
+        >
+          <span>${escapeHtml(cliente.nome)}</span>
+          ${cliente.telefone ? `<small>${escapeHtml(cliente.telefone)}</small>` : ""}
+        </button>
+      `);
+    }
+  }
+
+  els.novoDocumentoClienteOptions.innerHTML = optionsHtml.join("");
+  if (els.novoDocumentoClienteId) {
+    els.novoDocumentoClienteId.value = state.novoDocumentoModal.clienteId || "";
+  }
 }
 
 function renderNovoDocumentoStatusSelect() {
@@ -686,6 +743,9 @@ async function saveNovoDocumento(event) {
 
   closeNovoDocumentoModal();
   state.novoDocumentoModal = createDocumentoDraft("pedido");
+  if (els.novoDocumentoClienteSearch) {
+    els.novoDocumentoClienteSearch.value = "";
+  }
   showToast(draft.tipo === "orcamento" ? (isEdit ? "Orcamento atualizado" : "Orcamento salvo") : (isEdit ? "Pedido atualizado" : "Pedido salvo"));
   await refreshAll();
 }
@@ -709,14 +769,14 @@ async function saveNovoClienteRapido(event) {
 
   els.novoClienteRapidoForm.reset();
   closeNovoClienteRapidoModal();
-  state.novoDocumentoModal.clienteId = String(clienteCriado.id);
+  setNovoDocumentoCliente(clienteCriado.id);
   if (els.novoDocumentoClienteSearch) {
     els.novoDocumentoClienteSearch.value = clienteCriado.nome || "";
   }
   await refreshAll();
   renderNovoDocumentoClienteSelect();
-  if (els.novoDocumentoClienteSelect) {
-    els.novoDocumentoClienteSelect.value = String(clienteCriado.id);
+  if (els.novoDocumentoClienteTrigger) {
+    els.novoDocumentoClienteTrigger.focus();
   }
   showToast("Cliente salvo");
 }
@@ -1302,8 +1362,6 @@ function renderSelects() {
       els.orcamentoClienteSelect.insertAdjacentHTML("beforeend", optionHtml);
     }
   }
-
-  renderNovoDocumentoClienteSelect();
 }
 
 function renderAdminEmpresasSelect() {
@@ -2081,6 +2139,16 @@ function attachEvents() {
     els.closeNovoDocumentoModalBtn.addEventListener("click", closeNovoDocumentoModal);
   }
 
+  if (els.novoDocumentoClienteTrigger) {
+    els.novoDocumentoClienteTrigger.addEventListener("click", () => {
+      if (els.novoDocumentoClientePanel?.classList.contains("hidden")) {
+        openNovoDocumentoClientePanel();
+      } else {
+        closeNovoDocumentoClientePanel();
+      }
+    });
+  }
+
   if (els.closeNovoClienteRapidoModalBtn) {
     els.closeNovoClienteRapidoModalBtn.addEventListener("click", closeNovoClienteRapidoModal);
   }
@@ -2101,6 +2169,26 @@ function attachEvents() {
     });
   }
 
+  if (els.novoDocumentoClientePanel) {
+    els.novoDocumentoClientePanel.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+
+      const quickNew = target.closest("[data-cliente-quick-new]");
+      if (quickNew) {
+        closeNovoDocumentoClientePanel();
+        openNovoClienteRapidoModal();
+        return;
+      }
+
+      const clienteButton = target.closest("[data-cliente-id]");
+      if (!clienteButton) return;
+      const clienteId = clienteButton.getAttribute("data-cliente-id") || "";
+      setNovoDocumentoCliente(clienteId);
+      closeNovoDocumentoClientePanel();
+    });
+  }
+
   if (els.addDocumentoItemBtn) {
     els.addDocumentoItemBtn.addEventListener("click", () => addNovoDocumentoItem());
   }
@@ -2115,22 +2203,14 @@ function attachEvents() {
     });
   }
 
-  if (els.novoDocumentoClienteSelect) {
-    els.novoDocumentoClienteSelect.addEventListener("change", () => {
-      const previousClienteId = state.novoDocumentoModal.clienteId || "";
-      const selectedValue = els.novoDocumentoClienteSelect.value || "";
-      if (selectedValue === "__new__") {
-        els.novoDocumentoClienteSelect.value = previousClienteId;
-        openNovoClienteRapidoModal();
-        return;
-      }
-      state.novoDocumentoModal.clienteId = selectedValue;
-    });
-  }
-
   if (els.novoDocumentoClienteSearch) {
     els.novoDocumentoClienteSearch.addEventListener("input", () => {
       renderNovoDocumentoClienteSelect();
+      openNovoDocumentoClientePanel();
+    });
+
+    els.novoDocumentoClienteSearch.addEventListener("focus", () => {
+      openNovoDocumentoClientePanel();
     });
   }
 
@@ -2167,6 +2247,15 @@ function attachEvents() {
       }
     });
   }
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const combo = target.closest("[data-cliente-combo]");
+    if (!combo) {
+      closeNovoDocumentoClientePanel();
+    }
+  });
 
   for (const button of Array.from(document.querySelectorAll("[data-documento-tipo]"))) {
     button.addEventListener("click", () => {

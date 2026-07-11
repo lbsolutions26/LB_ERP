@@ -415,12 +415,16 @@
             <section class="documento-meta-panel">
               <label>
                 Cliente
-                <div class="cliente-picker">
-                  <input id="novoDocumentoClienteSearch" type="search" placeholder="Pesquisar cliente..." autocomplete="off" />
-                  <select id="novoDocumentoClienteSelect" name="cliente_id" required>
-                    <option value="">Selecione um cliente</option>
-                    <option value="__new__">+ Novo cliente rapido</option>
-                  </select>
+                <div class="cliente-combo" data-cliente-combo>
+                  <input id="novoDocumentoClienteId" name="cliente_id" type="hidden" required />
+                  <button id="novoDocumentoClienteTrigger" class="cliente-combo-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span id="novoDocumentoClienteLabel">Selecione um cliente</span>
+                    <span class="cliente-combo-caret">▾</span>
+                  </button>
+                  <div id="novoDocumentoClientePanel" class="cliente-combo-panel hidden" role="listbox" aria-label="Clientes">
+                    <input id="novoDocumentoClienteSearch" class="cliente-combo-search" type="search" placeholder="Buscar cliente..." autocomplete="off" />
+                    <div id="novoDocumentoClienteOptions" class="cliente-combo-options"></div>
+                  </div>
                 </div>
               </label>
 
