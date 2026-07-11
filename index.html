@@ -415,9 +415,13 @@
             <section class="documento-meta-panel">
               <label>
                 Cliente
-                <select id="novoDocumentoClienteSelect" name="cliente_id" required>
-                  <option value="">Selecione um cliente</option>
-                </select>
+                <div class="cliente-picker">
+                  <input id="novoDocumentoClienteSearch" type="search" placeholder="Pesquisar cliente..." autocomplete="off" />
+                  <select id="novoDocumentoClienteSelect" name="cliente_id" required>
+                    <option value="">Selecione um cliente</option>
+                    <option value="__new__">+ Novo cliente rapido</option>
+                  </select>
+                </div>
               </label>
 
               <label>
@@ -453,6 +457,36 @@
               <strong id="novoDocumentoTotal">R$ 0,00</strong>
             </div>
             <button id="novoDocumentoSubmitBtn" type="submit" class="btn">Salvar Pedido</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="novoClienteRapidoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="novoClienteRapidoModalTitle">
+      <div class="modal-card modal-quick-client-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="novoClienteRapidoModalTitle">Novo cliente rapido</h3>
+            <p class="modal-subtitle">Cadastre e retorne direto para o pedido.</p>
+          </div>
+          <button id="closeNovoClienteRapidoModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+
+        <form id="novoClienteRapidoForm" class="quick-client-form">
+          <label>
+            Nome
+            <input name="nome" required placeholder="Nome do cliente" />
+          </label>
+          <label>
+            Telefone
+            <input name="telefone" placeholder="(00) 00000-0000" />
+          </label>
+          <label>
+            Email
+            <input name="email" type="email" placeholder="cliente@email.com" />
+          </label>
+          <div class="quick-client-actions">
+            <button type="submit" class="btn">Salvar cliente</button>
           </div>
         </form>
       </div>

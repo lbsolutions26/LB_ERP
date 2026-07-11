@@ -109,6 +109,7 @@ const els = {
   novoDocumentoForm: document.getElementById("novoDocumentoForm"),
   novoDocumentoModalTitle: document.getElementById("novoDocumentoModalTitle"),
   novoDocumentoModalSubtitle: document.getElementById("novoDocumentoModalSubtitle"),
+  novoDocumentoClienteSearch: document.getElementById("novoDocumentoClienteSearch"),
   novoDocumentoClienteSelect: document.getElementById("novoDocumentoClienteSelect"),
   novoDocumentoStatusSelect: document.getElementById("novoDocumentoStatusSelect"),
   novoDocumentoObservacoes: document.getElementById("novoDocumentoObservacoes"),
@@ -118,6 +119,9 @@ const els = {
   novoDocumentoResumoTexto: document.getElementById("novoDocumentoResumoTexto"),
   novoDocumentoTotal: document.getElementById("novoDocumentoTotal"),
   novoDocumentoSubmitBtn: document.getElementById("novoDocumentoSubmitBtn"),
+  novoClienteRapidoModal: document.getElementById("novoClienteRapidoModal"),
+  closeNovoClienteRapidoModalBtn: document.getElementById("closeNovoClienteRapidoModalBtn"),
+  novoClienteRapidoForm: document.getElementById("novoClienteRapidoForm"),
   itensDocumentoModal: document.getElementById("itensDocumentoModal"),
   closeItensDocumentoModalBtn: document.getElementById("closeItensDocumentoModalBtn"),
   itensDocumentoModalTitle: document.getElementById("itensDocumentoModalTitle"),
@@ -303,8 +307,18 @@ function getNovoDocumentoSubtotal() {
 
 function renderNovoDocumentoClienteSelect() {
   if (!els.novoDocumentoClienteSelect) return;
-  els.novoDocumentoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
-  for (const cliente of state.clientes) {
+  const search = String(els.novoDocumentoClienteSearch?.value || "").trim().toLowerCase();
+  const clientesFiltrados = search
+    ? state.clientes.filter((cliente) => {
+        const nome = String(cliente.nome || "").toLowerCase();
+        const telefone = String(cliente.telefone || "").toLowerCase();
+        const email = String(cliente.email || "").toLowerCase();
+        return nome.includes(search) || telefone.includes(search) || email.includes(search);
+      })
+    : state.clientes;
+
+  els.novoDocumentoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option><option value="__new__">+ Novo cliente rapido</option>';
+  for (const cliente of clientesFiltrados) {
     els.novoDocumentoClienteSelect.insertAdjacentHTML(
       "beforeend",
       `<option value="${cliente.id}">${escapeHtml(cliente.nome)}</option>`
@@ -432,6 +446,16 @@ async function openNovoDocumentoEditModal(tipo, documentoId) {
 function closeNovoDocumentoModal() {
   if (!els.novoDocumentoModal) return;
   els.novoDocumentoModal.classList.add("hidden");
+}
+
+function openNovoClienteRapidoModal() {
+  if (!els.novoClienteRapidoModal) return;
+  els.novoClienteRapidoModal.classList.remove("hidden");
+}
+
+function closeNovoClienteRapidoModal() {
+  if (!els.novoClienteRapidoModal) return;
+  els.novoClienteRapidoModal.classList.add("hidden");
 }
 
 function normalizeDocumentoItem(item) {
@@ -664,6 +688,37 @@ async function saveNovoDocumento(event) {
   state.novoDocumentoModal = createDocumentoDraft("pedido");
   showToast(draft.tipo === "orcamento" ? (isEdit ? "Orcamento atualizado" : "Orcamento salvo") : (isEdit ? "Pedido atualizado" : "Pedido salvo"));
   await refreshAll();
+}
+
+async function saveNovoClienteRapido(event) {
+  event.preventDefault();
+  if (!els.novoClienteRapidoForm) return;
+
+  const formData = new FormData(els.novoClienteRapidoForm);
+  const payload = {
+    empresa_id: state.empresaId,
+    nome: String(formData.get("nome") || "").trim(),
+    telefone: String(formData.get("telefone") || "").trim() || null,
+    email: String(formData.get("email") || "").trim() || null
+  };
+
+  const clienteCriado = await createClienteFromPayload(payload);
+  if (!clienteCriado) {
+    throw new Error("Informe o nome do cliente.");
+  }
+
+  els.novoClienteRapidoForm.reset();
+  closeNovoClienteRapidoModal();
+  state.novoDocumentoModal.clienteId = String(clienteCriado.id);
+  if (els.novoDocumentoClienteSearch) {
+    els.novoDocumentoClienteSearch.value = clienteCriado.nome || "";
+  }
+  await refreshAll();
+  renderNovoDocumentoClienteSelect();
+  if (els.novoDocumentoClienteSelect) {
+    els.novoDocumentoClienteSelect.value = String(clienteCriado.id);
+  }
+  showToast("Cliente salvo");
 }
 
 function renderItensDocumentoTable() {
@@ -1237,9 +1292,6 @@ function renderSelects() {
   if (els.orcamentoClienteSelect) {
     els.orcamentoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
   }
-  if (els.novoDocumentoClienteSelect) {
-    els.novoDocumentoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
-  }
 
   for (const cliente of state.clientes) {
     const optionHtml = `<option value="${cliente.id}">${escapeHtml(cliente.nome)}</option>`;
@@ -1249,10 +1301,9 @@ function renderSelects() {
     if (els.orcamentoClienteSelect) {
       els.orcamentoClienteSelect.insertAdjacentHTML("beforeend", optionHtml);
     }
-    if (els.novoDocumentoClienteSelect) {
-      els.novoDocumentoClienteSelect.insertAdjacentHTML("beforeend", optionHtml);
-    }
   }
+
+  renderNovoDocumentoClienteSelect();
 }
 
 function renderAdminEmpresasSelect() {
@@ -1553,14 +1604,24 @@ async function createCliente(event) {
     email: String(formData.get("email") || "").trim() || null
   };
 
-  if (!payload.nome) return;
-
-  const { error } = await supabaseClient.from("clientes").insert(payload);
-  if (error) throw error;
+  await createClienteFromPayload(payload);
 
   els.clienteForm.reset();
   showToast("Cliente salvo");
   await refreshAll();
+}
+
+async function createClienteFromPayload(payload) {
+  if (!payload?.nome) return null;
+
+  const { data, error } = await supabaseClient
+    .from("clientes")
+    .insert(payload)
+    .select("id, nome, telefone, email")
+    .single();
+
+  if (error) throw error;
+  return data || null;
 }
 
 async function createProduto(event) {
@@ -2020,10 +2081,22 @@ function attachEvents() {
     els.closeNovoDocumentoModalBtn.addEventListener("click", closeNovoDocumentoModal);
   }
 
+  if (els.closeNovoClienteRapidoModalBtn) {
+    els.closeNovoClienteRapidoModalBtn.addEventListener("click", closeNovoClienteRapidoModal);
+  }
+
   if (els.novoDocumentoModal) {
     els.novoDocumentoModal.addEventListener("click", (event) => {
       if (event.target === els.novoDocumentoModal) {
         closeNovoDocumentoModal();
+      }
+    });
+  }
+
+  if (els.novoClienteRapidoModal) {
+    els.novoClienteRapidoModal.addEventListener("click", (event) => {
+      if (event.target === els.novoClienteRapidoModal) {
+        closeNovoClienteRapidoModal();
       }
     });
   }
@@ -2044,7 +2117,20 @@ function attachEvents() {
 
   if (els.novoDocumentoClienteSelect) {
     els.novoDocumentoClienteSelect.addEventListener("change", () => {
-      state.novoDocumentoModal.clienteId = els.novoDocumentoClienteSelect.value || "";
+      const previousClienteId = state.novoDocumentoModal.clienteId || "";
+      const selectedValue = els.novoDocumentoClienteSelect.value || "";
+      if (selectedValue === "__new__") {
+        els.novoDocumentoClienteSelect.value = previousClienteId;
+        openNovoClienteRapidoModal();
+        return;
+      }
+      state.novoDocumentoModal.clienteId = selectedValue;
+    });
+  }
+
+  if (els.novoDocumentoClienteSearch) {
+    els.novoDocumentoClienteSearch.addEventListener("input", () => {
+      renderNovoDocumentoClienteSelect();
     });
   }
 
@@ -2069,6 +2155,16 @@ function attachEvents() {
       const rowId = target.getAttribute("data-documento-item-remove");
       if (!rowId) return;
       removeNovoDocumentoItem(rowId);
+    });
+  }
+
+  if (els.novoClienteRapidoForm) {
+    els.novoClienteRapidoForm.addEventListener("submit", async (event) => {
+      try {
+        await saveNovoClienteRapido(event);
+      } catch (error) {
+        showToast(`Erro ao salvar cliente: ${error.message}`, "error");
+      }
     });
   }
 
