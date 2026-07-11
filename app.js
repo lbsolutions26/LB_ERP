@@ -263,6 +263,10 @@ const els = {
   estoquePontoPedidoCount: document.getElementById("estoquePontoPedidoCount"),
   orcamentoAbertoValue: document.getElementById("orcamentoAbertoValue"),
   refreshBtn: document.getElementById("refreshBtn"),
+  changePasswordBtn: document.getElementById("changePasswordBtn"),
+  changePasswordModal: document.getElementById("changePasswordModal"),
+  closeChangePasswordModalBtn: document.getElementById("closeChangePasswordModalBtn"),
+  changePasswordForm: document.getElementById("changePasswordForm"),
   recebimentoModal: document.getElementById("recebimentoModal"),
   closeRecebimentoModalBtn: document.getElementById("closeRecebimentoModalBtn"),
   recebimentoForm: document.getElementById("recebimentoForm"),
@@ -2185,6 +2189,39 @@ async function login(event) {
 async function logout() {
   const { error } = await supabaseClient.auth.signOut();
   if (error) throw error;
+}
+
+function openChangePasswordModal() {
+  if (!els.changePasswordModal) return;
+  if (els.changePasswordForm) els.changePasswordForm.reset();
+  els.changePasswordModal.classList.remove("hidden");
+}
+
+function closeChangePasswordModal() {
+  if (!els.changePasswordModal) return;
+  els.changePasswordModal.classList.add("hidden");
+  if (els.changePasswordForm) els.changePasswordForm.reset();
+}
+
+async function changePassword(event) {
+  event.preventDefault();
+  if (!els.changePasswordForm) return;
+  const formData = new FormData(els.changePasswordForm);
+  const password = String(formData.get("password") || "");
+  const confirm = String(formData.get("password_confirm") || "");
+
+  if (password.length < 6) {
+    throw new Error("A senha precisa ter ao menos 6 caracteres.");
+  }
+  if (password !== confirm) {
+    throw new Error("A confirmacao nao confere com a nova senha.");
+  }
+
+  const { error } = await supabaseClient.auth.updateUser({ password });
+  if (error) throw error;
+
+  closeChangePasswordModal();
+  showToast("Senha atualizada");
 }
 
 async function loadEmpresaContext() {
@@ -4200,6 +4237,32 @@ function attachEvents() {
       showToast(`Erro ao sair: ${error.message}`, "error");
     }
   });
+
+  if (els.changePasswordBtn) {
+    els.changePasswordBtn.addEventListener("click", openChangePasswordModal);
+  }
+
+  if (els.closeChangePasswordModalBtn) {
+    els.closeChangePasswordModalBtn.addEventListener("click", closeChangePasswordModal);
+  }
+
+  if (els.changePasswordModal) {
+    els.changePasswordModal.addEventListener("click", (event) => {
+      if (event.target === els.changePasswordModal) {
+        closeChangePasswordModal();
+      }
+    });
+  }
+
+  if (els.changePasswordForm) {
+    els.changePasswordForm.addEventListener("submit", async (event) => {
+      try {
+        await changePassword(event);
+      } catch (error) {
+        showToast(`Erro ao trocar senha: ${error.message}`, "error");
+      }
+    });
+  }
 
   for (const tab of els.tabs) {
     tab.addEventListener("click", () => {

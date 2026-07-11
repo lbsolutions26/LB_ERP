@@ -28,7 +28,7 @@
         </form>
 
         <p class="tiny-note">
-          Primeiro acesso: crie o usuário no painel do Supabase e vincule em usuarios_empresas.
+          Primeiro acesso? Peça ao administrador do seu SaaS para criar seu usuário e senha inicial.
         </p>
       </section>
     </main>
@@ -40,6 +40,7 @@
           <p id="empresaInfo" class="subtitle">Empresa</p>
         </div>
         <div class="top-actions">
+          <button id="changePasswordBtn" class="btn btn-ghost">Trocar senha</button>
           <button id="refreshBtn" class="btn btn-ghost">Atualizar</button>
           <button id="logoutBtn" class="btn btn-ghost">Sair</button>
         </div>
@@ -741,6 +742,30 @@
             </div>
             <button id="recebimentoSubmitBtn" type="submit" class="btn">Salvar recebimento</button>
           </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="changePasswordModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="changePasswordModalTitle">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="changePasswordModalTitle">Trocar senha</h3>
+            <p class="modal-subtitle">Defina uma nova senha para o seu acesso.</p>
+          </div>
+          <button id="closeChangePasswordModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+
+        <form id="changePasswordForm" class="auth-form">
+          <label>
+            Nova senha
+            <input name="password" type="password" minlength="6" required autocomplete="new-password" />
+          </label>
+          <label>
+            Confirme a nova senha
+            <input name="password_confirm" type="password" minlength="6" required autocomplete="new-password" />
+          </label>
+          <button type="submit" class="btn">Salvar nova senha</button>
         </form>
       </div>
     </div>
