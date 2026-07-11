@@ -956,7 +956,10 @@ async function openRecebimentoModalByConta(contaId) {
 }
 
 async function openRecebimentoModalByPedido(documentoId) {
-  const conta = state.contasReceber.find((item) => Number(item.documento_id) === Number(documentoId));
+  const contasDocumento = state.contasReceber.filter((item) => Number(item.documento_id) === Number(documentoId));
+  const conta =
+    contasDocumento.find((item) => item.statusNormalizado === "aberto" || item.statusNormalizado === "parcial") ||
+    contasDocumento[0];
   if (!conta) {
     throw new Error("Nao existe conta a receber vinculada para este pedido.");
   }
@@ -1224,24 +1227,29 @@ async function createDocumentoFinanceiro(documentoId, clienteId, pagamentoState,
       };
 
       const parts = splitAmountIntoParts(restanteCents, parcelaCount);
-      const parcelasRestantes = parts.map((partCents, index) => ({
-        numero: index + 1,
-        vencimento: addDays(vencimentoBase, intervaloDias * index),
-        valor: partCents,
-        status: partCents > 0 ? "pendente" : "cancelado",
-        valorRecebido: 0
-      }));
-
-      const parceladoPlano = {
-        valorOriginal: restanteCents,
-        valorAberto: restanteCents,
-        statusConta: restanteCents > 0 ? "aberto" : "cancelado",
-        parcelas: parcelasRestantes,
-        recebimentos: []
-      };
-
       await createContaComPlano(entradaPlano, "E");
-      await createContaComPlano(parceladoPlano, "P");
+
+      for (let index = 0; index < parts.length; index += 1) {
+        const partCents = parts[index];
+        const parcelaNumero = index + 1;
+        const parcelaPlano = {
+          valorOriginal: partCents,
+          valorAberto: partCents,
+          statusConta: partCents > 0 ? "aberto" : "cancelado",
+          parcelas: [
+            {
+              numero: 1,
+              vencimento: addDays(vencimentoBase, intervaloDias * index),
+              valor: partCents,
+              status: partCents > 0 ? "pendente" : "cancelado",
+              valorRecebido: 0
+            }
+          ],
+          recebimentos: []
+        };
+
+        await createContaComPlano(parcelaPlano, `P${parcelaNumero}`);
+      }
       return;
     }
   }
