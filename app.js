@@ -123,6 +123,7 @@ const state = {
   contasReceber: [],
   recebimentos: [],
   parcelasReceberPrevistas: [],
+  dashboardMonthlyCash: [],
   dashboardCashChartMode: "recebimentos",
   recebimentoModal: {
     contaId: null,
@@ -806,11 +807,12 @@ function getParcelaSaldo(parcela) {
 }
 
 async function loadContasReceber() {
-  const { data, error } = await fetchAllSupabaseRows(() => supabaseClient
+  const { data, error } = await supabaseClient
     .from("contas_receber")
     .select("id, documento_id, cliente_id, numero_titulo, emissao, valor_original, valor_aberto, status, cliente:clientes(id,nome)")
     .eq("empresa_id", state.empresaId)
-    .order("emissao", { ascending: false }));
+    .order("emissao", { ascending: false })
+    .limit(500);
 
   if (error) {
     if (isMissingRelationError(error)) {
@@ -824,12 +826,12 @@ async function loadContasReceber() {
   const parcelasByConta = new Map();
 
   if (contaIds.length) {
-    const { data: parcelasData, error: parcelasError } = await fetchAllSupabaseRows(() => supabaseClient
+    const { data: parcelasData, error: parcelasError } = await supabaseClient
       .from("contas_receber_parcelas")
       .select("conta_receber_id, vencimento, valor_parcela, valor_recebido")
       .eq("empresa_id", state.empresaId)
       .in("conta_receber_id", contaIds)
-      .order("vencimento", { ascending: true }));
+      .order("vencimento", { ascending: true });
 
     if (parcelasError) {
       if (!isMissingRelationError(parcelasError)) {
@@ -874,11 +876,12 @@ async function loadContasReceber() {
 }
 
 async function loadRecebimentos() {
-  const { data, error } = await fetchAllSupabaseRows(() => supabaseClient
+  const { data, error } = await supabaseClient
     .from("recebimentos")
     .select("id, data_recebimento, valor")
     .eq("empresa_id", state.empresaId)
-    .order("data_recebimento", { ascending: false }));
+    .order("data_recebimento", { ascending: false })
+    .limit(500);
 
   if (error) {
     if (isMissingRelationError(error)) {
@@ -892,11 +895,16 @@ async function loadRecebimentos() {
 }
 
 async function loadParcelasReceberPrevistas() {
-  const { data, error } = await fetchAllSupabaseRows(() => supabaseClient
+  // Agregacao usada no dashboard vem via RPC dashboard_monthly_cash.
+  // Mantemos apenas parcelas em aberto para calculos auxiliares/telas.
+  const { data, error } = await supabaseClient
     .from("contas_receber_parcelas")
     .select("id, vencimento, valor_parcela, valor_recebido, status")
     .eq("empresa_id", state.empresaId)
-    .order("vencimento", { ascending: true }));
+    .neq("status", "recebido")
+    .neq("status", "cancelado")
+    .order("vencimento", { ascending: true })
+    .limit(500);
 
   if (error) {
     if (isMissingRelationError(error)) {
@@ -907,6 +915,26 @@ async function loadParcelasReceberPrevistas() {
   }
 
   state.parcelasReceberPrevistas = data || [];
+}
+
+async function loadDashboardMonthlyCash() {
+  const { data, error } = await supabaseClient.rpc("dashboard_monthly_cash", {
+    target_empresa_id: state.empresaId,
+    months_back: 11
+  });
+
+  if (error) {
+    console.warn("Falha ao carregar RPC dashboard_monthly_cash", error.message);
+    state.dashboardMonthlyCash = [];
+    return;
+  }
+
+  state.dashboardMonthlyCash = (data || []).map((row) => ({
+    mes: row.mes,
+    realized: Number(row.realized_recebimentos || 0),
+    forecast: Number(row.forecast_parcelas || 0),
+    faturamento: Number(row.faturamento || 0)
+  }));
 }
 
 async function cleanupOrphanDocumentoFinanceiro() {
@@ -2365,23 +2393,27 @@ async function loadPedidosProdutos() {
       ])
     );
 
-    const pedidoIds = state.pedidos.map((pedido) => Number(pedido.id)).filter(Number.isFinite);
-    const { data, error } = await supabaseClient
+    const { data, error } = await fetchAllSupabaseRows(() => supabaseClient
       .from("documento_venda_itens")
       .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
       .eq("empresa_id", state.empresaId)
-      .in("documento_id", pedidoIds);
+      .order("documento_id", { ascending: true }));
 
     if (error) throw error;
+
     const normalizedItems = normalizePedidoProdutoRows(data || [], {
       idField: "documento_id",
       totalField: "valor_total",
       metaById: pedidoMetaById
     });
+
     const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
-    const missingPedidos = state.pedidos.filter((pedido) => !pedidosComItens.has(Number(pedido.id)));
-    const recoveredItems = await loadMissingPedidoProdutoRows(missingPedidos, pedidoMetaById);
-    state.pedidosProdutosRaw = [...normalizedItems, ...recoveredItems];
+    const fallbackRows = state.pedidos
+      .filter((pedido) => !pedidosComItens.has(Number(pedido.id)))
+      .map(buildFallbackItemFromPedidoMeta)
+      .filter(Boolean);
+
+    state.pedidosProdutosRaw = [...normalizedItems, ...fallbackRows];
     state.pedidosProdutos = getFilteredAndSortedPedidosProdutos();
   } catch (error) {
     console.warn("Falha ao carregar itens analiticos de pedidos; usando fallback do cabecalho.", error);
@@ -3642,116 +3674,35 @@ function formatMonthKey(date) {
 }
 
 function getMonthlyCashEntries(mode = "recebimentos") {
-  const monthMap = new Map();
-  const now = new Date();
-  const forecastByMonth = new Map();
-  const forecastMonthFromParcelas = new Set();
-  const sourceParcelCount = (state.parcelasReceberPrevistas || []).length;
+  const rows = state.dashboardMonthlyCash || [];
+  if (!rows.length) return [];
 
-  const ensureMonth = (reference) => {
+  return rows.map((row) => {
+    const reference = new Date(row.mes);
     const monthKey = formatMonthKey(reference);
-    if (!monthMap.has(monthKey)) {
-      monthMap.set(monthKey, {
+    const label = reference.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+
+    if (mode === "faturamento") {
+      const value = Number(row.faturamento || 0);
+      return {
         monthKey,
-        label: reference.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
-        total: 0,
-        realized: 0,
+        label,
+        total: value,
+        realized: value,
         forecast: 0
-      });
+      };
     }
-  };
 
-  let latestMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-
-  if (mode === "faturamento") {
-    for (const pedido of state.pedidos || []) {
-      const dateValue = pedido.data_pedido || pedido.data_emissao;
-      const amount = Number(pedido.valor_total || 0);
-      const orderDate = dateValue ? new Date(dateValue) : null;
-      if (!orderDate || Number.isNaN(orderDate.getTime()) || amount <= 0.00001) continue;
-      const orderMonth = new Date(orderDate.getFullYear(), orderDate.getMonth(), 1);
-      if (orderMonth > latestMonth) {
-        latestMonth = orderMonth;
-      }
-    }
-  } else {
-    const addForecastFromSource = (vencimentoValue, saldoValue, fromParcela = false) => {
-      const vencimento = vencimentoValue ? new Date(vencimentoValue) : null;
-      const saldo = Number(saldoValue || 0);
-      if (!vencimento || Number.isNaN(vencimento.getTime()) || saldo <= 0.00001) return;
-      const forecastMonth = new Date(vencimento.getFullYear(), vencimento.getMonth(), 1);
-      if (forecastMonth > latestMonth) {
-        latestMonth = forecastMonth;
-      }
-      const monthKey = formatMonthKey(forecastMonth);
-      forecastByMonth.set(monthKey, Number(forecastByMonth.get(monthKey) || 0) + saldo);
-      if (fromParcela) {
-        forecastMonthFromParcelas.add(monthKey);
-      }
+    const realized = Number(row.realized || 0);
+    const forecast = Number(row.forecast || 0);
+    return {
+      monthKey,
+      label,
+      total: realized + forecast,
+      realized,
+      forecast
     };
-
-    for (const parcela of state.parcelasReceberPrevistas || []) {
-      const status = String(parcela.status || "").toLowerCase();
-      const saldo = Number(parcela.valor_parcela || 0) - Number(parcela.valor_recebido || 0);
-      if (status === "recebido" || status === "cancelado" || saldo <= 0.00001) continue;
-      addForecastFromSource(parcela.vencimento, saldo, true);
-    }
-
-    for (const conta of state.contasReceber || []) {
-      const status = String(conta.statusNormalizado || conta.status || "").toLowerCase();
-      if (status === "recebido" || Number(conta.valor_aberto || 0) <= 0.00001) continue;
-      const vencimentoSource = conta.vencimentoDate || conta.vencimento_date || conta.vencimento;
-      const vencimento = vencimentoSource ? new Date(vencimentoSource) : null;
-      if (!vencimento || Number.isNaN(vencimento.getTime())) continue;
-      const monthKey = formatMonthKey(new Date(vencimento.getFullYear(), vencimento.getMonth(), 1));
-      if (forecastMonthFromParcelas.has(monthKey)) continue;
-      addForecastFromSource(vencimentoSource, conta.valor_aberto);
-    }
-
-  }
-
-  const cursor = new Date(startMonth.getTime());
-  while (cursor <= latestMonth) {
-    ensureMonth(cursor);
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-
-  if (mode === "recebimentos") {
-    for (const [monthKey, forecastValue] of forecastByMonth.entries()) {
-      if (!monthMap.has(monthKey)) continue;
-      const entry = monthMap.get(monthKey);
-      entry.total += Number(forecastValue || 0);
-      entry.forecast += Number(forecastValue || 0);
-    }
-  }
-
-  if (mode === "faturamento") {
-    for (const pedido of state.pedidos || []) {
-      const dateValue = pedido.data_pedido || pedido.data_emissao;
-      const amount = Number(pedido.valor_total || 0);
-      const orderDate = dateValue ? new Date(dateValue) : null;
-      if (!orderDate || Number.isNaN(orderDate.getTime()) || amount <= 0.00001) continue;
-      const monthKey = formatMonthKey(orderDate);
-      if (!monthMap.has(monthKey)) continue;
-      const entry = monthMap.get(monthKey);
-      entry.total += amount;
-      entry.realized += amount;
-    }
-  } else {
-    for (const recebimento of state.recebimentos || []) {
-      const dataRecebimento = recebimento.data_recebimento ? new Date(recebimento.data_recebimento) : null;
-      if (!dataRecebimento || Number.isNaN(dataRecebimento.getTime())) continue;
-      const monthKey = formatMonthKey(dataRecebimento);
-      if (!monthMap.has(monthKey)) continue;
-      const entry = monthMap.get(monthKey);
-      const value = Number(recebimento.valor || 0);
-      entry.total += value;
-      entry.realized += value;
-    }
-  }
-
-  return Array.from(monthMap.values());
+  });
 }
 
 async function refreshAll() {
@@ -3770,6 +3721,7 @@ async function refreshAll() {
       loadRecebimentos(),
       loadParcelasReceberPrevistas(),
       loadContasReceber(),
+      loadDashboardMonthlyCash(),
       loadOwnerUsers()
     ];
 
