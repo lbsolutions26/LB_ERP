@@ -115,3 +115,29 @@ Fluxo recomendado:
   2. fazer commit dos arquivos da tarefa;
   3. fazer push para o GitHub sem eu precisar pedir novamente.
 - Se houver arquivos locais nao relacionados ja modificados, o commit deve incluir apenas os arquivos da tarefa atual.
+
+## Acesso automatizado ao schema do Supabase
+
+Para permitir que o agente leia a estrutura real do banco sempre que voce quiser:
+
+1. Copie `.env.example` para `.env`.
+2. Preencha `SUPABASE_DB_URL` com a connection string do Postgres do Supabase.
+3. Execute:
+
+```powershell
+npm install
+npm run schema:pull
+```
+
+Ou rode o setup guiado (recomendado):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-supabase-schema-access.ps1
+```
+
+Arquivos gerados:
+
+- `supabase/live-schema.json` (completo para analise)
+- `supabase/live-schema.md` (resumo legivel)
+
+Depois de gerar esses arquivos, o agente consegue revisar tabelas, colunas, FKs, indices e politicas RLS com base no estado atual do banco.

@@ -1,0 +1,12 @@
+{
+  "name": "lb_erp",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "schema:pull": "node scripts/pull-supabase-schema.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.12.0"
+  }
+}
