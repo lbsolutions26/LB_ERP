@@ -4339,13 +4339,24 @@ function formatShortMonthLabel(date) {
   return raw.replace(/\.$/, "");
 }
 
+function parseMonthDate(value) {
+  if (!value) return null;
+  const text = String(value);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0);
+  }
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function getRecentMonthlyMetrics() {
   const rows = state.dashboardMonthlyCash || [];
   const currentKey = formatMonthKey(new Date());
   const byKey = new Map();
   for (const row of rows) {
-    const reference = new Date(row.mes);
-    if (Number.isNaN(reference.getTime())) continue;
+    const reference = parseMonthDate(row.mes);
+    if (!reference) continue;
     byKey.set(formatMonthKey(reference), { reference, row });
   }
 
@@ -4498,7 +4509,7 @@ function getMonthlyCashEntries(mode = "recebimentos") {
   if (!rows.length) return [];
 
   return rows.map((row) => {
-    const reference = new Date(row.mes);
+    const reference = parseMonthDate(row.mes) || new Date();
     const monthKey = formatMonthKey(reference);
     const label = reference.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 
