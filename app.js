@@ -3031,7 +3031,71 @@ async function deleteByTable(table, id) {
   await refreshAll();
 }
 
+async function deleteDocumentoFinanceiro(documentoId) {
+  const contasResponse = await supabaseClient
+    .from("contas_receber")
+    .select("id")
+    .eq("empresa_id", state.empresaId)
+    .eq("documento_id", documentoId);
+
+  if (contasResponse.error) {
+    if (isMissingRelationError(contasResponse.error)) return;
+    throw contasResponse.error;
+  }
+
+  const contaIds = (contasResponse.data || []).map((item) => Number(item.id)).filter(Number.isFinite);
+  if (!contaIds.length) return;
+
+  const parcelasResponse = await supabaseClient
+    .from("contas_receber_parcelas")
+    .select("id")
+    .eq("empresa_id", state.empresaId)
+    .in("conta_receber_id", contaIds);
+
+  if (parcelasResponse.error) {
+    if (!isMissingRelationError(parcelasResponse.error)) {
+      throw parcelasResponse.error;
+    }
+  }
+
+  const parcelaIds = (parcelasResponse.data || []).map((item) => Number(item.id)).filter(Number.isFinite);
+
+  if (parcelaIds.length) {
+    const { error: recebimentosError } = await supabaseClient
+      .from("recebimentos")
+      .delete()
+      .eq("empresa_id", state.empresaId)
+      .in("parcela_id", parcelaIds);
+
+    if (recebimentosError && !isMissingRelationError(recebimentosError)) {
+      throw recebimentosError;
+    }
+  }
+
+  const { error: parcelasDeleteError } = await supabaseClient
+    .from("contas_receber_parcelas")
+    .delete()
+    .eq("empresa_id", state.empresaId)
+    .in("conta_receber_id", contaIds);
+
+  if (parcelasDeleteError && !isMissingRelationError(parcelasDeleteError)) {
+    throw parcelasDeleteError;
+  }
+
+  const { error: contasDeleteError } = await supabaseClient
+    .from("contas_receber")
+    .delete()
+    .eq("empresa_id", state.empresaId)
+    .eq("documento_id", documentoId);
+
+  if (contasDeleteError && !isMissingRelationError(contasDeleteError)) {
+    throw contasDeleteError;
+  }
+}
+
 async function deleteDocumentoVenda(id, tipoDocumento) {
+  await deleteDocumentoFinanceiro(id);
+
   const { error } = await supabaseClient
     .from("documentos_venda")
     .delete()
