@@ -4755,8 +4755,25 @@ function attachEvents() {
     if (!tableKey || !field) return;
     const view = getTableViewConfig(tableKey);
     if (!view) return;
+
+    const selectionStart = typeof target.selectionStart === "number" ? target.selectionStart : null;
+    const selectionEnd = typeof target.selectionEnd === "number" ? target.selectionEnd : null;
     view.filters[field] = target.value || "";
     rerenderTableView(tableKey);
+
+    window.requestAnimationFrame(() => {
+      const nextInput = document.querySelector(`input[data-table-filter="${tableKey}"][data-field="${field}"]`);
+      if (!(nextInput instanceof HTMLInputElement)) return;
+      nextInput.focus();
+
+      if (selectionStart == null || selectionEnd == null) return;
+
+      try {
+        nextInput.setSelectionRange(selectionStart, selectionEnd);
+      } catch (_error) {
+        // Alguns tipos de input, como date, nao suportam selecao de cursor.
+      }
+    });
   });
 
   document.addEventListener("click", (event) => {
