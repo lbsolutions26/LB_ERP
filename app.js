@@ -2870,6 +2870,7 @@ function getMonthlyCashEntries(mode = "recebimentos") {
     }
   } else {
     const forecastParcels = [];
+    const forecastMonthKeys = new Set();
     const sourceParcelCount = (state.parcelasReceberPrevistas || []).length;
 
     const addForecastFromSource = (vencimentoValue, saldoValue) => {
@@ -2880,10 +2881,14 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       if (forecastMonth > latestMonth) {
         latestMonth = forecastMonth;
       }
-      forecastParcels.push({
-        monthKey: formatMonthKey(forecastMonth),
-        value: saldo
-      });
+      const monthKey = formatMonthKey(forecastMonth);
+      if (!forecastMonthKeys.has(monthKey)) {
+        forecastMonthKeys.add(monthKey);
+        forecastParcels.push({
+          monthKey,
+          value: saldo
+        });
+      }
     };
 
     for (const parcela of state.parcelasReceberPrevistas || []) {
@@ -2893,12 +2898,15 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       addForecastFromSource(parcela.vencimento, saldo);
     }
 
-    if (!sourceParcelCount) {
-      for (const conta of state.contasReceber || []) {
-        const status = String(conta.statusNormalizado || conta.status || "").toLowerCase();
-        if (status === "recebido" || Number(conta.valor_aberto || 0) <= 0.00001) continue;
-        addForecastFromSource(conta.vencimentoDate || conta.vencimento_date || conta.vencimento, conta.valor_aberto);
-      }
+    for (const conta of state.contasReceber || []) {
+      const status = String(conta.statusNormalizado || conta.status || "").toLowerCase();
+      if (status === "recebido" || Number(conta.valor_aberto || 0) <= 0.00001) continue;
+      const vencimentoSource = conta.vencimentoDate || conta.vencimento_date || conta.vencimento;
+      const vencimento = vencimentoSource ? new Date(vencimentoSource) : null;
+      if (!vencimento || Number.isNaN(vencimento.getTime())) continue;
+      const monthKey = formatMonthKey(new Date(vencimento.getFullYear(), vencimento.getMonth(), 1));
+      if (forecastMonthKeys.has(monthKey)) continue;
+      addForecastFromSource(vencimentoSource, conta.valor_aberto);
     }
 
     for (const forecast of forecastParcels) {
