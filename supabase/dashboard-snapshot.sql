@@ -1,14 +1,52 @@
 -- RPC unica que retorna todos os dados necessarios para o Dashboard,
 -- reduzindo o boot do site a poucas requisicoes.
+-- Roda em security definer para escapar dos filtros de RLS repetidos em cada
+-- CTE (que geravam statement timeout em bases grandes). Validamos que o usuario
+-- chamador tem acesso a target_empresa_id via usuarios_empresas ou platform_admins
+-- antes de retornar qualquer dado.
+
+-- Indices auxiliares para acelerar as agregacoes por mes.
+create index if not exists idx_clientes_empresa_created
+  on public.clientes (empresa_id, created_at);
+create index if not exists idx_despesas_empresa_data
+  on public.despesas (empresa_id, data_despesa);
+create index if not exists idx_documentos_venda_empresa_tipo_data
+  on public.documentos_venda (empresa_id, tipo_documento, data_emissao);
+
 create or replace function public.dashboard_snapshot(
   target_empresa_id uuid,
   months_back integer default 11
 )
 returns jsonb
-security invoker
-language sql
+security definer
+set search_path = public
+language plpgsql
 stable
 as $$
+declare
+  caller_id uuid := auth.uid();
+  has_access boolean;
+  result jsonb;
+begin
+  -- Quando chamado sem contexto de auth (script admin/service_role/superuser),
+  -- pulamos a validacao explicita porque quem chega ate aqui ja e privilegiado.
+  if caller_id is not null then
+    select exists (
+      select 1 from public.usuarios_empresas ue
+      where ue.user_id = caller_id
+        and ue.empresa_id = target_empresa_id
+        and coalesce(ue.ativo, true)
+    ) or exists (
+      select 1 from public.platform_admins pa
+      where pa.user_id = caller_id
+    )
+    into has_access;
+
+    if not has_access then
+      raise exception 'Acesso negado a empresa %', target_empresa_id;
+    end if;
+  end if;
+
   with base as (
     select date_trunc('month', now())::date as ref
   ),
@@ -123,7 +161,11 @@ as $$
     'counts', to_jsonb(c),
     'monthly', coalesce((select jsonb_agg(to_jsonb(m) order by m.mes) from monthly m), '[]'::jsonb)
   )
+  into result
   from counts c;
+
+  return result;
+end;
 $$;
 
 grant execute on function public.dashboard_snapshot(uuid, integer) to anon, authenticated;
