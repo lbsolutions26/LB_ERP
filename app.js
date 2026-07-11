@@ -72,6 +72,7 @@ const state = {
   contasReceber: [],
   recebimentos: [],
   parcelasReceberPrevistas: [],
+  dashboardCashChartMode: "recebimentos",
   recebimentoModal: {
     contaId: null,
     conta: null,
@@ -190,6 +191,9 @@ const els = {
   despesasCount: document.getElementById("despesasCount"),
   faturamentoValue: document.getElementById("faturamentoValue"),
   entradasCaixaResumo: document.getElementById("entradasCaixaResumo"),
+  entradasCaixaTitulo: document.getElementById("entradasCaixaTitulo"),
+  entradasCaixaSubtitulo: document.getElementById("entradasCaixaSubtitulo"),
+  dashboardCashModeButtons: Array.from(document.querySelectorAll("[data-dashboard-cash-mode]")),
   entradasCaixaChart: document.getElementById("entradasCaixaChart"),
   entradasCaixaGrid: document.getElementById("entradasCaixaGrid"),
   estoqueTotalCount: document.getElementById("estoqueTotalCount"),
@@ -2763,9 +2767,22 @@ function renderMetrics() {
     .filter((orcamento) => orcamento.status === "aberto")
     .reduce((sum, orcamento) => sum + Number(orcamento.valor_total || 0), 0);
 
-  const monthlyCashEntries = getMonthlyCashEntries();
+  const monthlyCashEntries = getMonthlyCashEntries(state.dashboardCashChartMode);
   const currentMonthKey = formatMonthKey(new Date());
   const currentMonthEntry = monthlyCashEntries.find((item) => item.monthKey === currentMonthKey)?.total || 0;
+
+  if (els.entradasCaixaTitulo) {
+    els.entradasCaixaTitulo.textContent = state.dashboardCashChartMode === "faturamento" ? "Faturamento por Mês" : "Recebimentos por Mês";
+  }
+  if (els.entradasCaixaSubtitulo) {
+    els.entradasCaixaSubtitulo.textContent = state.dashboardCashChartMode === "faturamento"
+      ? "Valor total dos pedidos considerando a data de emissão."
+      : "Previsto e realizado considerando recebimentos e títulos em aberto.";
+  }
+
+  for (const button of els.dashboardCashModeButtons || []) {
+    button.classList.toggle("active", button.getAttribute("data-dashboard-cash-mode") === state.dashboardCashChartMode);
+  }
 
   els.estoqueTotalCount.textContent = `${estoqueTotal} itens`;
   els.estoqueComSaldoCount.textContent = `${estoqueComSaldo} itens`;
@@ -2822,7 +2839,7 @@ function formatMonthKey(date) {
   return `${year}-${month}`;
 }
 
-function getMonthlyCashEntries() {
+function getMonthlyCashEntries(mode = "recebimentos") {
   const monthMap = new Map();
   const now = new Date();
 
@@ -2838,36 +2855,58 @@ function getMonthlyCashEntries() {
   };
 
   let latestMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const forecastParcels = [];
-
-  const addForecastFromSource = (vencimentoValue, saldoValue) => {
-    const vencimento = vencimentoValue ? new Date(vencimentoValue) : null;
-    const saldo = Number(saldoValue || 0);
-    if (!vencimento || Number.isNaN(vencimento.getTime()) || saldo <= 0.00001) return;
-    const forecastMonth = new Date(vencimento.getFullYear(), vencimento.getMonth(), 1);
-    if (forecastMonth > latestMonth) {
-      latestMonth = forecastMonth;
-    }
-    forecastParcels.push({
-      monthKey: formatMonthKey(forecastMonth),
-      value: saldo
-    });
-  };
-
-  for (const parcela of state.parcelasReceberPrevistas || []) {
-    const status = String(parcela.status || "").toLowerCase();
-    const saldo = Number(parcela.valor_parcela || 0) - Number(parcela.valor_recebido || 0);
-    if (status === "recebido" || status === "cancelado" || saldo <= 0.00001) continue;
-    addForecastFromSource(parcela.vencimento, saldo);
-  }
-
-  for (const conta of state.contasReceber || []) {
-    const status = String(conta.statusNormalizado || conta.status || "").toLowerCase();
-    if (status === "recebido" || Number(conta.valor_aberto || 0) <= 0.00001) continue;
-    addForecastFromSource(conta.vencimentoDate || conta.vencimento_date || conta.vencimento, conta.valor_aberto);
-  }
-
   const startMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+  if (mode === "faturamento") {
+    for (const pedido of state.pedidos || []) {
+      const dateValue = pedido.data_pedido || pedido.data_emissao;
+      const amount = Number(pedido.valor_total || 0);
+      const orderDate = dateValue ? new Date(dateValue) : null;
+      if (!orderDate || Number.isNaN(orderDate.getTime()) || amount <= 0.00001) continue;
+      const orderMonth = new Date(orderDate.getFullYear(), orderDate.getMonth(), 1);
+      if (orderMonth > latestMonth) {
+        latestMonth = orderMonth;
+      }
+    }
+  } else {
+    const forecastParcels = [];
+    const sourceParcelCount = (state.parcelasReceberPrevistas || []).length;
+
+    const addForecastFromSource = (vencimentoValue, saldoValue) => {
+      const vencimento = vencimentoValue ? new Date(vencimentoValue) : null;
+      const saldo = Number(saldoValue || 0);
+      if (!vencimento || Number.isNaN(vencimento.getTime()) || saldo <= 0.00001) return;
+      const forecastMonth = new Date(vencimento.getFullYear(), vencimento.getMonth(), 1);
+      if (forecastMonth > latestMonth) {
+        latestMonth = forecastMonth;
+      }
+      forecastParcels.push({
+        monthKey: formatMonthKey(forecastMonth),
+        value: saldo
+      });
+    };
+
+    for (const parcela of state.parcelasReceberPrevistas || []) {
+      const status = String(parcela.status || "").toLowerCase();
+      const saldo = Number(parcela.valor_parcela || 0) - Number(parcela.valor_recebido || 0);
+      if (status === "recebido" || status === "cancelado" || saldo <= 0.00001) continue;
+      addForecastFromSource(parcela.vencimento, saldo);
+    }
+
+    if (!sourceParcelCount) {
+      for (const conta of state.contasReceber || []) {
+        const status = String(conta.statusNormalizado || conta.status || "").toLowerCase();
+        if (status === "recebido" || Number(conta.valor_aberto || 0) <= 0.00001) continue;
+        addForecastFromSource(conta.vencimentoDate || conta.vencimento_date || conta.vencimento, conta.valor_aberto);
+      }
+    }
+
+    for (const forecast of forecastParcels) {
+      if (!monthMap.has(forecast.monthKey)) continue;
+      monthMap.get(forecast.monthKey).total += Number(forecast.value || 0);
+    }
+  }
+
   const cursor = new Date(startMonth.getTime());
   while (cursor <= latestMonth) {
     ensureMonth(cursor);
@@ -2883,9 +2922,16 @@ function getMonthlyCashEntries() {
     entry.total += Number(recebimento.valor || 0);
   }
 
-  for (const forecast of forecastParcels) {
-    if (!monthMap.has(forecast.monthKey)) continue;
-    monthMap.get(forecast.monthKey).total += Number(forecast.value || 0);
+  if (mode === "faturamento") {
+    for (const pedido of state.pedidos || []) {
+      const dateValue = pedido.data_pedido || pedido.data_emissao;
+      const amount = Number(pedido.valor_total || 0);
+      const orderDate = dateValue ? new Date(dateValue) : null;
+      if (!orderDate || Number.isNaN(orderDate.getTime()) || amount <= 0.00001) continue;
+      const monthKey = formatMonthKey(orderDate);
+      if (!monthMap.has(monthKey)) continue;
+      monthMap.get(monthKey).total += amount;
+    }
   }
 
   return Array.from(monthMap.values());
@@ -3700,6 +3746,13 @@ function attachEvents() {
   if (els.financeiroSearchInput) {
     els.financeiroSearchInput.addEventListener("input", () => {
       renderContasReceberTable();
+    });
+  }
+
+  for (const button of els.dashboardCashModeButtons || []) {
+    button.addEventListener("click", () => {
+      state.dashboardCashChartMode = button.getAttribute("data-dashboard-cash-mode") === "faturamento" ? "faturamento" : "recebimentos";
+      renderMetrics();
     });
   }
 

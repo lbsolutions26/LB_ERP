@@ -252,6 +252,37 @@ h3 {
   align-items: end;
 }
 
+.dashboard-cash-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dashboard-cash-toggle {
+  display: inline-flex;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f7f1e6;
+  gap: 0.25rem;
+}
+
+.dashboard-cash-toggle-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.dashboard-cash-toggle-btn.active {
+  background: linear-gradient(140deg, var(--brand) 0%, var(--brand-strong) 100%);
+  color: #fff;
+}
+
 .dashboard-cash-summary {
   display: grid;
   gap: 0.15rem;

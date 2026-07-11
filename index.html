@@ -83,8 +83,14 @@
           <div class="dashboard-cash-panel">
             <div class="section-head dashboard-cash-head">
               <div>
-                <h3>Entradas de Caixa por Mês</h3>
-                <p class="section-subtitle">Previsto e realizado considerando recebimentos e títulos em aberto.</p>
+                <div class="dashboard-cash-title-row">
+                  <h3 id="entradasCaixaTitulo">Recebimentos por Mês</h3>
+                  <div class="dashboard-cash-toggle" role="tablist" aria-label="Alternar visão do gráfico">
+                    <button type="button" class="dashboard-cash-toggle-btn active" data-dashboard-cash-mode="recebimentos">Recebimentos</button>
+                    <button type="button" class="dashboard-cash-toggle-btn" data-dashboard-cash-mode="faturamento">Faturamento</button>
+                  </div>
+                </div>
+                <p id="entradasCaixaSubtitulo" class="section-subtitle">Previsto e realizado considerando recebimentos e títulos em aberto.</p>
               </div>
               <div class="dashboard-cash-summary">
                 <span>Este mês</span>
