@@ -71,6 +71,7 @@ const state = {
   pedidos: [],
   contasReceber: [],
   recebimentos: [],
+  parcelasReceberPrevistas: [],
   recebimentoModal: {
     contaId: null,
     conta: null,
@@ -823,6 +824,24 @@ async function loadRecebimentos() {
   }
 
   state.recebimentos = data || [];
+}
+
+async function loadParcelasReceberPrevistas() {
+  const { data, error } = await supabaseClient
+    .from("contas_receber_parcelas")
+    .select("id, vencimento, valor_parcela, valor_recebido, status")
+    .eq("empresa_id", state.empresaId)
+    .order("vencimento", { ascending: true });
+
+  if (error) {
+    if (isMissingRelationError(error)) {
+      state.parcelasReceberPrevistas = [];
+      return;
+    }
+    throw error;
+  }
+
+  state.parcelasReceberPrevistas = data || [];
 }
 
 async function cleanupOrphanDocumentoFinanceiro() {
@@ -2804,13 +2823,41 @@ function getMonthlyCashEntries() {
   const monthMap = new Map();
   const now = new Date();
 
-  for (let offset = 11; offset >= 0; offset -= 1) {
-    const reference = new Date(now.getFullYear(), now.getMonth() - offset, 1);
-    monthMap.set(formatMonthKey(reference), {
-      monthKey: formatMonthKey(reference),
-      label: reference.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
-      total: 0
+  const ensureMonth = (reference) => {
+    const monthKey = formatMonthKey(reference);
+    if (!monthMap.has(monthKey)) {
+      monthMap.set(monthKey, {
+        monthKey,
+        label: reference.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
+        total: 0
+      });
+    }
+  };
+
+  let latestMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const forecastParcels = [];
+
+  for (const parcela of state.parcelasReceberPrevistas || []) {
+    const status = String(parcela.status || "").toLowerCase();
+    const saldo = Number(parcela.valor_parcela || 0) - Number(parcela.valor_recebido || 0);
+    if (status === "recebido" || status === "cancelado" || saldo <= 0.00001) continue;
+    const vencimento = parcela.vencimento ? new Date(parcela.vencimento) : null;
+    if (!vencimento || Number.isNaN(vencimento.getTime())) continue;
+    const forecastMonth = new Date(vencimento.getFullYear(), vencimento.getMonth(), 1);
+    if (forecastMonth > latestMonth) {
+      latestMonth = forecastMonth;
+    }
+    forecastParcels.push({
+      monthKey: formatMonthKey(forecastMonth),
+      value: saldo
     });
+  }
+
+  const startMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  const cursor = new Date(startMonth.getTime());
+  while (cursor <= latestMonth) {
+    ensureMonth(cursor);
+    cursor.setMonth(cursor.getMonth() + 1);
   }
 
   for (const recebimento of state.recebimentos || []) {
@@ -2820,6 +2867,11 @@ function getMonthlyCashEntries() {
     if (!monthMap.has(monthKey)) continue;
     const entry = monthMap.get(monthKey);
     entry.total += Number(recebimento.valor || 0);
+  }
+
+  for (const forecast of forecastParcels) {
+    if (!monthMap.has(forecast.monthKey)) continue;
+    monthMap.get(forecast.monthKey).total += Number(forecast.value || 0);
   }
 
   return Array.from(monthMap.values());
@@ -2839,6 +2891,7 @@ async function refreshAll() {
       loadDespesas(),
       loadFormasPagamento(),
       loadRecebimentos(),
+      loadParcelasReceberPrevistas(),
       loadContasReceber(),
       loadOwnerUsers()
     ];
