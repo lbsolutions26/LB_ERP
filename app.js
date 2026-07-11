@@ -3072,8 +3072,42 @@ function renderPedidosTableHead() {
   `;
 }
 
+function hasActivePedidosFilter() {
+  const views = ["pedidosSintetico", "pedidosAnalitico"];
+  for (const key of views) {
+    const view = getTableViewConfig(key);
+    if (!view) continue;
+    for (const value of Object.values(view.filters || {})) {
+      if (String(value || "").trim()) return true;
+    }
+  }
+  return false;
+}
+
+function maybeLoadAllPedidosForFilter() {
+  const carregado = Number(state.pedidosTotalCarregado || 0);
+  const total = Number(state.pedidosCountTotal || 0);
+  if (!hasActivePedidosFilter()) return;
+  if (total === 0 || carregado >= total) return;
+  if (maybeLoadAllPedidosForFilter._pending) return;
+
+  maybeLoadAllPedidosForFilter._pending = true;
+  window.clearTimeout(maybeLoadAllPedidosForFilter._timer);
+  maybeLoadAllPedidosForFilter._timer = window.setTimeout(async () => {
+    try {
+      state.pedidosLimit = total;
+      await loadPedidos();
+      renderPedidosSection();
+      renderMetrics();
+    } catch (error) {
+      showToast(`Erro ao carregar pedidos para filtrar: ${error.message}`, "error");
+    } finally {
+      maybeLoadAllPedidosForFilter._pending = false;
+    }
+  }, 350);
+}
+
 function updatePedidosLoadMoreUI() {
-  if (!els.pedidosLoadMoreWrap) return;
   const emListaSintetica = state.pedidosView === "pedidos" && state.pedidosListMode === "sintetico";
   const carregado = Number(state.pedidosTotalCarregado || 0);
   const total = Number(state.pedidosCountTotal || 0);
@@ -4966,6 +5000,10 @@ function attachEvents() {
     const selectionEnd = typeof target.selectionEnd === "number" ? target.selectionEnd : null;
     view.filters[field] = target.value || "";
     rerenderTableView(tableKey);
+
+    if (tableKey === "pedidosSintetico" || tableKey === "pedidosAnalitico") {
+      maybeLoadAllPedidosForFilter();
+    }
 
     window.requestAnimationFrame(() => {
       const nextInput = document.querySelector(`input[data-table-filter="${tableKey}"][data-field="${field}"]`);
