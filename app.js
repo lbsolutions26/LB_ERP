@@ -120,6 +120,9 @@ const state = {
     }
   },
   pedidos: [],
+  pedidosLoaded: false,
+  pedidosCountTotal: 0,
+  pedidosFaturamentoTotal: 0,
   contasReceber: [],
   recebimentos: [],
   parcelasReceberPrevistas: [],
@@ -2381,6 +2384,40 @@ async function loadProdutos() {
   }));
 }
 
+async function loadPedidosSummary() {
+  const [countResp, aggregateResp] = await Promise.all([
+    supabaseClient
+      .from("documentos_venda")
+      .select("id", { count: "exact", head: true })
+      .eq("empresa_id", state.empresaId)
+      .eq("tipo_documento", "pedido"),
+    supabaseClient.rpc("dashboard_monthly_cash", {
+      target_empresa_id: state.empresaId,
+      months_back: 240
+    })
+  ]);
+
+  if (countResp.error && !isMissingRelationError(countResp.error)) {
+    console.warn("Falha ao obter total de pedidos", countResp.error.message);
+  } else {
+    state.pedidosCountTotal = Number(countResp.count || 0);
+  }
+
+  if (aggregateResp.error) {
+    console.warn("Falha ao obter faturamento total", aggregateResp.error.message);
+    state.pedidosFaturamentoTotal = 0;
+  } else {
+    const rows = aggregateResp.data || [];
+    state.pedidosFaturamentoTotal = rows.reduce((sum, row) => sum + Number(row.faturamento || 0), 0);
+  }
+}
+
+async function ensurePedidosLoaded(options = {}) {
+  if (state.pedidosLoaded && !options.force) return;
+  await loadPedidos();
+  state.pedidosLoaded = true;
+}
+
 async function loadPedidos() {
   const docsResult = await fetchAllSupabaseRows(() => supabaseClient
     .from("documentos_venda")
@@ -3595,18 +3632,21 @@ function renderDespesasTable() {
 
 function renderMetrics() {
   els.clientesCount.textContent = String(state.clientes.length);
-  els.pedidosCount.textContent = String(state.pedidos.length);
+  const pedidosTotal = state.pedidosLoaded ? state.pedidos.length : state.pedidosCountTotal;
+  els.pedidosCount.textContent = String(pedidosTotal);
   els.despesasCount.textContent = String(state.despesas.length);
 
   if (els.pedidosCount) {
-    els.pedidosCount.title = state.pedidos.length >= 1000
-      ? "Pedidos carregados por paginação para evitar truncamento em 1000 registros."
+    els.pedidosCount.title = pedidosTotal >= 1000
+      ? "Pedidos carregados por paginacao para evitar truncamento em 1000 registros."
       : "";
   }
 
-  const faturamento = state.pedidos
-    .filter((pedido) => pedido.status === "fechado")
-    .reduce((sum, pedido) => sum + Number(pedido.valor_total || 0), 0);
+  const faturamento = state.pedidosLoaded
+    ? state.pedidos
+        .filter((pedido) => pedido.status === "fechado")
+        .reduce((sum, pedido) => sum + Number(pedido.valor_total || 0), 0)
+    : Number(state.pedidosFaturamentoTotal || 0);
   els.faturamentoValue.textContent = moeda.format(faturamento);
 
   const estoqueTotal = state.produtos.length;
@@ -3775,7 +3815,7 @@ async function refreshAll() {
       const baseLoads = [
         loadClientes(),
         loadProdutos(),
-        loadPedidos(),
+        loadPedidosSummary(),
         loadOrcamentos(),
         loadDespesas(),
         loadFormasPagamento(),
@@ -3785,6 +3825,10 @@ async function refreshAll() {
         loadDashboardMonthlyCash(),
         loadOwnerUsers()
       ];
+
+      if (state.pedidosLoaded) {
+        baseLoads.push(loadPedidos());
+      }
 
       if (state.isPlatformAdmin) {
         baseLoads.push(loadAdminEmpresas(), loadAdminVinculos());
@@ -4241,6 +4285,12 @@ async function handleSession(session) {
     state.empresaNome = "";
     state.currentRole = "user";
     state.isPlatformAdmin = false;
+    state.pedidosLoaded = false;
+    state.pedidos = [];
+    state.pedidosProdutosRaw = [];
+    state.pedidosProdutos = [];
+    state.pedidosCountTotal = 0;
+    state.pedidosFaturamentoTotal = 0;
     updateAdminVisibility();
     updateOwnerUsersVisibility();
     setSection("dashboard");
@@ -4310,8 +4360,18 @@ function attachEvents() {
   }
 
   for (const tab of els.tabs) {
-    tab.addEventListener("click", () => {
-      setSection(tab.dataset.section || "dashboard");
+    tab.addEventListener("click", async () => {
+      const sectionName = tab.dataset.section || "dashboard";
+      setSection(sectionName);
+      if (sectionName === "pedidos" && !state.pedidosLoaded) {
+        try {
+          await ensurePedidosLoaded();
+          renderPedidosSection();
+          renderMetrics();
+        } catch (error) {
+          showToast(`Erro ao carregar pedidos: ${error.message}`, "error");
+        }
+      }
     });
   }
 
@@ -4868,7 +4928,13 @@ async function initApp() {
 
   attachEvents();
 
+  let ignoreNextAuthEvent = true;
   supabaseClient.auth.onAuthStateChange((_event, session) => {
+    if (ignoreNextAuthEvent && _event === "INITIAL_SESSION") {
+      ignoreNextAuthEvent = false;
+      return;
+    }
+    ignoreNextAuthEvent = false;
     handleSession(session);
   });
 
