@@ -501,24 +501,19 @@ function renderNovoDocumentoItemRow(item) {
   const rowTotal = getNovoDocumentoItemTotal(item);
   return `
     <article class="documento-item-row" data-documento-item-row="${item.rowId}">
-      <label class="documento-item-field">
-        <span>Produto</span>
+      <div class="documento-item-cell documento-item-cell--produto">
         ${renderNovoDocumentoProdutoCombo(item)}
-      </label>
-      <label class="documento-item-field">
-        <span>Descricao</span>
+      </div>
+      <div class="documento-item-cell">
         <input data-documento-item-field="descricao" value="${escapeHtml(item.descricao || produto?.nome || "")}" placeholder="Descricao do item" />
-      </label>
-      <label class="documento-item-field">
-        <span>Qtd</span>
+      </div>
+      <div class="documento-item-cell documento-item-cell--qty">
         <input data-documento-item-field="quantidade" type="number" min="0.001" step="0.001" value="${escapeHtml(item.quantidade ?? 1)}" />
-      </label>
-      <label class="documento-item-field">
-        <span>Valor unit.</span>
+      </div>
+      <div class="documento-item-cell documento-item-cell--price">
         <input data-documento-item-field="valorUnitario" type="number" min="0" step="0.01" value="${escapeHtml(item.valorUnitario ?? 0)}" />
-      </label>
+      </div>
       <div class="documento-item-total">
-        <span>Total</span>
         <strong data-documento-item-total>${moeda.format(rowTotal)}</strong>
       </div>
       <button type="button" class="btn btn-ghost documento-item-remove" data-documento-item-remove="${item.rowId}">Remover</button>
@@ -554,9 +549,18 @@ function renderNovoDocumentoItensGrid() {
     state.novoDocumentoModal.itens = [createDocumentoDraftItem()];
   }
 
-  els.novoDocumentoItemsGrid.innerHTML = state.novoDocumentoModal.itens
-    .map((item) => renderNovoDocumentoItemRow(item))
-    .join("");
+  const header = `
+    <div class="documento-items-head-row">
+      <span>Produto</span>
+      <span>Descricao</span>
+      <span>Qtd</span>
+      <span>Valor unit.</span>
+      <span>Total</span>
+      <span></span>
+    </div>
+  `;
+
+  els.novoDocumentoItemsGrid.innerHTML = header + state.novoDocumentoModal.itens.map((item) => renderNovoDocumentoItemRow(item)).join("");
 
   updateNovoDocumentoResumo();
 }
