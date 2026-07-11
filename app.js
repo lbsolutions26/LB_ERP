@@ -4294,23 +4294,37 @@ async function handleSession(session) {
     updateAdminVisibility();
     updateOwnerUsersVisibility();
     setSection("dashboard");
+    handleSession._loadingUserId = null;
+    handleSession._loadingPromise = null;
     return;
   }
 
-  // Evita rodar tudo de novo se o mesmo usuario ja esta carregado.
+  // Ja carregamos os dados desse usuario? So retorna.
   if (previousUserId && previousUserId === nextUserId && state.empresaId) {
     return;
   }
 
-  setSection("dashboard");
-
-  try {
-    await loadPlatformAdminStatus();
-    await loadEmpresaContext();
-    await refreshAll();
-  } catch (error) {
-    showToast(error.message, "error");
+  // Uma carga para esse usuario esta em andamento? aguarda.
+  if (handleSession._loadingUserId === nextUserId && handleSession._loadingPromise) {
+    return handleSession._loadingPromise;
   }
+
+  setSection("dashboard");
+  handleSession._loadingUserId = nextUserId;
+  handleSession._loadingPromise = (async () => {
+    try {
+      await loadPlatformAdminStatus();
+      await loadEmpresaContext();
+      await refreshAll();
+    } catch (error) {
+      showToast(error.message, "error");
+    } finally {
+      handleSession._loadingUserId = null;
+      handleSession._loadingPromise = null;
+    }
+  })();
+
+  return handleSession._loadingPromise;
 }
 
 function attachEvents() {
