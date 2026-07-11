@@ -347,6 +347,78 @@ h3 {
   color: #fff;
 }
 
+.dashboard-cash-range {
+  display: inline-flex;
+  padding: 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  gap: 0.2rem;
+}
+
+.dashboard-cash-range-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.dashboard-cash-range-btn.active {
+  background: var(--brand-strong);
+  color: #fff;
+}
+
+.cash-month-chart.compact {
+  grid-auto-columns: minmax(52px, 1fr);
+  gap: 0.35rem;
+  min-height: 200px;
+}
+
+.cash-month-chart.compact .cash-bar-value,
+.cash-month-chart.compact .cash-bar-value-realized,
+.cash-month-chart.compact .cash-bar-value-forecast {
+  font-size: 0.62rem;
+}
+
+.cash-month-chart.compact .cash-bar-label {
+  font-size: 0.68rem;
+}
+
+.cash-month-chart.compact .cash-bar-track {
+  height: 130px;
+}
+
+.cash-month-grid.list-mode {
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.cash-month-grid.list-mode .cash-month-card {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.cash-month-grid.list-mode .cash-month-card strong {
+  font-size: 0.95rem;
+  text-align: right;
+}
+
+.cash-month-grid.list-mode .cash-month-breakdown {
+  display: inline-flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
 .dashboard-cash-summary {
   display: grid;
   gap: 0.15rem;

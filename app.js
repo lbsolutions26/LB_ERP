@@ -143,6 +143,7 @@ const state = {
   parcelasReceberPrevistas: [],
   dashboardMonthlyCash: [],
   dashboardCashChartMode: "recebimentos",
+  dashboardMonthsBack: 11,
   recebimentoModal: {
     contaId: null,
     conta: null,
@@ -274,6 +275,7 @@ const els = {
   entradasCaixaSubtitulo: document.getElementById("entradasCaixaSubtitulo"),
    entradasCaixaLegenda: document.getElementById("entradasCaixaLegenda"),
   dashboardCashModeButtons: Array.from(document.querySelectorAll("[data-dashboard-cash-mode]")),
+  dashboardCashRangeButtons: Array.from(document.querySelectorAll("[data-dashboard-cash-range]")),
   entradasCaixaChart: document.getElementById("entradasCaixaChart"),
   entradasCaixaGrid: document.getElementById("entradasCaixaGrid"),
   estoqueTotalCount: document.getElementById("estoqueTotalCount"),
@@ -2402,7 +2404,7 @@ async function loadProdutos() {
 async function loadDashboardSnapshot() {
   const { data, error } = await supabaseClient.rpc("dashboard_snapshot", {
     target_empresa_id: state.empresaId,
-    months_back: 11
+    months_back: Math.max(1, Number(state.dashboardMonthsBack || 11))
   });
 
   if (error) {
@@ -3792,6 +3794,8 @@ function renderMetrics() {
   }
 
   if (els.entradasCaixaGrid) {
+    const totalMeses = monthlyCashEntries.length;
+    els.entradasCaixaGrid.classList.toggle("list-mode", totalMeses > 12);
     const entriesHtml = monthlyCashEntries
       .map((item) => {
         const realized = Number(item.realized || 0);
@@ -3816,6 +3820,7 @@ function renderMetrics() {
   }
 
   if (els.entradasCaixaChart) {
+    els.entradasCaixaChart.classList.toggle("compact", monthlyCashEntries.length > 12);
     const maxValue = Math.max(...monthlyCashEntries.map((item) => Number(item.total || 0)), 0);
     const currentMonthKey = formatMonthKey(new Date());
     const chartBars = monthlyCashEntries
@@ -4772,6 +4777,23 @@ function attachEvents() {
     button.addEventListener("click", () => {
       state.dashboardCashChartMode = button.getAttribute("data-dashboard-cash-mode") === "faturamento" ? "faturamento" : "recebimentos";
       renderMetrics();
+    });
+  }
+
+  for (const button of els.dashboardCashRangeButtons || []) {
+    button.addEventListener("click", async () => {
+      const value = Math.max(1, Number(button.getAttribute("data-dashboard-cash-range") || 11));
+      if (state.dashboardMonthsBack === value) return;
+      state.dashboardMonthsBack = value;
+      for (const other of els.dashboardCashRangeButtons || []) {
+        other.classList.toggle("active", other === button);
+      }
+      try {
+        await loadDashboardSnapshot();
+        renderMetrics();
+      } catch (error) {
+        showToast(`Erro ao atualizar periodo: ${error.message}`, "error");
+      }
     });
   }
 
