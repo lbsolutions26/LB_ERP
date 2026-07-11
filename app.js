@@ -761,6 +761,44 @@ async function loadContasReceber() {
   });
 }
 
+async function cleanupOrphanDocumentoFinanceiro() {
+  const docsResponse = await supabaseClient
+    .from("documentos_venda")
+    .select("id")
+    .eq("empresa_id", state.empresaId);
+
+  if (docsResponse.error) {
+    if (isMissingRelationError(docsResponse.error)) return;
+    throw docsResponse.error;
+  }
+
+  const documentosIds = new Set((docsResponse.data || []).map((item) => Number(item.id)).filter(Number.isFinite));
+
+  const contasResponse = await supabaseClient
+    .from("contas_receber")
+    .select("id, documento_id, numero_titulo")
+    .eq("empresa_id", state.empresaId)
+    .like("numero_titulo", "DOC-%");
+
+  if (contasResponse.error) {
+    if (isMissingRelationError(contasResponse.error)) return;
+    throw contasResponse.error;
+  }
+
+  const orphanDocumentoIds = new Set();
+  for (const conta of contasResponse.data || []) {
+    const documentoId = Number(conta.documento_id || 0);
+    if (!documentoId) continue;
+    if (!documentosIds.has(documentoId)) {
+      orphanDocumentoIds.add(documentoId);
+    }
+  }
+
+  for (const documentoId of Array.from(orphanDocumentoIds)) {
+    await deleteDocumentoFinanceiro(documentoId);
+  }
+}
+
 async function loadContaFinanceiroDetalhe(contaId) {
   const { data: conta, error: contaError } = await supabaseClient
     .from("contas_receber")
@@ -2625,6 +2663,9 @@ function renderMetrics() {
 async function refreshAll() {
   try {
     if (!state.session || !state.empresaId) return;
+
+    await cleanupOrphanDocumentoFinanceiro();
+
     const baseLoads = [
       loadClientes(),
       loadProdutos(),
@@ -3581,6 +3622,9 @@ function attachEvents() {
         await deleteByTable(state.produtosSource, Number(produtoId));
       }
       if (pedidoId) {
+        if (!window.confirm("Excluir este pedido? Os lancamentos financeiros vinculados tambem serao excluidos.")) {
+          return;
+        }
         if (state.pedidosSource === "documentos_venda") {
           await deleteDocumentoVenda(Number(pedidoId), "pedido");
         } else {
@@ -3588,6 +3632,9 @@ function attachEvents() {
         }
       }
       if (orcamentoId) {
+        if (!window.confirm("Excluir este orcamento? Os lancamentos financeiros vinculados tambem serao excluidos quando existirem.")) {
+          return;
+        }
         if (state.orcamentosSource === "documentos_venda") {
           await deleteDocumentoVenda(Number(orcamentoId), "orcamento");
         } else {
