@@ -4341,7 +4341,6 @@ function formatShortMonthLabel(date) {
 
 function getRecentMonthlyMetrics() {
   const rows = state.dashboardMonthlyCash || [];
-  if (!rows.length) return [];
   const currentKey = formatMonthKey(new Date());
   const byKey = new Map();
   for (const row of rows) {
@@ -4349,6 +4348,23 @@ function getRecentMonthlyMetrics() {
     if (Number.isNaN(reference.getTime())) continue;
     byKey.set(formatMonthKey(reference), { reference, row });
   }
+
+  // Se o snapshot ainda nao tem o mes corrente (ou traz zerado), usamos os totais
+  // vindos do gráfico diário para o mes atual, para nao mostrar 0 injustamente.
+  const dailyRows = state.dashboardDaily || [];
+  const dailyTotals = dailyRows.reduce(
+    (acc, row) => {
+      acc.faturamento += Number(row.faturamento || 0);
+      acc.pedidosCount += Number(row.pedidosCount || 0);
+      return acc;
+    },
+    { faturamento: 0, pedidosCount: 0 }
+  );
+
+  if (!rows.length && dailyTotals.faturamento === 0 && dailyTotals.pedidosCount === 0) {
+    return [];
+  }
+
   const entries = [];
   const cursor = new Date(`${currentKey}-01T12:00:00`);
   for (let i = 0; i < 4; i += 1) {
@@ -4356,16 +4372,25 @@ function getRecentMonthlyMetrics() {
     const match = byKey.get(key);
     const reference = match?.reference || new Date(cursor.getTime());
     const row = match?.row || null;
+
+    const isCurrent = i === 0;
+    const faturamento = isCurrent
+      ? Math.max(Number(row?.faturamento || 0), dailyTotals.faturamento)
+      : Number(row?.faturamento || 0);
+    const pedidosCount = isCurrent
+      ? Math.max(Number(row?.pedidosCount || 0), dailyTotals.pedidosCount)
+      : Number(row?.pedidosCount || 0);
+
     entries.push({
       key,
       reference,
       label: formatShortMonthLabel(reference),
-      isCurrent: i === 0,
+      isCurrent,
       clientesNovos: Number(row?.clientesNovos || 0),
-      pedidosCount: Number(row?.pedidosCount || 0),
+      pedidosCount,
       despesasCount: Number(row?.despesasCount || 0),
       despesasTotal: Number(row?.despesasTotal || 0),
-      faturamento: Number(row?.faturamento || 0)
+      faturamento
     });
     cursor.setMonth(cursor.getMonth() - 1);
   }
