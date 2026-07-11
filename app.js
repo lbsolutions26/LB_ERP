@@ -2796,10 +2796,19 @@ function renderMetrics() {
   if (els.entradasCaixaGrid) {
     const entriesHtml = monthlyCashEntries
       .map((item) => {
+        const monthDate = item.monthKey ? new Date(`${item.monthKey}-01T12:00:00`) : null;
+        const nowMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        const isFutureMonth = Boolean(monthDate && monthDate >= nowMonth);
+        const entryLabel = state.dashboardCashChartMode === "faturamento"
+          ? "Faturamento"
+          : isFutureMonth
+            ? "Previsto"
+            : "Realizado";
         return `
           <article class="cash-month-card">
             <span>${escapeHtml(item.label)}</span>
             <strong>${moeda.format(item.total)}</strong>
+            <small>${escapeHtml(entryLabel)}</small>
           </article>
         `;
       })
@@ -2849,7 +2858,9 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       monthMap.set(monthKey, {
         monthKey,
         label: reference.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
-        total: 0
+        total: 0,
+        realized: 0,
+        forecast: 0
       });
     }
   };
@@ -2911,7 +2922,9 @@ function getMonthlyCashEntries(mode = "recebimentos") {
 
     for (const forecast of forecastParcels) {
       if (!monthMap.has(forecast.monthKey)) continue;
-      monthMap.get(forecast.monthKey).total += Number(forecast.value || 0);
+      const entry = monthMap.get(forecast.monthKey);
+      entry.total += Number(forecast.value || 0);
+      entry.forecast += Number(forecast.value || 0);
     }
   }
 
@@ -2927,7 +2940,9 @@ function getMonthlyCashEntries(mode = "recebimentos") {
     const monthKey = formatMonthKey(dataRecebimento);
     if (!monthMap.has(monthKey)) continue;
     const entry = monthMap.get(monthKey);
-    entry.total += Number(recebimento.valor || 0);
+    const value = Number(recebimento.valor || 0);
+    entry.total += value;
+    entry.realized += value;
   }
 
   if (mode === "faturamento") {
