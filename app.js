@@ -81,6 +81,44 @@ const state = {
     ponto_pedido: "",
     ativo: ""
   },
+  tableViews: {
+    clientes: {
+      sort: { field: "nome", direction: "asc" },
+      filters: { nome: "", telefone: "", email: "" }
+    },
+    pedidosSintetico: {
+      sort: { field: "data", direction: "desc" },
+      filters: { data: "", cliente: "", status: "", total: "" }
+    },
+    pedidosAnalitico: {
+      sort: { field: "data", direction: "desc" },
+      filters: { pedido: "", data: "", cliente: "", produto: "", quantidade: "", valor: "" }
+    },
+    pedidosProdutos: {
+      sort: { field: "total", direction: "desc" },
+      filters: { produto: "", quantidade: "", pedidos: "", total: "", ultimaVenda: "" }
+    },
+    financeiro: {
+      sort: { field: "emissao", direction: "desc" },
+      filters: { emissao: "", vencimento: "", cliente: "", titulo: "", status: "", original: "", aberto: "" }
+    },
+    orcamentos: {
+      sort: { field: "data", direction: "desc" },
+      filters: { data: "", cliente: "", status: "", total: "" }
+    },
+    despesas: {
+      sort: { field: "data", direction: "desc" },
+      filters: { data: "", descricao: "", status: "", valor: "" }
+    },
+    usuarios: {
+      sort: { field: "user_id", direction: "asc" },
+      filters: { user_id: "", role: "", ativo: "" }
+    },
+    adminVinculos: {
+      sort: { field: "empresa", direction: "asc" },
+      filters: { empresa: "", empresa_id: "", user_id: "", role: "", ativo: "" }
+    }
+  },
   pedidos: [],
   contasReceber: [],
   recebimentos: [],
@@ -2622,40 +2660,29 @@ function getFilteredPedidoProdutoRows() {
 
 function getFilteredAndSortedPedidosProdutos() {
   const grouped = aggregatePedidoItemsByProduto(getFilteredPedidoProdutoRows());
-  const { field, direction } = state.pedidosProdutosSort;
-  const factor = direction === "asc" ? 1 : -1;
-
-  grouped.sort((a, b) => {
-    if (field === "nome") {
-      return resolvePedidoProdutoNome(a).localeCompare(resolvePedidoProdutoNome(b), "pt-BR") * factor;
+  return getFilteredAndSortedTableRows(grouped, "pedidosProdutos", {
+    produto: (item) => resolvePedidoProdutoNome(item),
+    quantidade: {
+      filter: (item) => formatPedidoProdutoQuantidade(item.quantidade),
+      sort: (item) => Number(item.quantidade || 0)
+    },
+    pedidos: {
+      filter: (item) => String(item.pedidos || 0),
+      sort: (item) => Number(item.pedidos || 0)
+    },
+    total: {
+      filter: (item) => moeda.format(item.total || 0),
+      sort: (item) => Number(item.total || 0)
+    },
+    ultimaVenda: {
+      filter: (item) => item.ultimaVenda ? new Date(item.ultimaVenda).toLocaleDateString("pt-BR") : "-",
+      sort: (item) => item.ultimaVenda ? new Date(item.ultimaVenda).getTime() : 0
     }
-    if (field === "ultimaVenda") {
-      const aTime = a.ultimaVenda ? new Date(a.ultimaVenda).getTime() : 0;
-      const bTime = b.ultimaVenda ? new Date(b.ultimaVenda).getTime() : 0;
-      return (aTime - bTime) * factor;
-    }
-
-    const aValue = Number(a[field] || 0);
-    const bValue = Number(b[field] || 0);
-    if (Math.abs(aValue - bValue) > 0.00001) {
-      return (aValue - bValue) * factor;
-    }
-
-    return resolvePedidoProdutoNome(a).localeCompare(resolvePedidoProdutoNome(b), "pt-BR") * factor;
   });
-
-  return grouped;
 }
 
 function setPedidosProdutosSort(field) {
-  if (state.pedidosProdutosSort.field === field) {
-    state.pedidosProdutosSort.direction = state.pedidosProdutosSort.direction === "asc" ? "desc" : "asc";
-  } else {
-    state.pedidosProdutosSort.field = field;
-    state.pedidosProdutosSort.direction = field === "nome" ? "asc" : "desc";
-  }
-
-  renderPedidosSection();
+  setTableSort("pedidosProdutos", field === "nome" ? "produto" : field);
 }
 
 function renderItensDocumentoTableHead() {
@@ -2693,25 +2720,7 @@ function updatePedidosProdutosFiltersVisibility() {
 
 function updatePedidosProdutosSortHeaders() {
   if (!els.pedidosTableHead || state.pedidosView !== "produtos") return;
-
-  const headers = Array.from(els.pedidosTableHead.querySelectorAll("th.sortable[data-pedidos-produto-sort]"));
-  for (const th of headers) {
-    const field = th.getAttribute("data-pedidos-produto-sort") || "";
-    const baseLabel = th.getAttribute("data-label") || th.textContent || "";
-
-    if (!th.getAttribute("data-label")) {
-      th.setAttribute("data-label", baseLabel.trim());
-    }
-
-    if (field === state.pedidosProdutosSort.field) {
-      const marker = state.pedidosProdutosSort.direction === "asc" ? " ▲" : " ▼";
-      th.textContent = `${th.getAttribute("data-label")}${marker}`;
-      th.classList.add("sorted");
-    } else {
-      th.textContent = th.getAttribute("data-label") || "";
-      th.classList.remove("sorted");
-    }
-  }
+  updateTableSortHeaders("pedidosProdutos");
 }
 
 function normalizeDateForInput(value) {
@@ -2790,13 +2799,25 @@ function getPedidosProdutoEmptyMessage() {
 }
 
 function getPedidosAnaliticosRows() {
-  return [...(state.pedidosProdutosRaw || [])].sort((a, b) => {
-    const aTime = a.dataPedido ? new Date(a.dataPedido).getTime() : 0;
-    const bTime = b.dataPedido ? new Date(b.dataPedido).getTime() : 0;
-    if (aTime !== bTime) return bTime - aTime;
-    const pedidoDiff = Number(b.pedidoId || 0) - Number(a.pedidoId || 0);
-    if (pedidoDiff !== 0) return pedidoDiff;
-    return resolvePedidoProdutoNome(a).localeCompare(resolvePedidoProdutoNome(b), "pt-BR");
+  return getFilteredAndSortedTableRows(state.pedidosProdutosRaw || [], "pedidosAnalitico", {
+    pedido: {
+      filter: (item) => `#${item.pedidoId || ""}`,
+      sort: (item) => Number(item.pedidoId || 0)
+    },
+    data: {
+      filter: (item) => item.dataPedido ? new Date(item.dataPedido).toLocaleDateString("pt-BR") : "-",
+      sort: (item) => item.dataPedido ? new Date(item.dataPedido).getTime() : 0
+    },
+    cliente: (item) => item.clienteNome || "-",
+    produto: (item) => resolvePedidoProdutoNome(item),
+    quantidade: {
+      filter: (item) => formatPedidoProdutoQuantidade(item.quantidade),
+      sort: (item) => Number(item.quantidade || 0)
+    },
+    valor: {
+      filter: (item) => moeda.format(item.valorTotal || 0),
+      sort: (item) => Number(item.valorTotal || 0)
+    }
   });
 }
 
@@ -2846,11 +2867,18 @@ function renderPedidosTableHead() {
   if (state.pedidosView === "produtos") {
     els.pedidosTableHead.innerHTML = `
       <tr>
-        <th class="sortable" data-pedidos-produto-sort="nome">Produto</th>
-        <th class="sortable" data-pedidos-produto-sort="quantidade">Qtd. vendida</th>
-        <th class="sortable" data-pedidos-produto-sort="pedidos">Pedidos</th>
-        <th class="sortable" data-pedidos-produto-sort="total">Valor vendido</th>
-        <th class="sortable" data-pedidos-produto-sort="ultimaVenda">Ultima venda</th>
+        <th class="sortable" data-table="pedidosProdutos" data-sort="produto">Produto</th>
+        <th class="sortable" data-table="pedidosProdutos" data-sort="quantidade">Qtd. vendida</th>
+        <th class="sortable" data-table="pedidosProdutos" data-sort="pedidos">Pedidos</th>
+        <th class="sortable" data-table="pedidosProdutos" data-sort="total">Valor vendido</th>
+        <th class="sortable" data-table="pedidosProdutos" data-sort="ultimaVenda">Ultima venda</th>
+      </tr>
+      <tr>
+        <th><input data-table-filter="pedidosProdutos" data-field="produto" value="${getTableFilterValue("pedidosProdutos", "produto")}" placeholder="Filtrar" /></th>
+        <th><input data-table-filter="pedidosProdutos" data-field="quantidade" value="${getTableFilterValue("pedidosProdutos", "quantidade")}" placeholder="Filtrar" /></th>
+        <th><input data-table-filter="pedidosProdutos" data-field="pedidos" value="${getTableFilterValue("pedidosProdutos", "pedidos")}" placeholder="Filtrar" /></th>
+        <th><input data-table-filter="pedidosProdutos" data-field="total" value="${getTableFilterValue("pedidosProdutos", "total")}" placeholder="Filtrar" /></th>
+        <th><input data-table-filter="pedidosProdutos" data-field="ultimaVenda" value="${getTableFilterValue("pedidosProdutos", "ultimaVenda")}" placeholder="Filtrar" /></th>
       </tr>
     `;
     return;
@@ -2859,12 +2887,20 @@ function renderPedidosTableHead() {
   if (state.pedidosListMode === "analitico") {
     els.pedidosTableHead.innerHTML = `
       <tr>
-        <th>Pedido</th>
-        <th>Data</th>
-        <th>Cliente</th>
-        <th>Produto</th>
-        <th>Quantidade</th>
-        <th>Valor</th>
+        <th class="sortable" data-table="pedidosAnalitico" data-sort="pedido">Pedido</th>
+        <th class="sortable" data-table="pedidosAnalitico" data-sort="data">Data</th>
+        <th class="sortable" data-table="pedidosAnalitico" data-sort="cliente">Cliente</th>
+        <th class="sortable" data-table="pedidosAnalitico" data-sort="produto">Produto</th>
+        <th class="sortable" data-table="pedidosAnalitico" data-sort="quantidade">Quantidade</th>
+        <th class="sortable" data-table="pedidosAnalitico" data-sort="valor">Valor</th>
+      </tr>
+      <tr>
+        <th><input data-table-filter="pedidosAnalitico" data-field="pedido" value="${getTableFilterValue("pedidosAnalitico", "pedido")}" placeholder="Filtrar" /></th>
+        <th><input data-table-filter="pedidosAnalitico" data-field="data" value="${getTableFilterValue("pedidosAnalitico", "data")}" placeholder="Filtrar" /></th>
+        <th><input data-table-filter="pedidosAnalitico" data-field="cliente" value="${getTableFilterValue("pedidosAnalitico", "cliente")}" placeholder="Filtrar" /></th>
+        <th><input data-table-filter="pedidosAnalitico" data-field="produto" value="${getTableFilterValue("pedidosAnalitico", "produto")}" placeholder="Filtrar" /></th>
+        <th><input data-table-filter="pedidosAnalitico" data-field="quantidade" value="${getTableFilterValue("pedidosAnalitico", "quantidade")}" placeholder="Filtrar" /></th>
+        <th><input data-table-filter="pedidosAnalitico" data-field="valor" value="${getTableFilterValue("pedidosAnalitico", "valor")}" placeholder="Filtrar" /></th>
       </tr>
     `;
     return;
@@ -2872,10 +2908,17 @@ function renderPedidosTableHead() {
 
   els.pedidosTableHead.innerHTML = `
     <tr>
-      <th>Data</th>
-      <th>Cliente</th>
-      <th>Status</th>
-      <th>Total</th>
+      <th class="sortable" data-table="pedidosSintetico" data-sort="data">Data</th>
+      <th class="sortable" data-table="pedidosSintetico" data-sort="cliente">Cliente</th>
+      <th class="sortable" data-table="pedidosSintetico" data-sort="status">Status</th>
+      <th class="sortable" data-table="pedidosSintetico" data-sort="total">Total</th>
+      <th></th>
+    </tr>
+    <tr>
+      <th><input data-table-filter="pedidosSintetico" data-field="data" value="${getTableFilterValue("pedidosSintetico", "data")}" placeholder="Filtrar" /></th>
+      <th><input data-table-filter="pedidosSintetico" data-field="cliente" value="${getTableFilterValue("pedidosSintetico", "cliente")}" placeholder="Filtrar" /></th>
+      <th><input data-table-filter="pedidosSintetico" data-field="status" value="${getTableFilterValue("pedidosSintetico", "status")}" placeholder="Filtrar" /></th>
+      <th><input data-table-filter="pedidosSintetico" data-field="total" value="${getTableFilterValue("pedidosSintetico", "total")}" placeholder="Filtrar" /></th>
       <th></th>
     </tr>
   `;
@@ -2888,7 +2931,7 @@ function renderPedidosSection() {
   }
   renderPedidosTableHead();
   renderPedidosTable();
-  updatePedidosProdutosSortHeaders();
+  updateTableSortHeaders(state.pedidosView === "produtos" ? "pedidosProdutos" : (state.pedidosListMode === "analitico" ? "pedidosAnalitico" : "pedidosSintetico"));
   updatePedidosProdutosFiltersVisibility();
   updatePedidosProdutosFilterInputs();
 
@@ -3006,7 +3049,24 @@ function renderAdminEmpresasSelect() {
 
 function renderAdminVinculosTable() {
   if (!els.adminVinculosTable) return;
-  els.adminVinculosTable.innerHTML = state.adminVinculos
+  const rows = getFilteredAndSortedTableRows(state.adminVinculos, "adminVinculos", {
+    empresa: (item) => item.empresas?.nome || "-",
+    empresa_id: (item) => item.empresa_id || "-",
+    user_id: (item) => item.user_id || "-",
+    role: (item) => item.role || "user",
+    ativo: {
+      filter: (item) => item.ativo ? "sim" : "nao",
+      sort: (item) => item.ativo ? 1 : 0
+    }
+  });
+
+  if (!rows.length) {
+    els.adminVinculosTable.innerHTML = '<tr><td colspan="5">Nenhum vinculo encontrado para os filtros selecionados.</td></tr>';
+    updateTableSortHeaders("adminVinculos");
+    return;
+  }
+
+  els.adminVinculosTable.innerHTML = rows
     .map(
       (item) => `
       <tr>
@@ -3019,11 +3079,27 @@ function renderAdminVinculosTable() {
     `
     )
     .join("");
+  updateTableSortHeaders("adminVinculos");
 }
 
 function renderOwnerUsersTable() {
   if (!els.ownerUsersTable) return;
-  els.ownerUsersTable.innerHTML = state.ownerUsers
+  const rows = getFilteredAndSortedTableRows(state.ownerUsers, "usuarios", {
+    user_id: (item) => item.user_id || "-",
+    role: (item) => item.role || "user",
+    ativo: {
+      filter: (item) => item.ativo ? "sim" : "nao",
+      sort: (item) => item.ativo ? 1 : 0
+    }
+  });
+
+  if (!rows.length) {
+    els.ownerUsersTable.innerHTML = '<tr><td colspan="3">Nenhum usuario encontrado para os filtros selecionados.</td></tr>';
+    updateTableSortHeaders("usuarios");
+    return;
+  }
+
+  els.ownerUsersTable.innerHTML = rows
     .map(
       (item) => `
       <tr>
@@ -3034,10 +3110,23 @@ function renderOwnerUsersTable() {
     `
     )
     .join("");
+  updateTableSortHeaders("usuarios");
 }
 
 function renderClientesTable() {
-  els.clientesTable.innerHTML = state.clientes
+  const rows = getFilteredAndSortedTableRows(state.clientes, "clientes", {
+    nome: (item) => item.nome || "-",
+    telefone: (item) => item.telefone || "-",
+    email: (item) => item.email || "-"
+  });
+
+  if (!rows.length) {
+    els.clientesTable.innerHTML = '<tr><td colspan="4">Nenhum cliente encontrado para os filtros selecionados.</td></tr>';
+    updateTableSortHeaders("clientes");
+    return;
+  }
+
+  els.clientesTable.innerHTML = rows
     .map(
       (cliente) => `
       <tr>
@@ -3049,6 +3138,7 @@ function renderClientesTable() {
     `
     )
     .join("");
+  updateTableSortHeaders("clientes");
 }
 
 function renderProdutosTable() {
@@ -3152,6 +3242,137 @@ function setProdutoSort(field) {
   renderProdutosTable();
 }
 
+function getTableViewConfig(tableKey) {
+  return state.tableViews?.[tableKey] || null;
+}
+
+function getTableAccessorValue(row, accessors, field, mode = "filter") {
+  const accessor = accessors[field];
+  if (typeof accessor === "function") {
+    return accessor(row);
+  }
+
+  if (accessor && typeof accessor === "object") {
+    const resolver = accessor[mode] || accessor.filter || accessor.sort;
+    if (typeof resolver === "function") {
+      return resolver(row);
+    }
+  }
+
+  const value = row?.[field];
+  return value == null ? "" : value;
+}
+
+function getFilteredAndSortedTableRows(rows, tableKey, accessors) {
+  const view = getTableViewConfig(tableKey);
+  if (!view) return [...rows];
+
+  const filtered = rows.filter((row) => {
+    return Object.entries(view.filters || {}).every(([field, filterValue]) => {
+      const needle = String(filterValue || "").trim().toLowerCase();
+      if (!needle) return true;
+      const haystack = String(getTableAccessorValue(row, accessors, field, "filter") || "").toLowerCase();
+      return haystack.includes(needle);
+    });
+  });
+
+  const { field, direction } = view.sort || {};
+  const factor = direction === "asc" ? 1 : -1;
+
+  filtered.sort((a, b) => {
+    const av = getTableAccessorValue(a, accessors, field, "sort");
+    const bv = getTableAccessorValue(b, accessors, field, "sort");
+
+    const aNum = Number(av);
+    const bNum = Number(bv);
+    const bothNumbers = Number.isFinite(aNum) && Number.isFinite(bNum);
+
+    if (bothNumbers) {
+      return (aNum - bNum) * factor;
+    }
+
+    const aText = String(av == null ? "" : av).toLowerCase();
+    const bText = String(bv == null ? "" : bv).toLowerCase();
+    return aText.localeCompare(bText, "pt-BR") * factor;
+  });
+
+  return filtered;
+}
+
+function updateTableSortHeaders(tableKey) {
+  const view = getTableViewConfig(tableKey);
+  if (!view) return;
+
+  const headers = Array.from(document.querySelectorAll(`th.sortable[data-table="${tableKey}"][data-sort]`));
+  for (const th of headers) {
+    const field = th.getAttribute("data-sort") || "";
+    const baseLabel = th.getAttribute("data-label") || th.textContent || "";
+
+    if (!th.getAttribute("data-label")) {
+      th.setAttribute("data-label", baseLabel.trim());
+    }
+
+    if (field === view.sort?.field) {
+      const marker = view.sort.direction === "asc" ? " ▲" : " ▼";
+      th.textContent = `${th.getAttribute("data-label")}${marker}`;
+      th.classList.add("sorted");
+    } else {
+      th.textContent = th.getAttribute("data-label") || "";
+      th.classList.remove("sorted");
+    }
+  }
+}
+
+function setTableSort(tableKey, field) {
+  const view = getTableViewConfig(tableKey);
+  if (!view) return;
+
+  if (view.sort.field === field) {
+    view.sort.direction = view.sort.direction === "asc" ? "desc" : "asc";
+  } else {
+    view.sort.field = field;
+    view.sort.direction = field === "nome" || field === "cliente" || field === "produto" || field === "empresa" || field === "user_id"
+      ? "asc"
+      : "desc";
+  }
+
+  rerenderTableView(tableKey);
+}
+
+function rerenderTableView(tableKey) {
+  if (tableKey === "clientes") {
+    renderClientesTable();
+    return;
+  }
+  if (tableKey === "pedidosSintetico" || tableKey === "pedidosAnalitico" || tableKey === "pedidosProdutos") {
+    renderPedidosSection();
+    return;
+  }
+  if (tableKey === "financeiro") {
+    renderContasReceberTable();
+    return;
+  }
+  if (tableKey === "orcamentos") {
+    renderOrcamentosTable();
+    return;
+  }
+  if (tableKey === "despesas") {
+    renderDespesasTable();
+    return;
+  }
+  if (tableKey === "usuarios") {
+    renderOwnerUsersTable();
+    return;
+  }
+  if (tableKey === "adminVinculos") {
+    renderAdminVinculosTable();
+  }
+}
+
+function getTableFilterValue(tableKey, field) {
+  return escapeHtml(getTableViewConfig(tableKey)?.filters?.[field] || "");
+}
+
 function renderPedidosTable() {
   if (state.pedidosView === "produtos") {
     renderPedidosProdutosRows();
@@ -3183,12 +3404,25 @@ function renderPedidosTable() {
     return;
   }
 
-  if (!state.pedidos.length) {
-    els.pedidosTable.innerHTML = '<tr><td colspan="5">Nenhum pedido cadastrado.</td></tr>';
+  const rows = getFilteredAndSortedTableRows(state.pedidos, "pedidosSintetico", {
+    data: {
+      filter: (pedido) => pedido.data_pedido ? new Date(pedido.data_pedido).toLocaleDateString("pt-BR") : "-",
+      sort: (pedido) => pedido.data_pedido ? new Date(pedido.data_pedido).getTime() : 0
+    },
+    cliente: (pedido) => pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${pedido.cliente_legacy_id}` : "-"),
+    status: (pedido) => pedido.status || "-",
+    total: {
+      filter: (pedido) => moeda.format(pedido.valor_total || 0),
+      sort: (pedido) => Number(pedido.valor_total || 0)
+    }
+  });
+
+  if (!rows.length) {
+    els.pedidosTable.innerHTML = '<tr><td colspan="5">Nenhum pedido encontrado para os filtros selecionados.</td></tr>';
     return;
   }
 
-  els.pedidosTable.innerHTML = state.pedidos
+  els.pedidosTable.innerHTML = rows
     .map((pedido) => {
       const data = pedido.data_pedido ? new Date(pedido.data_pedido).toLocaleDateString("pt-BR") : "-";
       const clienteNome = pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${escapeHtml(pedido.cliente_legacy_id)}` : "-");
@@ -3216,7 +3450,7 @@ function renderContasReceberTable() {
   const search = String(els.financeiroSearchInput?.value || "").trim().toLowerCase();
   const statusFilter = String(els.financeiroStatusFilter?.value || "").trim().toLowerCase();
 
-  const filtered = state.contasReceber.filter((conta) => {
+  const statusSearchFiltered = state.contasReceber.filter((conta) => {
     const emissao = conta.emissao ? new Date(conta.emissao).toLocaleDateString("pt-BR") : "";
     const vencimento = conta.vencimentoDate ? conta.vencimentoDate.toLocaleDateString("pt-BR") : "";
     const clienteNome = String(conta.cliente?.nome || "");
@@ -3230,8 +3464,31 @@ function renderContasReceberTable() {
     return matchStatus && matchSearch;
   });
 
+  const filtered = getFilteredAndSortedTableRows(statusSearchFiltered, "financeiro", {
+    emissao: {
+      filter: (conta) => conta.emissao ? new Date(conta.emissao).toLocaleDateString("pt-BR") : "-",
+      sort: (conta) => conta.emissao ? new Date(conta.emissao).getTime() : 0
+    },
+    vencimento: {
+      filter: (conta) => conta.vencimentoDate ? conta.vencimentoDate.toLocaleDateString("pt-BR") : "-",
+      sort: (conta) => conta.vencimentoDate ? conta.vencimentoDate.getTime() : 0
+    },
+    cliente: (conta) => conta.cliente?.nome || "-",
+    titulo: (conta) => conta.numero_titulo || `DOC-${conta.documento_id || conta.id}`,
+    status: (conta) => getContaStatusLabel(conta.statusNormalizado || "aberto"),
+    original: {
+      filter: (conta) => moeda.format(conta.valor_original || 0),
+      sort: (conta) => Number(conta.valor_original || 0)
+    },
+    aberto: {
+      filter: (conta) => moeda.format(conta.valor_aberto || 0),
+      sort: (conta) => Number(conta.valor_aberto || 0)
+    }
+  });
+
   if (!filtered.length) {
     els.contasReceberTable.innerHTML = '<tr><td colspan="8">Nenhuma conta encontrada para os filtros selecionados.</td></tr>';
+    updateTableSortHeaders("financeiro");
     return;
   }
 
@@ -3258,10 +3515,30 @@ function renderContasReceberTable() {
       `;
     })
     .join("");
+    updateTableSortHeaders("financeiro");
 }
 
 function renderOrcamentosTable() {
-  els.orcamentosTable.innerHTML = state.orcamentos
+    const rows = getFilteredAndSortedTableRows(state.orcamentos, "orcamentos", {
+      data: {
+        filter: (orcamento) => orcamento.data_orcamento ? new Date(orcamento.data_orcamento).toLocaleDateString("pt-BR") : "-",
+        sort: (orcamento) => orcamento.data_orcamento ? new Date(orcamento.data_orcamento).getTime() : 0
+      },
+      cliente: (orcamento) => orcamento.cliente?.nome || (orcamento.cliente_legacy_id ? `Legacy #${orcamento.cliente_legacy_id}` : "-"),
+      status: (orcamento) => orcamento.status || "-",
+      total: {
+        filter: (orcamento) => moeda.format(orcamento.valor_total || 0),
+        sort: (orcamento) => Number(orcamento.valor_total || 0)
+      }
+    });
+
+    if (!rows.length) {
+      els.orcamentosTable.innerHTML = '<tr><td colspan="5">Nenhum orcamento encontrado para os filtros selecionados.</td></tr>';
+      updateTableSortHeaders("orcamentos");
+      return;
+    }
+
+    els.orcamentosTable.innerHTML = rows
     .map((orcamento) => {
       const data = orcamento.data_orcamento ? new Date(orcamento.data_orcamento).toLocaleDateString("pt-BR") : "-";
       const clienteNome = orcamento.cliente?.nome || (orcamento.cliente_legacy_id ? `Legacy #${escapeHtml(orcamento.cliente_legacy_id)}` : "-");
@@ -3280,10 +3557,30 @@ function renderOrcamentosTable() {
     `;
     })
     .join("");
+  updateTableSortHeaders("orcamentos");
 }
 
 function renderDespesasTable() {
-  els.despesasTable.innerHTML = state.despesas
+  const rows = getFilteredAndSortedTableRows(state.despesas, "despesas", {
+    data: {
+      filter: (despesa) => despesa.data_despesa ? new Date(despesa.data_despesa).toLocaleDateString("pt-BR") : "-",
+      sort: (despesa) => despesa.data_despesa ? new Date(despesa.data_despesa).getTime() : 0
+    },
+    descricao: (despesa) => despesa.descricao || "-",
+    status: (despesa) => despesa.status || "-",
+    valor: {
+      filter: (despesa) => moeda.format(despesa.valor || 0),
+      sort: (despesa) => Number(despesa.valor || 0)
+    }
+  });
+
+  if (!rows.length) {
+    els.despesasTable.innerHTML = '<tr><td colspan="5">Nenhuma despesa encontrada para os filtros selecionados.</td></tr>';
+    updateTableSortHeaders("despesas");
+    return;
+  }
+
+  els.despesasTable.innerHTML = rows
     .map((despesa) => {
       const data = despesa.data_despesa ? new Date(despesa.data_despesa).toLocaleDateString("pt-BR") : "-";
       return `
@@ -3297,6 +3594,7 @@ function renderDespesasTable() {
     `;
     })
     .join("");
+  updateTableSortHeaders("despesas");
 }
 
 function renderMetrics() {
@@ -4448,6 +4746,29 @@ function attachEvents() {
       setProdutoSort(field);
     });
   }
+
+  document.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    const tableKey = target.getAttribute("data-table-filter");
+    const field = target.getAttribute("data-field");
+    if (!tableKey || !field) return;
+    const view = getTableViewConfig(tableKey);
+    if (!view) return;
+    view.filters[field] = target.value || "";
+    rerenderTableView(tableKey);
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const header = target.closest("th.sortable[data-table][data-sort]");
+    if (!header) return;
+    const tableKey = header.getAttribute("data-table");
+    const field = header.getAttribute("data-sort");
+    if (!tableKey || !field) return;
+    setTableSort(tableKey, field);
+  });
 
   if (els.pedidoForm) {
     els.pedidoForm.addEventListener("submit", async (event) => {

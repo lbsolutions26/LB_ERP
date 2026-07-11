@@ -646,7 +646,7 @@ th.sortable.sorted {
   color: var(--brand-strong);
 }
 
-#section-produtos thead input {
+table thead input {
   width: 100%;
   min-width: 90px;
   padding: 0.35rem 0.45rem;
