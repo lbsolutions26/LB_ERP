@@ -69,6 +69,13 @@ const state = {
     ativo: ""
   },
   pedidos: [],
+  contasReceber: [],
+  recebimentoModal: {
+    contaId: null,
+    conta: null,
+    parcelas: [],
+    recebimentos: []
+  },
   orcamentos: [],
   despesas: [],
   formasPagamento: [],
@@ -169,6 +176,9 @@ const els = {
   filtroProdutoPonto: document.getElementById("filtroProdutoPonto"),
   filtroProdutoAtivo: document.getElementById("filtroProdutoAtivo"),
   pedidosTable: document.getElementById("pedidosTable"),
+  contasReceberTable: document.getElementById("contasReceberTable"),
+  financeiroStatusFilter: document.getElementById("financeiroStatusFilter"),
+  financeiroSearchInput: document.getElementById("financeiroSearchInput"),
   orcamentosTable: document.getElementById("orcamentosTable"),
   despesasTable: document.getElementById("despesasTable"),
   ownerUsersTable: document.getElementById("ownerUsersTable"),
@@ -182,6 +192,22 @@ const els = {
   estoquePontoPedidoCount: document.getElementById("estoquePontoPedidoCount"),
   orcamentoAbertoValue: document.getElementById("orcamentoAbertoValue"),
   refreshBtn: document.getElementById("refreshBtn"),
+  recebimentoModal: document.getElementById("recebimentoModal"),
+  closeRecebimentoModalBtn: document.getElementById("closeRecebimentoModalBtn"),
+  recebimentoForm: document.getElementById("recebimentoForm"),
+  recebimentoContaId: document.getElementById("recebimentoContaId"),
+  recebimentoModalTitle: document.getElementById("recebimentoModalTitle"),
+  recebimentoModalSubtitle: document.getElementById("recebimentoModalSubtitle"),
+  recebimentoParcelaSelect: document.getElementById("recebimentoParcelaSelect"),
+  recebimentoValorInput: document.getElementById("recebimentoValorInput"),
+  recebimentoDataInput: document.getElementById("recebimentoDataInput"),
+  recebimentoFormaSelect: document.getElementById("recebimentoFormaSelect"),
+  recebimentoJurosInput: document.getElementById("recebimentoJurosInput"),
+  recebimentoMultaInput: document.getElementById("recebimentoMultaInput"),
+  recebimentoDescontoInput: document.getElementById("recebimentoDescontoInput"),
+  recebimentoObservacoesInput: document.getElementById("recebimentoObservacoesInput"),
+  recebimentoResumo: document.getElementById("recebimentoResumo"),
+  recebimentoHistoricoTable: document.getElementById("recebimentoHistoricoTable"),
   toast: document.getElementById("toast")
 };
 
@@ -258,6 +284,16 @@ function openItensDocumentoModal() {
 function closeItensDocumentoModal() {
   if (!els.itensDocumentoModal) return;
   els.itensDocumentoModal.classList.add("hidden");
+}
+
+function openRecebimentoModal() {
+  if (!els.recebimentoModal) return;
+  els.recebimentoModal.classList.remove("hidden");
+}
+
+function closeRecebimentoModal() {
+  if (!els.recebimentoModal) return;
+  els.recebimentoModal.classList.add("hidden");
 }
 
 function openNovoDocumentoClientePanel() {
@@ -676,6 +712,351 @@ function getFormaPagamentoNome(formaPagamentoId) {
   if (!formaPagamentoId) return null;
   const forma = state.formasPagamento.find((item) => String(item.id) === String(formaPagamentoId));
   return forma?.nome || null;
+}
+
+function normalizeContaStatus(status, valorAberto, isVencida) {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "recebido" || normalized === "quitado") return "recebido";
+  if (normalized === "parcial") return "parcial";
+  if (normalized === "cancelado") return "cancelado";
+  if (Number(valorAberto || 0) <= 0) return "recebido";
+  if (isVencida) return "vencido";
+  return "aberto";
+}
+
+function getContaStatusLabel(status) {
+  if (status === "parcial") return "Parcial";
+  if (status === "recebido") return "Recebido";
+  if (status === "vencido") return "Vencido";
+  return "Aberto";
+}
+
+function getParcelaSaldo(parcela) {
+  return Math.max(0, Number(parcela?.valor_parcela || 0) - Number(parcela?.valor_recebido || 0));
+}
+
+async function loadContasReceber() {
+  const { data, error } = await supabaseClient
+    .from("contas_receber")
+    .select("id, documento_id, cliente_id, numero_titulo, emissao, valor_original, valor_aberto, status, cliente:clientes(id,nome)")
+    .eq("empresa_id", state.empresaId)
+    .order("emissao", { ascending: false });
+
+  if (error) {
+    if (isMissingRelationError(error)) {
+      state.contasReceber = [];
+      return;
+    }
+    throw error;
+  }
+
+  state.contasReceber = (data || []).map((item) => {
+    const emissaoDate = item.emissao ? new Date(item.emissao) : null;
+    const isVencida = false;
+    return {
+      ...item,
+      emissaoDate,
+      statusNormalizado: normalizeContaStatus(item.status, item.valor_aberto, isVencida)
+    };
+  });
+}
+
+async function loadContaFinanceiroDetalhe(contaId) {
+  const { data: conta, error: contaError } = await supabaseClient
+    .from("contas_receber")
+    .select("id, documento_id, cliente_id, numero_titulo, emissao, valor_original, valor_aberto, status, cliente:clientes(id,nome)")
+    .eq("empresa_id", state.empresaId)
+    .eq("id", contaId)
+    .maybeSingle();
+
+  if (contaError) throw contaError;
+  if (!conta) throw new Error("Conta a receber nao encontrada.");
+
+  const { data: parcelas, error: parcelasError } = await supabaseClient
+    .from("contas_receber_parcelas")
+    .select("id, numero_parcela, vencimento, valor_parcela, valor_recebido, status, forma_pagamento_id, observacoes")
+    .eq("empresa_id", state.empresaId)
+    .eq("conta_receber_id", contaId)
+    .order("numero_parcela", { ascending: true });
+
+  if (parcelasError) throw parcelasError;
+
+  const parcelaIds = (parcelas || []).map((item) => item.id);
+  let recebimentos = [];
+  if (parcelaIds.length) {
+    const { data: recebimentosData, error: recebimentosError } = await supabaseClient
+      .from("recebimentos")
+      .select("id, parcela_id, data_recebimento, valor, forma_pagamento_id, observacoes")
+      .eq("empresa_id", state.empresaId)
+      .in("parcela_id", parcelaIds)
+      .order("data_recebimento", { ascending: false });
+
+    if (recebimentosError) throw recebimentosError;
+    recebimentos = recebimentosData || [];
+  }
+
+  return {
+    conta,
+    parcelas: parcelas || [],
+    recebimentos
+  };
+}
+
+function getPendingParcelas(parcelas) {
+  return (parcelas || []).filter((item) => getParcelaSaldo(item) > 0.00001);
+}
+
+function renderRecebimentoModal() {
+  if (!els.recebimentoForm) return;
+  const { conta, parcelas, recebimentos } = state.recebimentoModal;
+  if (!conta) return;
+
+  const clienteNome = conta.cliente?.nome || "Cliente nao informado";
+  if (els.recebimentoModalTitle) {
+    els.recebimentoModalTitle.textContent = `Registrar recebimento - ${clienteNome}`;
+  }
+  if (els.recebimentoModalSubtitle) {
+    els.recebimentoModalSubtitle.textContent = `Titulo ${conta.numero_titulo || `DOC-${conta.documento_id || conta.id}`} • Saldo ${moeda.format(conta.valor_aberto || 0)}`;
+  }
+  if (els.recebimentoContaId) {
+    els.recebimentoContaId.value = String(conta.id);
+  }
+
+  if (els.recebimentoFormaSelect) {
+    const options = ['<option value="">Selecione a forma</option>'];
+    for (const forma of state.formasPagamento) {
+      options.push(`<option value="${forma.id}">${escapeHtml(forma.nome)}</option>`);
+    }
+    els.recebimentoFormaSelect.innerHTML = options.join("");
+  }
+
+  const pendingParcelas = getPendingParcelas(parcelas);
+  if (els.recebimentoParcelaSelect) {
+    const options = [
+      '<option value="">Abater automaticamente (ordem de vencimento)</option>',
+      ...pendingParcelas.map((parcela) => {
+        const saldo = getParcelaSaldo(parcela);
+        const venc = parcela.vencimento ? new Date(parcela.vencimento).toLocaleDateString("pt-BR") : "-";
+        return `<option value="${parcela.id}">Parcela ${parcela.numero_parcela} • Venc ${venc} • Saldo ${moeda.format(saldo)}</option>`;
+      })
+    ];
+    els.recebimentoParcelaSelect.innerHTML = options.join("");
+  }
+
+  const defaultParcela = pendingParcelas[0] || null;
+  if (els.recebimentoParcelaSelect) {
+    els.recebimentoParcelaSelect.value = defaultParcela ? String(defaultParcela.id) : "";
+  }
+  if (els.recebimentoValorInput) {
+    const sugerido = defaultParcela ? getParcelaSaldo(defaultParcela) : Number(conta.valor_aberto || 0);
+    els.recebimentoValorInput.value = String(Math.max(0.01, Number(sugerido || 0)).toFixed(2));
+  }
+  if (els.recebimentoDataInput) {
+    els.recebimentoDataInput.value = formatDateInput(new Date());
+  }
+  if (els.recebimentoJurosInput) els.recebimentoJurosInput.value = "0";
+  if (els.recebimentoMultaInput) els.recebimentoMultaInput.value = "0";
+  if (els.recebimentoDescontoInput) els.recebimentoDescontoInput.value = "0";
+  if (els.recebimentoObservacoesInput) els.recebimentoObservacoesInput.value = "";
+
+  if (els.recebimentoResumo) {
+    const recebidos = (parcelas || []).reduce((sum, item) => sum + Number(item.valor_recebido || 0), 0);
+    const saldo = Math.max(0, Number(conta.valor_original || 0) - recebidos);
+    els.recebimentoResumo.textContent = `Original ${moeda.format(conta.valor_original || 0)} • Recebido ${moeda.format(recebidos)} • Saldo ${moeda.format(saldo)}`;
+  }
+
+  if (els.recebimentoHistoricoTable) {
+    if (!recebimentos.length) {
+      els.recebimentoHistoricoTable.innerHTML = '<tr><td colspan="5">Sem recebimentos registrados.</td></tr>';
+    } else {
+      const parcelaById = new Map((parcelas || []).map((item) => [String(item.id), item]));
+      els.recebimentoHistoricoTable.innerHTML = recebimentos
+        .map((item) => {
+          const parcela = parcelaById.get(String(item.parcela_id));
+          const parcelaLabel = parcela ? `Parcela ${parcela.numero_parcela}` : "-";
+          const data = item.data_recebimento ? new Date(item.data_recebimento).toLocaleDateString("pt-BR") : "-";
+          const formaNome = getFormaPagamentoNome(item.forma_pagamento_id) || "-";
+          return `
+            <tr>
+              <td>${data}</td>
+              <td>${escapeHtml(parcelaLabel)}</td>
+              <td>${moeda.format(item.valor || 0)}</td>
+              <td>${escapeHtml(formaNome)}</td>
+              <td>${escapeHtml(item.observacoes || "-")}</td>
+            </tr>
+          `;
+        })
+        .join("");
+    }
+  }
+}
+
+async function openRecebimentoModalByConta(contaId) {
+  const detalhe = await loadContaFinanceiroDetalhe(contaId);
+  state.recebimentoModal = {
+    contaId,
+    conta: detalhe.conta,
+    parcelas: detalhe.parcelas,
+    recebimentos: detalhe.recebimentos
+  };
+  renderRecebimentoModal();
+  openRecebimentoModal();
+}
+
+async function openRecebimentoModalByPedido(documentoId) {
+  const conta = state.contasReceber.find((item) => Number(item.documento_id) === Number(documentoId));
+  if (!conta) {
+    throw new Error("Nao existe conta a receber vinculada para este pedido.");
+  }
+  await openRecebimentoModalByConta(Number(conta.id));
+}
+
+function calculateAbatimentoPrincipal(valorRecebido, juros, multa, desconto) {
+  const principal = Number(valorRecebido || 0) + Number(desconto || 0) - Number(juros || 0) - Number(multa || 0);
+  return Math.max(0, Number(principal.toFixed(2)));
+}
+
+function resolveContaStatusByParcelas(parcelas) {
+  const totalRecebido = (parcelas || []).reduce((sum, item) => sum + Number(item.valor_recebido || 0), 0);
+  const totalPrevisto = (parcelas || []).reduce((sum, item) => sum + Number(item.valor_parcela || 0), 0);
+  if (totalPrevisto <= 0) return "aberto";
+  if (totalRecebido <= 0) return "aberto";
+  if (Math.abs(totalRecebido - totalPrevisto) < 0.01 || totalRecebido > totalPrevisto) return "recebido";
+  return "parcial";
+}
+
+function getParcelasForAutoAllocation(parcelas) {
+  return [...(parcelas || [])]
+    .filter((item) => getParcelaSaldo(item) > 0)
+    .sort((a, b) => {
+      const aDate = a.vencimento ? new Date(a.vencimento).getTime() : 0;
+      const bDate = b.vencimento ? new Date(b.vencimento).getTime() : 0;
+      if (aDate !== bDate) return aDate - bDate;
+      return Number(a.numero_parcela || 0) - Number(b.numero_parcela || 0);
+    });
+}
+
+async function saveRecebimento(event) {
+  event.preventDefault();
+  const contaId = Number(els.recebimentoContaId?.value || 0);
+  if (!contaId) throw new Error("Conta invalida para registrar recebimento.");
+
+  const valorRecebido = Number(els.recebimentoValorInput?.value || 0);
+  const juros = Number(els.recebimentoJurosInput?.value || 0);
+  const multa = Number(els.recebimentoMultaInput?.value || 0);
+  const desconto = Number(els.recebimentoDescontoInput?.value || 0);
+  const dataRecebimento = els.recebimentoDataInput?.value || formatDateInput(new Date());
+  const formaPagamentoId = Number(els.recebimentoFormaSelect?.value || 0) || null;
+  const parcelaIdTarget = Number(els.recebimentoParcelaSelect?.value || 0) || null;
+  const observacoes = String(els.recebimentoObservacoesInput?.value || "").trim();
+
+  if (valorRecebido <= 0) {
+    throw new Error("Informe um valor recebido maior que zero.");
+  }
+
+  const abatimento = calculateAbatimentoPrincipal(valorRecebido, juros, multa, desconto);
+  if (abatimento <= 0) {
+    throw new Error("O abatimento da divida ficou zero. Ajuste juros, multa, desconto e valor.");
+  }
+
+  const detalheAtual = await loadContaFinanceiroDetalhe(contaId);
+  const parcelasMap = new Map((detalheAtual.parcelas || []).map((item) => [Number(item.id), { ...item }]));
+  const parcelasParaAlocar = parcelaIdTarget
+    ? (() => {
+        const parcela = parcelasMap.get(parcelaIdTarget);
+        return parcela ? [parcela] : [];
+      })()
+    : getParcelasForAutoAllocation(detalheAtual.parcelas);
+
+  if (!parcelasParaAlocar.length) {
+    throw new Error("Nao ha parcelas pendentes para receber nesta conta.");
+  }
+
+  let restante = abatimento;
+  const applied = [];
+
+  for (const parcela of parcelasParaAlocar) {
+    if (restante <= 0) break;
+    const saldo = getParcelaSaldo(parcela);
+    if (saldo <= 0) continue;
+    const aplicado = Math.min(saldo, restante);
+    parcela.valor_recebido = Number((Number(parcela.valor_recebido || 0) + aplicado).toFixed(2));
+    const novoSaldo = getParcelaSaldo(parcela);
+    parcela.status = novoSaldo <= 0.00001 ? "recebido" : "parcial";
+    restante = Number((restante - aplicado).toFixed(2));
+    applied.push({
+      parcelaId: Number(parcela.id),
+      valor: aplicado,
+      numeroParcela: Number(parcela.numero_parcela || 0)
+    });
+  }
+
+  if (!applied.length) {
+    throw new Error("Nao foi possivel aplicar o valor nas parcelas pendentes.");
+  }
+
+  const atualizacoesParcelas = applied.map((item) => {
+    const parcela = parcelasMap.get(item.parcelaId);
+    return supabaseClient
+      .from("contas_receber_parcelas")
+      .update({
+        valor_recebido: Number(parcela.valor_recebido || 0),
+        status: parcela.status,
+        forma_pagamento_id: formaPagamentoId
+      })
+      .eq("empresa_id", state.empresaId)
+      .eq("id", item.parcelaId);
+  });
+
+  const resultadosParcelas = await Promise.all(atualizacoesParcelas);
+  for (const resultado of resultadosParcelas) {
+    if (resultado.error) throw resultado.error;
+  }
+
+  const observacaoBase = [
+    observacoes || null,
+    juros > 0 ? `Juros ${moeda.format(juros)}` : null,
+    multa > 0 ? `Multa ${moeda.format(multa)}` : null,
+    desconto > 0 ? `Desconto ${moeda.format(desconto)}` : null,
+    restante > 0 ? `Valor excedente nao alocado ${moeda.format(restante)}` : null
+  ]
+    .filter(Boolean)
+    .join(" • ");
+
+  const recebimentosPayload = applied.map((item) => ({
+    empresa_id: state.empresaId,
+    parcela_id: item.parcelaId,
+    data_recebimento: new Date(`${dataRecebimento}T12:00:00`).toISOString(),
+    valor: Number(item.valor.toFixed(2)),
+    forma_pagamento_id: formaPagamentoId,
+    observacoes:
+      (parcelaIdTarget ? "Recebimento direcionado" : "Recebimento por abatimento automatico") +
+      (observacaoBase ? ` • ${observacaoBase}` : "")
+  }));
+
+  const { error: recebimentoError } = await supabaseClient.from("recebimentos").insert(recebimentosPayload);
+  if (recebimentoError) throw recebimentoError;
+
+  const parcelasAtualizadas = Array.from(parcelasMap.values());
+  const totalPrevisto = parcelasAtualizadas.reduce((sum, item) => sum + Number(item.valor_parcela || 0), 0);
+  const totalRecebido = parcelasAtualizadas.reduce((sum, item) => sum + Number(item.valor_recebido || 0), 0);
+  const novoValorAberto = Math.max(0, Number((totalPrevisto - totalRecebido).toFixed(2)));
+  const novoStatusConta = resolveContaStatusByParcelas(parcelasAtualizadas);
+
+  const { error: contaError } = await supabaseClient
+    .from("contas_receber")
+    .update({
+      valor_aberto: novoValorAberto,
+      status: novoStatusConta
+    })
+    .eq("empresa_id", state.empresaId)
+    .eq("id", contaId);
+
+  if (contaError) throw contaError;
+
+  await refreshAll();
+  await openRecebimentoModalByConta(contaId);
+  showToast("Recebimento registrado");
 }
 
 async function createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, total) {
@@ -2044,12 +2425,59 @@ function renderPedidosTable() {
         <td>${escapeHtml(pedido.status || "-")}</td>
         <td>${moeda.format(pedido.valor_total || 0)}</td>
         <td>
-            <button class="action-edit" data-edit-pedido="${pedido.id}">Editar</button>
+          <button class="action-edit" data-edit-pedido="${pedido.id}">Editar</button>
+          ${state.pedidosSource === "documentos_venda" ? `<button class="action-finance" data-open-recebimento-pedido="${pedido.id}">Receber</button>` : ""}
           <button class="action-edit" data-view-pedido-itens="${pedido.id}">Itens</button>
           <button class="action-delete" data-del-pedido="${pedido.id}">Excluir</button>
         </td>
       </tr>
     `;
+    })
+    .join("");
+}
+
+function renderContasReceberTable() {
+  if (!els.contasReceberTable) return;
+
+  const search = String(els.financeiroSearchInput?.value || "").trim().toLowerCase();
+  const statusFilter = String(els.financeiroStatusFilter?.value || "").trim().toLowerCase();
+
+  const filtered = state.contasReceber.filter((conta) => {
+    const emissao = conta.emissao ? new Date(conta.emissao).toLocaleDateString("pt-BR") : "";
+    const clienteNome = String(conta.cliente?.nome || "");
+    const titulo = String(conta.numero_titulo || "");
+    const documento = String(conta.documento_id || "");
+    const statusConta = String(conta.statusNormalizado || "aberto");
+
+    const matchStatus = !statusFilter || statusFilter === statusConta;
+    const haystack = `${clienteNome} ${titulo} ${documento} ${emissao}`.toLowerCase();
+    const matchSearch = !search || haystack.includes(search);
+    return matchStatus && matchSearch;
+  });
+
+  if (!filtered.length) {
+    els.contasReceberTable.innerHTML = '<tr><td colspan="7">Nenhuma conta encontrada para os filtros selecionados.</td></tr>';
+    return;
+  }
+
+  els.contasReceberTable.innerHTML = filtered
+    .map((conta) => {
+      const emissao = conta.emissao ? new Date(conta.emissao).toLocaleDateString("pt-BR") : "-";
+      const clienteNome = conta.cliente?.nome || "-";
+      const statusConta = conta.statusNormalizado || "aberto";
+      return `
+        <tr>
+          <td>${emissao}</td>
+          <td>${escapeHtml(clienteNome)}</td>
+          <td>${escapeHtml(conta.numero_titulo || `DOC-${conta.documento_id || conta.id}`)}</td>
+          <td><span class="status-chip ${statusConta}">${getContaStatusLabel(statusConta)}</span></td>
+          <td>${moeda.format(conta.valor_original || 0)}</td>
+          <td>${moeda.format(conta.valor_aberto || 0)}</td>
+          <td>
+            <button class="action-finance" data-open-recebimento-conta="${conta.id}">Registrar recebimento</button>
+          </td>
+        </tr>
+      `;
     })
     .join("");
 }
@@ -2129,6 +2557,7 @@ async function refreshAll() {
       loadOrcamentos(),
       loadDespesas(),
       loadFormasPagamento(),
+      loadContasReceber(),
       loadOwnerUsers()
     ];
 
@@ -2142,6 +2571,7 @@ async function refreshAll() {
     renderClientesTable();
     renderProdutosTable();
     renderPedidosTable();
+    renderContasReceberTable();
     renderOrcamentosTable();
     renderDespesasTable();
     renderOwnerUsersTable();
@@ -2675,6 +3105,18 @@ function attachEvents() {
     });
   }
 
+  if (els.closeRecebimentoModalBtn) {
+    els.closeRecebimentoModalBtn.addEventListener("click", closeRecebimentoModal);
+  }
+
+  if (els.recebimentoModal) {
+    els.recebimentoModal.addEventListener("click", (event) => {
+      if (event.target === els.recebimentoModal) {
+        closeRecebimentoModal();
+      }
+    });
+  }
+
   if (els.novoDocumentoClientePanel) {
     els.novoDocumentoClientePanel.addEventListener("click", (event) => {
       const target = event.target;
@@ -2816,6 +3258,28 @@ function attachEvents() {
     });
   }
 
+  if (els.recebimentoForm) {
+    els.recebimentoForm.addEventListener("submit", async (event) => {
+      try {
+        await saveRecebimento(event);
+      } catch (error) {
+        showToast(`Erro ao salvar recebimento: ${error.message}`, "error");
+      }
+    });
+  }
+
+  if (els.financeiroStatusFilter) {
+    els.financeiroStatusFilter.addEventListener("change", () => {
+      renderContasReceberTable();
+    });
+  }
+
+  if (els.financeiroSearchInput) {
+    els.financeiroSearchInput.addEventListener("input", () => {
+      renderContasReceberTable();
+    });
+  }
+
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
@@ -2936,6 +3400,8 @@ function attachEvents() {
     const orcamentoId = target.getAttribute("data-del-orcamento");
     const pedidoItensId = target.getAttribute("data-view-pedido-itens");
     const orcamentoItensId = target.getAttribute("data-view-orcamento-itens");
+    const openRecebimentoPedidoId = target.getAttribute("data-open-recebimento-pedido");
+    const openRecebimentoContaId = target.getAttribute("data-open-recebimento-conta");
     const despesaId = target.getAttribute("data-del-despesa");
 
     try {
@@ -2959,6 +3425,14 @@ function attachEvents() {
       }
       if (orcamentoItensId) {
         await openDocumentoItens("orcamento", Number(orcamentoItensId));
+        return;
+      }
+      if (openRecebimentoPedidoId) {
+        await openRecebimentoModalByPedido(Number(openRecebimentoPedidoId));
+        return;
+      }
+      if (openRecebimentoContaId) {
+        await openRecebimentoModalByConta(Number(openRecebimentoContaId));
         return;
       }
       if (clienteId) {

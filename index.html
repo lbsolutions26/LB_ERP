@@ -49,6 +49,7 @@
         <button class="tab active" data-section="dashboard">Dashboard</button>
         <button class="tab" data-section="clientes">Clientes</button>
         <button class="tab" data-section="pedidos">Pedidos</button>
+        <button class="tab" data-section="financeiro">Contas a Receber</button>
         <button class="tab" data-section="orcamentos">Orcamentos</button>
         <button class="tab" data-section="despesas">Despesas</button>
         <button class="tab" data-section="produtos">Produtos</button>
@@ -125,6 +126,49 @@
                 </tr>
               </thead>
               <tbody id="pedidosTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="section-financeiro" class="card app-section hidden">
+          <div class="section-head">
+            <div>
+              <h2>Contas a Receber</h2>
+              <p class="section-subtitle">Acompanhe saldos pendentes e registre recebimentos parciais ou totais.</p>
+            </div>
+          </div>
+
+          <div class="financeiro-filters">
+            <label>
+              Status
+              <select id="financeiroStatusFilter">
+                <option value="">Todos</option>
+                <option value="aberto">Aberto</option>
+                <option value="parcial">Parcial</option>
+                <option value="recebido">Recebido</option>
+                <option value="vencido">Vencido</option>
+              </select>
+            </label>
+            <label>
+              Buscar
+              <input id="financeiroSearchInput" type="search" placeholder="Cliente, titulo, documento..." />
+            </label>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Emissao</th>
+                  <th>Cliente</th>
+                  <th>Titulo</th>
+                  <th>Status</th>
+                  <th>Original</th>
+                  <th>Aberto</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="contasReceberTable"></tbody>
             </table>
           </div>
         </section>
@@ -536,6 +580,89 @@
           </label>
           <div class="quick-client-actions">
             <button type="submit" class="btn">Salvar cliente</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="recebimentoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="recebimentoModalTitle">
+      <div class="modal-card modal-recebimento-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="recebimentoModalTitle">Registrar recebimento</h3>
+            <p id="recebimentoModalSubtitle" class="modal-subtitle">Selecione a parcela ou faça abatimento automatico na divida.</p>
+          </div>
+          <button id="closeRecebimentoModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+
+        <form id="recebimentoForm" class="recebimento-form">
+          <input id="recebimentoContaId" type="hidden" name="conta_id" />
+
+          <div class="recebimento-grid">
+            <label>
+              Parcela alvo
+              <select id="recebimentoParcelaSelect" name="parcela_id"></select>
+            </label>
+
+            <label>
+              Valor recebido
+              <input id="recebimentoValorInput" name="valor" type="number" min="0.01" step="0.01" required />
+            </label>
+
+            <label>
+              Data do recebimento
+              <input id="recebimentoDataInput" name="data_recebimento" type="date" required />
+            </label>
+
+            <label>
+              Forma de pagamento
+              <select id="recebimentoFormaSelect" name="forma_pagamento_id"></select>
+            </label>
+
+            <label>
+              Juros
+              <input id="recebimentoJurosInput" name="juros" type="number" min="0" step="0.01" value="0" />
+            </label>
+
+            <label>
+              Multa
+              <input id="recebimentoMultaInput" name="multa" type="number" min="0" step="0.01" value="0" />
+            </label>
+
+            <label>
+              Desconto
+              <input id="recebimentoDescontoInput" name="desconto" type="number" min="0" step="0.01" value="0" />
+            </label>
+
+            <label class="recebimento-observacoes">
+              Observacoes
+              <textarea id="recebimentoObservacoesInput" name="observacoes" rows="2" placeholder="Comprovante, nota, detalhe da baixa"></textarea>
+            </label>
+          </div>
+
+          <div id="recebimentoResumo" class="documento-payment-summary"></div>
+
+          <div class="table-wrap recebimento-historico">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Parcela</th>
+                  <th>Valor</th>
+                  <th>Forma</th>
+                  <th>Obs</th>
+                </tr>
+              </thead>
+              <tbody id="recebimentoHistoricoTable"></tbody>
+            </table>
+          </div>
+
+          <div class="documento-modal-footer">
+            <div>
+              <span class="summary-label">Acao financeira</span>
+              <strong>Registrar baixa</strong>
+            </div>
+            <button id="recebimentoSubmitBtn" type="submit" class="btn">Salvar recebimento</button>
           </div>
         </form>
       </div>

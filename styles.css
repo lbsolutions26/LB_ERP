@@ -364,6 +364,97 @@ th.sortable.sorted {
   margin-right: 0.35rem;
 }
 
+.action-finance {
+  border: 0;
+  border-radius: 8px;
+  padding: 0.3rem 0.55rem;
+  cursor: pointer;
+  color: #123d3a;
+  background: #d5ece9;
+}
+
+.financeiro-filters {
+  display: grid;
+  grid-template-columns: 220px minmax(260px, 1fr);
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.financeiro-filters label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #3d372d;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.status-chip.aberto {
+  color: #765a00;
+  background: #fff2cc;
+  border-color: #edd189;
+}
+
+.status-chip.parcial {
+  color: #0f4f66;
+  background: #dff1f8;
+  border-color: #a9d8ea;
+}
+
+.status-chip.recebido {
+  color: #1f5f35;
+  background: #dbf2e2;
+  border-color: #acd9bb;
+}
+
+.status-chip.vencido {
+  color: #7a2f2f;
+  background: #f8dfdf;
+  border-color: #e2b4b4;
+}
+
+.modal-recebimento-card {
+  width: min(980px, 100%);
+}
+
+.recebimento-form {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.recebimento-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.recebimento-grid label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #3d372d;
+}
+
+.recebimento-observacoes {
+  grid-column: 1 / -1;
+}
+
+.recebimento-historico {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 0 0.6rem 0.45rem;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -888,6 +979,14 @@ textarea:focus {
     grid-template-columns: 1fr 1fr;
   }
 
+  .recebimento-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .financeiro-filters {
+    grid-template-columns: 1fr;
+  }
+
   .documento-item-remove {
     grid-column: 1 / -1;
   }
@@ -913,6 +1012,10 @@ textarea:focus {
   }
 
   .documento-payment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .recebimento-grid {
     grid-template-columns: 1fr;
   }
 }
