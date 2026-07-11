@@ -633,6 +633,23 @@
             </div>
 
             <div class="documento-payment-summary" id="novoDocumentoPagamentoResumo"></div>
+
+            <div class="documento-payment-parcelas-actions">
+              <button id="novoDocumentoGerarParcelasBtn" type="button" class="btn btn-ghost">Gerar parcelas para editar</button>
+              <button id="novoDocumentoLimparParcelasBtn" type="button" class="btn btn-ghost hidden">Voltar para automatico</button>
+            </div>
+
+            <div id="novoDocumentoParcelasEditor" class="documento-payment-parcelas hidden">
+              <div class="documento-payment-parcelas-head">
+                <strong>Parcelas / titulos</strong>
+                <span class="documento-items-hint">Ajuste vencimentos, valores e forma de pagamento antes de salvar.</span>
+              </div>
+              <div id="novoDocumentoParcelasList" class="documento-payment-parcelas-list"></div>
+              <div class="documento-payment-parcelas-footer">
+                <button id="novoDocumentoAddParcelaBtn" type="button" class="btn btn-ghost">+ Adicionar parcela</button>
+                <span id="novoDocumentoParcelasTotals" class="documento-items-hint"></span>
+              </div>
+            </div>
           </section>
 
           <div class="documento-modal-footer">

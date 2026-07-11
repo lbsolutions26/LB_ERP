@@ -218,6 +218,12 @@ const els = {
   novoDocumentoPagamentoPrimeiroVencimento: document.getElementById("novoDocumentoPagamentoPrimeiroVencimento"),
   novoDocumentoPagamentoIntervalo: document.getElementById("novoDocumentoPagamentoIntervalo"),
   novoDocumentoPagamentoResumo: document.getElementById("novoDocumentoPagamentoResumo"),
+  novoDocumentoGerarParcelasBtn: document.getElementById("novoDocumentoGerarParcelasBtn"),
+  novoDocumentoLimparParcelasBtn: document.getElementById("novoDocumentoLimparParcelasBtn"),
+  novoDocumentoParcelasEditor: document.getElementById("novoDocumentoParcelasEditor"),
+  novoDocumentoParcelasList: document.getElementById("novoDocumentoParcelasList"),
+  novoDocumentoParcelasTotals: document.getElementById("novoDocumentoParcelasTotals"),
+  novoDocumentoAddParcelaBtn: document.getElementById("novoDocumentoAddParcelaBtn"),
   addDocumentoItemBtn: document.getElementById("addDocumentoItemBtn"),
   novoDocumentoSubtotal: document.getElementById("novoDocumentoSubtotal"),
   novoDocumentoResumoTexto: document.getElementById("novoDocumentoResumoTexto"),
@@ -567,6 +573,7 @@ function createDocumentoDraft(tipo = "pedido") {
     status: config.defaultStatus,
     observacoes: "",
     pagamento: createPagamentoDraft(),
+    parcelasEditadas: null,
     itens: [createDocumentoDraftItem()]
   };
 }
@@ -790,7 +797,138 @@ function renderNovoDocumentoPagamentoSection() {
       (parcelaBase ? ` • ${moeda.format(Number(parcelaBase.valor || 0) / 100)}` : "");
   }
 
+  renderNovoDocumentoParcelasEditor();
+
   return plano;
+}
+
+function planoToParcelasEditadas(plano) {
+  const formaPagamentoId = plano.formaPagamentoId ? String(plano.formaPagamentoId) : "";
+  return (plano.parcelas || []).map((parcela, index) => ({
+    numero: parcela.numero || index + 1,
+    vencimento: parcela.vencimento instanceof Date ? formatDateInput(parcela.vencimento) : formatDateInput(new Date()),
+    valor: Number((Number(parcela.valor || 0) / 100).toFixed(2)),
+    formaPagamentoId,
+    status: parcela.status === "recebido" ? "recebido" : "pendente"
+  }));
+}
+
+function gerarParcelasEditaveis() {
+  const subtotal = getNovoDocumentoSubtotal();
+  const pagamentoState = getNovoDocumentoPagamentoState();
+  const plano = buildPagamentoPlano(subtotal, pagamentoState);
+  state.novoDocumentoModal.parcelasEditadas = planoToParcelasEditadas(plano);
+  renderNovoDocumentoParcelasEditor();
+}
+
+function limparParcelasEditaveis() {
+  state.novoDocumentoModal.parcelasEditadas = null;
+  renderNovoDocumentoParcelasEditor();
+}
+
+function addParcelaEditavel() {
+  if (!Array.isArray(state.novoDocumentoModal.parcelasEditadas)) {
+    state.novoDocumentoModal.parcelasEditadas = [];
+  }
+  const parcelas = state.novoDocumentoModal.parcelasEditadas;
+  const proximo = parcelas.length + 1;
+  const ultimoVenc = parcelas.length ? parseDateInput(parcelas[parcelas.length - 1].vencimento) : new Date();
+  const proximoVenc = ultimoVenc ? addDays(ultimoVenc, 30) : new Date();
+  parcelas.push({
+    numero: proximo,
+    vencimento: formatDateInput(proximoVenc),
+    valor: 0,
+    formaPagamentoId: parcelas[0]?.formaPagamentoId || String(getNovoDocumentoPagamentoState().formaPagamentoId || ""),
+    status: "pendente"
+  });
+  renderNovoDocumentoParcelasEditor();
+}
+
+function removerParcelaEditavel(index) {
+  if (!Array.isArray(state.novoDocumentoModal.parcelasEditadas)) return;
+  state.novoDocumentoModal.parcelasEditadas.splice(index, 1);
+  state.novoDocumentoModal.parcelasEditadas.forEach((parcela, idx) => {
+    parcela.numero = idx + 1;
+  });
+  renderNovoDocumentoParcelasEditor();
+}
+
+function atualizarParcelaEditavel(index, field, value) {
+  const parcela = state.novoDocumentoModal.parcelasEditadas?.[index];
+  if (!parcela) return;
+  if (field === "valor") parcela.valor = Math.max(0, Number(value || 0));
+  else if (field === "status") parcela.status = value === "recebido" ? "recebido" : "pendente";
+  else parcela[field] = value;
+  renderNovoDocumentoParcelasTotals();
+}
+
+function renderNovoDocumentoParcelasTotals() {
+  if (!els.novoDocumentoParcelasTotals) return;
+  const parcelas = state.novoDocumentoModal.parcelasEditadas || [];
+  const totalParcelas = parcelas.reduce((sum, item) => sum + Number(item.valor || 0), 0);
+  const subtotal = getNovoDocumentoSubtotal();
+  const diff = subtotal - totalParcelas;
+  const partes = [`${parcelas.length} parcela${parcelas.length === 1 ? "" : "s"}`, `total ${moeda.format(totalParcelas)}`];
+  if (Math.abs(diff) > 0.005) {
+    partes.push(diff > 0 ? `faltam ${moeda.format(diff)}` : `excedente ${moeda.format(-diff)}`);
+  }
+  els.novoDocumentoParcelasTotals.textContent = partes.join(" • ");
+}
+
+function renderNovoDocumentoParcelasEditor() {
+  if (!els.novoDocumentoParcelasEditor) return;
+  const parcelas = state.novoDocumentoModal.parcelasEditadas;
+  const editing = Array.isArray(parcelas);
+
+  els.novoDocumentoParcelasEditor.classList.toggle("hidden", !editing);
+  if (els.novoDocumentoGerarParcelasBtn) {
+    els.novoDocumentoGerarParcelasBtn.classList.toggle("hidden", editing);
+  }
+  if (els.novoDocumentoLimparParcelasBtn) {
+    els.novoDocumentoLimparParcelasBtn.classList.toggle("hidden", !editing);
+  }
+
+  if (!editing) return;
+  if (!els.novoDocumentoParcelasList) return;
+
+  const formasHtml = ['<option value="">Selecione</option>'];
+  for (const forma of state.formasPagamento) {
+    formasHtml.push(`<option value="${forma.id}">${escapeHtml(forma.nome)}</option>`);
+  }
+
+  els.novoDocumentoParcelasList.innerHTML = parcelas
+    .map((parcela, index) => `
+      <div class="documento-payment-parcela-row" data-parcela-index="${index}">
+        <div class="parcela-numero">#${parcela.numero || index + 1}</div>
+        <label>Vencimento
+          <input type="date" data-parcela-field="vencimento" value="${escapeHtml(parcela.vencimento || "")}" />
+        </label>
+        <label>Valor
+          <input type="number" min="0" step="0.01" data-parcela-field="valor" value="${Number(parcela.valor || 0).toFixed(2)}" />
+        </label>
+        <label>Forma de pagamento
+          <select data-parcela-field="formaPagamentoId">
+            ${formasHtml
+              .map((opt) => opt.replace(/^<option value="([^"]*)"/, (m, v) =>
+                v === String(parcela.formaPagamentoId || "")
+                  ? `<option value="${v}" selected`
+                  : `<option value="${v}"`
+              ))
+              .join("")}
+          </select>
+        </label>
+        <label>Status
+          <select data-parcela-field="status">
+            <option value="pendente"${parcela.status === "pendente" ? " selected" : ""}>Pendente</option>
+            <option value="recebido"${parcela.status === "recebido" ? " selected" : ""}>Recebido</option>
+          </select>
+        </label>
+        <button type="button" class="btn btn-ghost" data-parcela-remove="${index}">Remover</button>
+      </div>
+    `)
+    .join("");
+
+  renderNovoDocumentoParcelasTotals();
 }
 
 async function loadFormasPagamento() {
@@ -1338,7 +1476,87 @@ async function saveRecebimento(event) {
   showToast("Recebimento registrado");
 }
 
-async function createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, total) {
+async function createContaFromParcelasEditadas(documentoId, clienteId, parcelasEditadas, defaultFormaPagamentoId) {
+  const nowIso = new Date().toISOString();
+  const totalOriginal = parcelasEditadas.reduce((sum, item) => sum + Number(item.valor || 0), 0);
+  const totalRecebido = parcelasEditadas
+    .filter((item) => item.status === "recebido")
+    .reduce((sum, item) => sum + Number(item.valor || 0), 0);
+  const valorAberto = Math.max(0, totalOriginal - totalRecebido);
+  const statusConta = valorAberto <= 0.00001 ? "recebido" : (totalRecebido > 0 ? "parcial" : "aberto");
+
+  const { data: contaCriada, error: contaError } = await supabaseClient
+    .from("contas_receber")
+    .insert({
+      empresa_id: state.empresaId,
+      documento_id: documentoId,
+      cliente_id: clienteId,
+      origem: "venda",
+      numero_titulo: `DOC-${documentoId}`,
+      emissao: nowIso,
+      valor_original: Number(totalOriginal.toFixed(2)),
+      valor_aberto: Number(valorAberto.toFixed(2)),
+      status: statusConta,
+      observacoes: getFormaPagamentoNome(defaultFormaPagamentoId) || null
+    })
+    .select("id")
+    .single();
+
+  if (contaError) throw contaError;
+
+  const parcelasPayload = parcelasEditadas.map((parcela, index) => {
+    const valor = Number(parcela.valor || 0);
+    const isRecebido = parcela.status === "recebido";
+    const formaId = parcela.formaPagamentoId ? Number(parcela.formaPagamentoId) : defaultFormaPagamentoId;
+    const vencIso = parcela.vencimento
+      ? new Date(`${parcela.vencimento}T12:00:00`).toISOString()
+      : nowIso;
+    return {
+      empresa_id: state.empresaId,
+      conta_receber_id: contaCriada.id,
+      numero_parcela: parcela.numero || index + 1,
+      vencimento: vencIso,
+      valor_parcela: Number(valor.toFixed(2)),
+      valor_recebido: isRecebido ? Number(valor.toFixed(2)) : 0,
+      status: isRecebido ? "recebido" : "pendente",
+      forma_pagamento_id: formaId || null,
+      observacoes: isRecebido ? "Marcado como recebido na criacao" : null
+    };
+  });
+
+  const { data: parcelasCriadas, error: parcelasError } = await supabaseClient
+    .from("contas_receber_parcelas")
+    .insert(parcelasPayload)
+    .select("id, numero_parcela");
+
+  if (parcelasError) throw parcelasError;
+
+  const recebimentosPayload = parcelasEditadas
+    .map((parcela, index) => {
+      if (parcela.status !== "recebido") return null;
+      const parcelaCriada = parcelasCriadas?.find((item) => Number(item.numero_parcela) === Number(parcela.numero || index + 1));
+      if (!parcelaCriada) return null;
+      const formaId = parcela.formaPagamentoId ? Number(parcela.formaPagamentoId) : defaultFormaPagamentoId;
+      return {
+        empresa_id: state.empresaId,
+        parcela_id: parcelaCriada.id,
+        data_recebimento: parcela.vencimento
+          ? new Date(`${parcela.vencimento}T12:00:00`).toISOString()
+          : nowIso,
+        valor: Number(Number(parcela.valor || 0).toFixed(2)),
+        forma_pagamento_id: formaId || null,
+        observacoes: "Marcado como recebido na criacao do pedido"
+      };
+    })
+    .filter(Boolean);
+
+  if (recebimentosPayload.length) {
+    const { error: recebimentoError } = await supabaseClient.from("recebimentos").insert(recebimentosPayload);
+    if (recebimentoError) throw recebimentoError;
+  }
+}
+
+async function createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, total, parcelasEditadas = null) {
   if (Number(total || 0) <= 0) return;
 
   const existenteResponse = await supabaseClient
@@ -1352,6 +1570,11 @@ async function createDocumentoFinanceiro(documentoId, clienteId, pagamentoState,
   if (existenteResponse.data?.length) return;
 
   const formaPagamentoId = pagamentoState.formaPagamentoId ? Number(pagamentoState.formaPagamentoId) : null;
+
+  if (Array.isArray(parcelasEditadas) && parcelasEditadas.length) {
+    await createContaFromParcelasEditadas(documentoId, clienteId, parcelasEditadas, formaPagamentoId);
+    return;
+  }
 
   async function createContaComPlano(planoConta, numeroTituloSuffix = "") {
     const numeroTitulo = numeroTituloSuffix ? `DOC-${documentoId}-${numeroTituloSuffix}` : `DOC-${documentoId}`;
@@ -1734,6 +1957,7 @@ async function loadDocumentoForEdit(tipo, documentoId) {
       ...createPagamentoDraft(),
       ...(documento.raw_payload?.pagamento || {})
     },
+    parcelasEditadas: null,
     itens: (itensData || []).length
       ? (itensData || []).map(normalizeDocumentoItem)
       : [createDocumentoDraftItem()]
@@ -1941,7 +2165,10 @@ async function saveNovoDocumento(event) {
 
   if (!isEdit) {
     try {
-      await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal);
+      const parcelasEditadas = Array.isArray(draft.parcelasEditadas) && draft.parcelasEditadas.length
+        ? draft.parcelasEditadas
+        : null;
+      await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
     } catch (financeError) {
       await supabaseClient.from("documento_venda_itens").delete().eq("empresa_id", state.empresaId).eq("documento_id", documentoId);
       await supabaseClient.from("documentos_venda").delete().eq("empresa_id", state.empresaId).eq("id", documentoId);
@@ -4773,6 +5000,47 @@ function attachEvents() {
   if (els.novoDocumentoObservacoes) {
     els.novoDocumentoObservacoes.addEventListener("input", () => {
       state.novoDocumentoModal.observacoes = els.novoDocumentoObservacoes.value || "";
+    });
+  }
+
+  if (els.novoDocumentoGerarParcelasBtn) {
+    els.novoDocumentoGerarParcelasBtn.addEventListener("click", () => {
+      gerarParcelasEditaveis();
+    });
+  }
+
+  if (els.novoDocumentoLimparParcelasBtn) {
+    els.novoDocumentoLimparParcelasBtn.addEventListener("click", () => {
+      limparParcelasEditaveis();
+    });
+  }
+
+  if (els.novoDocumentoAddParcelaBtn) {
+    els.novoDocumentoAddParcelaBtn.addEventListener("click", () => {
+      addParcelaEditavel();
+    });
+  }
+
+  if (els.novoDocumentoParcelasList) {
+    const handleParcelaField = (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const row = target.closest("[data-parcela-index]");
+      if (!row) return;
+      const index = Number(row.getAttribute("data-parcela-index"));
+      const field = target.getAttribute("data-parcela-field");
+      if (!field) return;
+      const value = target.value;
+      atualizarParcelaEditavel(index, field, value);
+    };
+    els.novoDocumentoParcelasList.addEventListener("input", handleParcelaField);
+    els.novoDocumentoParcelasList.addEventListener("change", handleParcelaField);
+    els.novoDocumentoParcelasList.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const removeIndex = target.getAttribute("data-parcela-remove");
+      if (removeIndex == null) return;
+      removerParcelaEditavel(Number(removeIndex));
     });
   }
 

@@ -1224,6 +1224,76 @@ table thead input {
   font-size: 0.95rem;
 }
 
+.documento-payment-parcelas-actions {
+  margin-top: 0.6rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.documento-payment-parcelas {
+  margin-top: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.8rem;
+  background: #fff;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.documento-payment-parcelas-head {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.documento-payment-parcelas-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.documento-payment-parcela-row {
+  display: grid;
+  grid-template-columns: 60px minmax(150px, 1fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(120px, 1fr) auto;
+  align-items: end;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fdfaf3;
+}
+
+.documento-payment-parcela-row label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  display: grid;
+  gap: 0.15rem;
+}
+
+.documento-payment-parcela-row .parcela-numero {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--brand-strong);
+  align-self: center;
+  padding-top: 1.05rem;
+}
+
+.documento-payment-parcelas-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .documento-payment-parcela-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .documento-payment-parcela-row .parcela-numero {
+    padding-top: 0;
+  }
+}
+
 .documento-items-hint {
   color: var(--muted);
   font-size: 0.9rem;
