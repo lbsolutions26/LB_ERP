@@ -176,7 +176,8 @@ const state = {
       vencimentoPrimeiraParcela: "",
       intervaloDias: 30
     },
-    itens: []
+    itens: [],
+    precoVendaCalc: null
   },
   ownerUsers: [],
   adminEmpresas: [],
@@ -249,6 +250,28 @@ const els = {
   novoDocumentoTotal: document.getElementById("novoDocumentoTotal"),
   novoDocumentoSubmitBtn: document.getElementById("novoDocumentoSubmitBtn"),
   novoDocumentoPdfBtn: document.getElementById("novoDocumentoPdfBtn"),
+  openPrecoVendaCalcBtn: document.getElementById("openPrecoVendaCalcBtn"),
+  closePrecoVendaCalcBtn: document.getElementById("closePrecoVendaCalcBtn"),
+  precoVendaCalcPanel: document.getElementById("precoVendaCalcPanel"),
+  precoVendaCalcItens: document.getElementById("precoVendaCalcItens"),
+  calcCustoProdutos: document.getElementById("calcCustoProdutos"),
+  calcMaoDeObra: document.getElementById("calcMaoDeObra"),
+  calcFrete: document.getElementById("calcFrete"),
+  calcEmbalagem: document.getElementById("calcEmbalagem"),
+  calcOutrasDespesas: document.getElementById("calcOutrasDespesas"),
+  calcImpostosPct: document.getElementById("calcImpostosPct"),
+  calcTaxaCartaoPct: document.getElementById("calcTaxaCartaoPct"),
+  calcComissaoPct: document.getElementById("calcComissaoPct"),
+  calcMargemPct: document.getElementById("calcMargemPct"),
+  calcCustoBase: document.getElementById("calcCustoBase"),
+  calcSomaPct: document.getElementById("calcSomaPct"),
+  calcLucro: document.getElementById("calcLucro"),
+  calcPrecoSugerido: document.getElementById("calcPrecoSugerido"),
+  calcTotalAtual: document.getElementById("calcTotalAtual"),
+  calcDiferenca: document.getElementById("calcDiferenca"),
+  calcAviso: document.getElementById("calcAviso"),
+  calcRecarregarCustosBtn: document.getElementById("calcRecarregarCustosBtn"),
+  calcAplicarPrecosBtn: document.getElementById("calcAplicarPrecosBtn"),
   novoClienteRapidoModal: document.getElementById("novoClienteRapidoModal"),
   closeNovoClienteRapidoModalBtn: document.getElementById("closeNovoClienteRapidoModalBtn"),
   novoClienteRapidoForm: document.getElementById("novoClienteRapidoForm"),
@@ -641,9 +664,14 @@ function setNovoDocumentoProduto(rowId, produtoId) {
   if (produto) {
     item.descricao = produto.nome || item.descricao;
     item.valorUnitario = Number(produto.preco || 0);
+    item.custoUnitario = Number(produto.custo || 0);
   }
   ensureTrailingEmptyDocumentoItem();
   renderNovoDocumentoItensGrid({ focusRowId: rowId, focusField: "quantidade" });
+  if (state.novoDocumentoModal.precoVendaCalc?.open) {
+    syncPrecoVendaCalcFromItens({ keepOverrides: true });
+    renderPrecoVendaCalcPanel();
+  }
 }
 
 function renderNovoDocumentoProdutoCombo(item) {
@@ -731,7 +759,24 @@ function createDocumentoDraftItem(produto = null) {
     descricao: produto?.nome || "",
     produtoSearch: "",
     quantidade: 1,
-    valorUnitario: Number(produto?.preco || 0)
+    valorUnitario: Number(produto?.preco || 0),
+    custoUnitario: Number(produto?.custo || 0)
+  };
+}
+
+function createPrecoVendaCalcState(overrides = {}) {
+  return {
+    open: false,
+    custoProdutos: 0,
+    maoDeObra: 0,
+    frete: 0,
+    embalagem: 0,
+    outrasDespesas: 0,
+    impostosPct: 0,
+    taxaCartaoPct: 0,
+    comissaoPct: 0,
+    margemPct: 30,
+    ...overrides
   };
 }
 
@@ -786,7 +831,8 @@ function createDocumentoDraft(tipo = "pedido") {
     pagamento: createPagamentoDraft(),
     parcelasEditadas: null,
     parcelasOriginaisSnapshot: null,
-    itens: [createDocumentoDraftItem()]
+    itens: [createDocumentoDraftItem()],
+    precoVendaCalc: createPrecoVendaCalcState()
   };
 }
 
@@ -2209,6 +2255,11 @@ function updateNovoDocumentoResumo() {
     // Atualiza so o resumo para nao sobrescrever o campo de parcelas enquanto digita.
     updateNovoDocumentoPagamentoResumoOnly();
   }
+
+  if (state.novoDocumentoModal.precoVendaCalc?.open) {
+    syncPrecoVendaCalcFromItens({ keepOverrides: true });
+    renderPrecoVendaCalcPanel();
+  }
 }
 
 function renderNovoDocumentoItensGrid(options = {}) {
@@ -2337,6 +2388,7 @@ async function openNovoDocumentoEditModal(tipo, documentoId) {
 
 function closeNovoDocumentoModal() {
   if (!els.novoDocumentoModal) return;
+  closePrecoVendaCalcPanel();
   els.novoDocumentoModal.classList.add("hidden");
 }
 
@@ -2351,14 +2403,280 @@ function closeNovoClienteRapidoModal() {
 }
 
 function normalizeDocumentoItem(item) {
+  const produtoId = item?.produto_id ? String(item.produto_id) : "";
+  const produto = produtoId
+    ? state.produtos.find((entry) => String(entry.id) === produtoId)
+    : null;
   return {
     rowId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    produtoId: item?.produto_id ? String(item.produto_id) : "",
+    produtoId,
     descricao: String(item?.descricao_item || item?.descricao || "").trim(),
     produtoSearch: "",
     quantidade: Number(item?.quantidade || 1),
-    valorUnitario: Number(item?.valor_unitario || 0)
+    valorUnitario: Number(item?.valor_unitario || 0),
+    custoUnitario: Number(item?.custo_unitario ?? produto?.custo ?? 0)
   };
+}
+
+function getFilledDocumentoItens() {
+  return (state.novoDocumentoModal.itens || []).filter((item) => isDocumentoItemFilled(item));
+}
+
+function getDocumentoItemCustoUnitario(item) {
+  if (item?.custoUnitario != null && Number(item.custoUnitario) > 0) {
+    return Number(item.custoUnitario);
+  }
+  const produto = getDocumentoItemProduto(item);
+  return Number(produto?.custo || 0);
+}
+
+function computeCustoProdutosFromItens() {
+  return getFilledDocumentoItens().reduce((sum, item) => {
+    const qtd = Number(item.quantidade || 0);
+    const custo = getDocumentoItemCustoUnitario(item);
+    return sum + qtd * custo;
+  }, 0);
+}
+
+function ensurePrecoVendaCalcState() {
+  if (!state.novoDocumentoModal.precoVendaCalc) {
+    state.novoDocumentoModal.precoVendaCalc = createPrecoVendaCalcState();
+  }
+  return state.novoDocumentoModal.precoVendaCalc;
+}
+
+function syncPrecoVendaCalcFromItens(options = {}) {
+  const calc = ensurePrecoVendaCalcState();
+  const custoItens = Number(computeCustoProdutosFromItens().toFixed(2));
+  if (!options.keepOverrides || !calc._custoProdutosTouched) {
+    calc.custoProdutos = custoItens;
+  }
+  return calc;
+}
+
+function computePrecoVendaCalc(calc = ensurePrecoVendaCalcState()) {
+  const custoBase =
+    Number(calc.custoProdutos || 0) +
+    Number(calc.maoDeObra || 0) +
+    Number(calc.frete || 0) +
+    Number(calc.embalagem || 0) +
+    Number(calc.outrasDespesas || 0);
+
+  const impostos = Number(calc.impostosPct || 0) / 100;
+  const taxa = Number(calc.taxaCartaoPct || 0) / 100;
+  const comissao = Number(calc.comissaoPct || 0) / 100;
+  const margem = Number(calc.margemPct || 0) / 100;
+  const somaPct = impostos + taxa + comissao + margem;
+
+  let precoSugerido = 0;
+  let lucro = 0;
+  let aviso = "";
+
+  if (somaPct >= 0.999) {
+    aviso = "A soma dos percentuais deve ser menor que 100% para calcular o preço.";
+    precoSugerido = 0;
+    lucro = 0;
+  } else if (custoBase <= 0) {
+    aviso = "Informe ao menos um custo base (produtos, mão de obra, frete etc.).";
+    precoSugerido = 0;
+    lucro = 0;
+  } else {
+    // Preço de venda = custos / (1 - % impostos - % taxa - % comissão - % margem)
+    precoSugerido = custoBase / (1 - somaPct);
+    lucro = precoSugerido * margem;
+  }
+
+  const totalAtual = getNovoDocumentoSubtotal();
+  return {
+    custoBase,
+    somaPct: somaPct * 100,
+    precoSugerido,
+    lucro,
+    totalAtual,
+    diferenca: precoSugerido - totalAtual,
+    aviso
+  };
+}
+
+function openPrecoVendaCalcPanel() {
+  const calc = ensurePrecoVendaCalcState();
+  calc.open = true;
+  calc._custoProdutosTouched = false;
+  syncPrecoVendaCalcFromItens();
+  renderPrecoVendaCalcPanel();
+  els.precoVendaCalcPanel?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closePrecoVendaCalcPanel() {
+  const calc = ensurePrecoVendaCalcState();
+  calc.open = false;
+  if (els.precoVendaCalcPanel) els.precoVendaCalcPanel.classList.add("hidden");
+}
+
+function renderPrecoVendaCalcItens() {
+  if (!els.precoVendaCalcItens) return;
+  const itens = getFilledDocumentoItens();
+  if (!itens.length) {
+    els.precoVendaCalcItens.innerHTML = '<div class="documento-empty-state">Adicione itens no pedido para montar a base de custos.</div>';
+    return;
+  }
+
+  els.precoVendaCalcItens.innerHTML = `
+    <div class="preco-venda-calc-itens-table">
+      <div class="preco-venda-calc-itens-head">
+        <span>Item</span>
+        <span>Qtd</span>
+        <span>Custo unit.</span>
+        <span>Custo total</span>
+        <span>Venda atual</span>
+      </div>
+      ${itens
+        .map((item) => {
+          const qtd = Number(item.quantidade || 0);
+          const custoUnit = getDocumentoItemCustoUnitario(item);
+          const custoTotal = qtd * custoUnit;
+          const vendaTotal = getNovoDocumentoItemTotal(item);
+          return `
+            <div class="preco-venda-calc-itens-row">
+              <span>${escapeHtml(item.descricao || "Item")}</span>
+              <span>${escapeHtml(formatQtyForPdf(qtd))}</span>
+              <span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  data-calc-item-custo="${item.rowId}"
+                  value="${Number(custoUnit || 0).toFixed(2)}"
+                />
+              </span>
+              <span>${moeda.format(custoTotal)}</span>
+              <span>${moeda.format(vendaTotal)}</span>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderPrecoVendaCalcPanel() {
+  if (!els.precoVendaCalcPanel) return;
+  const calc = ensurePrecoVendaCalcState();
+  els.precoVendaCalcPanel.classList.toggle("hidden", !calc.open);
+  if (!calc.open) return;
+
+  const result = computePrecoVendaCalc(calc);
+
+  if (els.calcCustoProdutos && document.activeElement !== els.calcCustoProdutos) {
+    els.calcCustoProdutos.value = String(Number(calc.custoProdutos || 0).toFixed(2));
+  }
+  if (els.calcMaoDeObra && document.activeElement !== els.calcMaoDeObra) {
+    els.calcMaoDeObra.value = String(Number(calc.maoDeObra || 0).toFixed(2));
+  }
+  if (els.calcFrete && document.activeElement !== els.calcFrete) {
+    els.calcFrete.value = String(Number(calc.frete || 0).toFixed(2));
+  }
+  if (els.calcEmbalagem && document.activeElement !== els.calcEmbalagem) {
+    els.calcEmbalagem.value = String(Number(calc.embalagem || 0).toFixed(2));
+  }
+  if (els.calcOutrasDespesas && document.activeElement !== els.calcOutrasDespesas) {
+    els.calcOutrasDespesas.value = String(Number(calc.outrasDespesas || 0).toFixed(2));
+  }
+  if (els.calcImpostosPct && document.activeElement !== els.calcImpostosPct) {
+    els.calcImpostosPct.value = String(Number(calc.impostosPct || 0));
+  }
+  if (els.calcTaxaCartaoPct && document.activeElement !== els.calcTaxaCartaoPct) {
+    els.calcTaxaCartaoPct.value = String(Number(calc.taxaCartaoPct || 0));
+  }
+  if (els.calcComissaoPct && document.activeElement !== els.calcComissaoPct) {
+    els.calcComissaoPct.value = String(Number(calc.comissaoPct || 0));
+  }
+  if (els.calcMargemPct && document.activeElement !== els.calcMargemPct) {
+    els.calcMargemPct.value = String(Number(calc.margemPct || 0));
+  }
+
+  if (els.calcCustoBase) els.calcCustoBase.textContent = moeda.format(result.custoBase);
+  if (els.calcSomaPct) els.calcSomaPct.textContent = `${result.somaPct.toFixed(2)}%`;
+  if (els.calcLucro) els.calcLucro.textContent = moeda.format(result.lucro);
+  if (els.calcPrecoSugerido) els.calcPrecoSugerido.textContent = moeda.format(result.precoSugerido);
+  if (els.calcTotalAtual) els.calcTotalAtual.textContent = moeda.format(result.totalAtual);
+  if (els.calcDiferenca) {
+    const diff = result.diferenca;
+    els.calcDiferenca.textContent = `${diff >= 0 ? "+" : ""}${moeda.format(diff)}`;
+    els.calcDiferenca.classList.toggle("is-positive", diff > 0.009);
+    els.calcDiferenca.classList.toggle("is-negative", diff < -0.009);
+  }
+  if (els.calcAviso) {
+    els.calcAviso.textContent = result.aviso || "";
+    els.calcAviso.classList.toggle("hidden", !result.aviso);
+  }
+  if (els.calcAplicarPrecosBtn) {
+    els.calcAplicarPrecosBtn.disabled = Boolean(result.aviso) || result.precoSugerido <= 0;
+  }
+
+  // Evita recriar inputs de item se o usuario esta editando um deles
+  const active = document.activeElement;
+  const editingItemCusto = active instanceof HTMLInputElement && active.hasAttribute("data-calc-item-custo");
+  if (!editingItemCusto) {
+    renderPrecoVendaCalcItens();
+  }
+}
+
+function readPrecoVendaCalcFromInputs() {
+  const calc = ensurePrecoVendaCalcState();
+  if (els.calcCustoProdutos) {
+    calc.custoProdutos = Math.max(0, Number(els.calcCustoProdutos.value || 0));
+    calc._custoProdutosTouched = true;
+  }
+  if (els.calcMaoDeObra) calc.maoDeObra = Math.max(0, Number(els.calcMaoDeObra.value || 0));
+  if (els.calcFrete) calc.frete = Math.max(0, Number(els.calcFrete.value || 0));
+  if (els.calcEmbalagem) calc.embalagem = Math.max(0, Number(els.calcEmbalagem.value || 0));
+  if (els.calcOutrasDespesas) calc.outrasDespesas = Math.max(0, Number(els.calcOutrasDespesas.value || 0));
+  if (els.calcImpostosPct) calc.impostosPct = Math.max(0, Number(els.calcImpostosPct.value || 0));
+  if (els.calcTaxaCartaoPct) calc.taxaCartaoPct = Math.max(0, Number(els.calcTaxaCartaoPct.value || 0));
+  if (els.calcComissaoPct) calc.comissaoPct = Math.max(0, Number(els.calcComissaoPct.value || 0));
+  if (els.calcMargemPct) calc.margemPct = Math.max(0, Number(els.calcMargemPct.value || 0));
+  return calc;
+}
+
+function applyPrecoVendaCalcToItens() {
+  const calc = ensurePrecoVendaCalcState();
+  const result = computePrecoVendaCalc(calc);
+  if (result.aviso || result.precoSugerido <= 0) {
+    showToast(result.aviso || "Nao foi possivel calcular o preco.", "error");
+    return;
+  }
+
+  const itens = getFilledDocumentoItens();
+  if (!itens.length) {
+    showToast("Adicione itens antes de aplicar o preco.", "error");
+    return;
+  }
+
+  // Rateio proporcional ao custo; se custo zerado, rateia pelo valor atual; se ambos zero, igual.
+  const pesos = itens.map((item) => {
+    const qtd = Math.max(Number(item.quantidade || 0), 0);
+    const custoTotal = qtd * getDocumentoItemCustoUnitario(item);
+    const vendaTotal = getNovoDocumentoItemTotal(item);
+    return custoTotal > 0 ? custoTotal : vendaTotal > 0 ? vendaTotal : 1;
+  });
+  const pesoTotal = pesos.reduce((s, p) => s + p, 0) || itens.length;
+
+  let alocado = 0;
+  itens.forEach((item, index) => {
+    const isLast = index === itens.length - 1;
+    const fatia = isLast
+      ? Math.max(0, result.precoSugerido - alocado)
+      : (result.precoSugerido * pesos[index]) / pesoTotal;
+    alocado += fatia;
+    const qtd = Math.max(Number(item.quantidade || 0), 0.0001);
+    item.valorUnitario = Number((fatia / qtd).toFixed(2));
+  });
+
+  renderNovoDocumentoItensGrid();
+  updateNovoDocumentoResumo();
+  renderPrecoVendaCalcPanel();
+  showToast("Preco sugerido aplicado nos itens do pedido");
 }
 
 async function loadDocumentoForEdit(tipo, documentoId) {
@@ -2445,7 +2763,8 @@ async function loadDocumentoForEdit(tipo, documentoId) {
     parcelasOriginaisSnapshot: parcelasEditadas ? JSON.stringify(parcelasEditadas) : null,
     itens: (itensData || []).length
       ? (itensData || []).map(normalizeDocumentoItem)
-      : [createDocumentoDraftItem()]
+      : [createDocumentoDraftItem()],
+    precoVendaCalc: createPrecoVendaCalcState()
   };
 }
 
@@ -2466,6 +2785,7 @@ function addNovoDocumentoItem(produto = null) {
     last.produtoSearch = "";
     last.quantidade = 1;
     last.valorUnitario = Number(produto?.preco || 0);
+    last.custoUnitario = Number(produto?.custo || 0);
   } else if (last && !isDocumentoItemFilled(last) && !produto) {
     // Já existe linha em branco — só garante e foca nela.
   } else {
@@ -6711,6 +7031,61 @@ function attachEvents() {
       } catch (error) {
         showToast(`Erro ao gerar PDF: ${error.message}`, "error");
       }
+    });
+  }
+
+  if (els.openPrecoVendaCalcBtn) {
+    els.openPrecoVendaCalcBtn.addEventListener("click", () => openPrecoVendaCalcPanel());
+  }
+  if (els.closePrecoVendaCalcBtn) {
+    els.closePrecoVendaCalcBtn.addEventListener("click", () => closePrecoVendaCalcPanel());
+  }
+  if (els.calcRecarregarCustosBtn) {
+    els.calcRecarregarCustosBtn.addEventListener("click", () => {
+      const calc = ensurePrecoVendaCalcState();
+      calc._custoProdutosTouched = false;
+      syncPrecoVendaCalcFromItens();
+      renderPrecoVendaCalcPanel();
+      showToast("Custos recarregados a partir dos itens");
+    });
+  }
+  if (els.calcAplicarPrecosBtn) {
+    els.calcAplicarPrecosBtn.addEventListener("click", () => applyPrecoVendaCalcToItens());
+  }
+
+  const precoCalcInputs = [
+    els.calcCustoProdutos,
+    els.calcMaoDeObra,
+    els.calcFrete,
+    els.calcEmbalagem,
+    els.calcOutrasDespesas,
+    els.calcImpostosPct,
+    els.calcTaxaCartaoPct,
+    els.calcComissaoPct,
+    els.calcMargemPct
+  ].filter(Boolean);
+
+  for (const input of precoCalcInputs) {
+    input.addEventListener("input", () => {
+      readPrecoVendaCalcFromInputs();
+      renderPrecoVendaCalcPanel();
+    });
+  }
+
+  if (els.precoVendaCalcItens) {
+    els.precoVendaCalcItens.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      const rowId = target.getAttribute("data-calc-item-custo");
+      if (!rowId) return;
+      const item = state.novoDocumentoModal.itens.find((entry) => entry.rowId === rowId);
+      if (!item) return;
+      item.custoUnitario = Math.max(0, Number(target.value || 0));
+      const calc = ensurePrecoVendaCalcState();
+      if (!calc._custoProdutosTouched) {
+        calc.custoProdutos = Number(computeCustoProdutosFromItens().toFixed(2));
+      }
+      renderPrecoVendaCalcPanel();
     });
   }
 
