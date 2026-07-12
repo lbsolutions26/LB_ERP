@@ -68,6 +68,9 @@ const state = {
   orcamentosSource: "documentos_venda",
   itensDocumento: [],
   itensDocumentoModalMode: "itens",
+  itensDocumentoPedidoFoto: "",
+  itensDocumentoPedidoId: null,
+  itensDocumentoTipo: "pedido",
   produtoSort: {
     field: "nome",
     direction: "asc"
@@ -248,6 +251,8 @@ const els = {
   itensDocumentoModal: document.getElementById("itensDocumentoModal"),
   closeItensDocumentoModalBtn: document.getElementById("closeItensDocumentoModalBtn"),
   itensDocumentoModalTitle: document.getElementById("itensDocumentoModalTitle"),
+  itensDocumentoFotoWrap: document.getElementById("itensDocumentoFotoWrap"),
+  itensDocumentoFoto: document.getElementById("itensDocumentoFoto"),
     itensDocumentoTableHead: document.getElementById("itensDocumentoTableHead"),
   itensDocumentoTable: document.getElementById("itensDocumentoTable"),
   pedidoForm: document.getElementById("pedidoForm"),
@@ -380,16 +385,51 @@ function resolveProdutoImageUrl(imagemPath) {
   const base = String(state.supabaseUrl || "").replace(/\/$/, "");
   if (!base) return "";
 
-  // Caminhos ja no bucket (ex.: empresa/id/arquivo.jpg)
-  if (!value.startsWith("Produto_Images/") && !value.startsWith("produto_images/")) {
-    const cleaned = value.replace(/^\/+/, "");
-    if (cleaned.startsWith("produto-images/")) {
-      return `${base}/storage/v1/object/public/${cleaned}`;
-    }
+  const cleaned = value.replace(/^\/+/, "");
+
+  // Caminhos ja no bucket
+  if (cleaned.startsWith("produto-images/") || cleaned.startsWith("pedido-images/")) {
+    return `${base}/storage/v1/object/public/${cleaned}`;
+  }
+
+  // Paths legados de produtos
+  if (!cleaned.startsWith("Produto_Images/") && !cleaned.startsWith("produto_images/")
+    && !cleaned.startsWith("Vendas_Images/") && !cleaned.startsWith("Pedido_Images/")) {
     return `${base}/storage/v1/object/public/produto-images/${cleaned}`;
   }
 
   return "";
+}
+
+function getPedidoFotoUrl(pedidoOrPayload) {
+  const payload = pedidoOrPayload?.raw_payload || pedidoOrPayload || null;
+  if (!payload) return "";
+  const foto = payload.foto_url
+    || payload.pedido_row?.Foto
+    || payload.pedido_row?.foto
+    || payload.Foto
+    || "";
+  return resolveProdutoImageUrl(foto);
+}
+
+function renderPedidoThumbHtml(pedido, className = "pedido-thumb") {
+  const url = getPedidoFotoUrl(pedido);
+  const title = `Pedido #${pedido?.id || ""}`.trim();
+  if (!url) {
+    return `<span class="${className} ${className}--empty" title="Sem foto" aria-hidden="true"></span>`;
+  }
+  return `<img
+    class="${className} is-clickable"
+    src="${escapeHtml(url)}"
+    alt="${escapeHtml(title)}"
+    title="Clique para ampliar"
+    loading="lazy"
+    decoding="async"
+    referrerpolicy="no-referrer"
+    data-image-preview="${escapeHtml(url)}"
+    data-image-title="${escapeHtml(title)}"
+    onerror="this.classList.add('is-broken'); this.removeAttribute('data-image-preview');"
+  />`;
 }
 
 function renderProdutoThumbHtml(produto, className = "produto-thumb") {
@@ -3028,8 +3068,31 @@ async function saveNovoClienteRapido(event) {
   showToast("Cliente salvo");
 }
 
+function renderItensDocumentoFotoBanner() {
+  const wrap = els.itensDocumentoFotoWrap;
+  const img = els.itensDocumentoFoto;
+  if (!wrap || !img) return;
+
+  const url = state.itensDocumentoModalMode === "itens" ? String(state.itensDocumentoPedidoFoto || "") : "";
+  if (!url) {
+    wrap.classList.add("hidden");
+    img.removeAttribute("src");
+    delete img.dataset.imagePreview;
+    return;
+  }
+
+  const title = `Pedido #${state.itensDocumentoPedidoId || ""}`;
+  img.src = url;
+  img.alt = title;
+  img.dataset.imagePreview = url;
+  img.dataset.imageTitle = title;
+  img.classList.add("is-clickable");
+  wrap.classList.remove("hidden");
+}
+
 function renderItensDocumentoTable() {
   if (!els.itensDocumentoTable) return;
+  renderItensDocumentoFotoBanner();
 
   if (!state.itensDocumento.length) {
     const colspan = state.itensDocumentoModalMode === "pedidos_produto" ? 7 : 4;
@@ -3141,7 +3204,7 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
 
   const { data: itensData, error: itensError } = await supabaseClient
     .from("documento_venda_itens")
-    .select("id, descricao_item, quantidade, valor_unitario, valor_total")
+    .select("id, descricao_item, quantidade, valor_unitario, valor_total, foto_ref")
     .eq("empresa_id", state.empresaId)
     .eq("documento_id", documentoId)
     .order("id", { ascending: true });
@@ -3159,6 +3222,9 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
   }
 
   state.itensDocumento = itens;
+  state.itensDocumentoPedidoFoto = getPedidoFotoUrl(documentoData);
+  state.itensDocumentoPedidoId = documentoId;
+  state.itensDocumentoTipo = tipoDocumento;
   if (els.itensDocumentoModalTitle) {
     const titulo = tipoDocumento === "pedido" ? "Itens do Pedido" : "Itens do Orcamento";
     els.itensDocumentoModalTitle.textContent = `${titulo} #${documentoId}`;
@@ -4696,7 +4762,10 @@ function renderPedidosTable() {
       const clienteNome = pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${escapeHtml(pedido.cliente_legacy_id)}` : "-");
       return `
       <tr>
-        <td>#${escapeHtml(pedido.id)}</td>
+        <td class="pedido-cell-id">
+          ${renderPedidoThumbHtml(pedido)}
+          <span>#${escapeHtml(pedido.id)}</span>
+        </td>
         <td>${data}</td>
         <td>${clienteNome}</td>
         <td>${escapeHtml(pedido.status || "-")}</td>

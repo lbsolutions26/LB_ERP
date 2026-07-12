@@ -1784,6 +1784,60 @@ img.produto-combo-thumb.is-broken {
   text-overflow: ellipsis;
 }
 
+.pedido-cell-id {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  white-space: nowrap;
+}
+
+.pedido-thumb {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid #e0d5c0;
+  background: #f3eee4;
+  flex: 0 0 auto;
+}
+
+.pedido-thumb--empty {
+  display: inline-block;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 8px;
+  border: 1px dashed #e0d5c0;
+  background:
+    linear-gradient(135deg, transparent 46%, #d7cdb9 46%, #d7cdb9 54%, transparent 54%),
+    #f3eee4;
+}
+
+.itens-documento-foto-wrap {
+  margin: 0.85rem 0 0.5rem;
+  padding: 0.75rem;
+  border-radius: 14px;
+  border: 1px solid #e0d5c0;
+  background: linear-gradient(180deg, #fffefb 0%, #f7f1e6 100%);
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.itens-documento-foto {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid #e0d5c0;
+  background: #fff;
+  flex: 0 0 auto;
+  cursor: zoom-in;
+}
+
+.modal-itens-documento-card {
+  width: min(860px, 100%);
+}
+
 .produto-combo-option:hover,
 .produto-combo-option.active {
   border-color: var(--brand);

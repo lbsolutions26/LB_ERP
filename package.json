@@ -8,7 +8,9 @@
     "legacy:analyze": "node scripts/analyze-legacy-sheets.mjs",
     "legacy:import": "node scripts/import-legacy-to-supabase.mjs",
     "images:download-drive": "node scripts/download-drive-images.mjs",
-    "images:upload-supabase": "node scripts/upload-produto-images-to-supabase.mjs"
+    "images:upload-supabase": "node scripts/upload-produto-images-to-supabase.mjs",
+    "images:download-pedidos": "node scripts/download-pedido-images.mjs",
+    "images:upload-pedidos": "node scripts/upload-pedido-images-to-supabase.mjs"
   },
   "dependencies": {
     "csv-parse": "^5.5.6",

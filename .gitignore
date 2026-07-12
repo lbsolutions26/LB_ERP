@@ -6,8 +6,13 @@ coverage/
 .DS_Store
 Thumbs.db
 scripts/_produto_images/
+scripts/_pedido_images/
 scripts/_drive-*.json
 scripts/_drive-*.html
 scripts/_drive-*.txt
+scripts/_pedido-*.json
+scripts/_pedido-*.log
 scripts/_upload-failures.json
 scripts/_drive-download-failures.json
+scripts/_pedido-download-failures.json
+scripts/_pedido-upload-failures.json
