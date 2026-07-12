@@ -6,7 +6,9 @@
     "schema:pull": "node scripts/pull-supabase-schema.mjs",
     "db:reset-business": "node scripts/reset-business-data.mjs",
     "legacy:analyze": "node scripts/analyze-legacy-sheets.mjs",
-    "legacy:import": "node scripts/import-legacy-to-supabase.mjs"
+    "legacy:import": "node scripts/import-legacy-to-supabase.mjs",
+    "images:download-drive": "node scripts/download-drive-images.mjs",
+    "images:upload-supabase": "node scripts/upload-produto-images-to-supabase.mjs"
   },
   "dependencies": {
     "csv-parse": "^5.5.6",

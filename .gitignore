@@ -5,3 +5,9 @@ node_modules/
 coverage/
 .DS_Store
 Thumbs.db
+scripts/_produto_images/
+scripts/_drive-*.json
+scripts/_drive-*.html
+scripts/_drive-*.txt
+scripts/_upload-failures.json
+scripts/_drive-download-failures.json

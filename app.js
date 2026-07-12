@@ -44,6 +44,7 @@ async function loadRuntimeConfig() {
 
 const state = {
   session: null,
+  supabaseUrl: "",
   empresaId: null,
   empresaNome: "",
   currentRole: "user",
@@ -361,6 +362,35 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function resolveProdutoImageUrl(imagemPath) {
+  const value = String(imagemPath || "").trim();
+  if (!value) return "";
+
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const base = String(state.supabaseUrl || "").replace(/\/$/, "");
+  if (!base) return "";
+
+  // Caminhos ja no bucket (ex.: empresa/id/arquivo.jpg)
+  if (!value.startsWith("Produto_Images/") && !value.startsWith("produto_images/")) {
+    const cleaned = value.replace(/^\/+/, "");
+    if (cleaned.startsWith("produto-images/")) {
+      return `${base}/storage/v1/object/public/${cleaned}`;
+    }
+    return `${base}/storage/v1/object/public/produto-images/${cleaned}`;
+  }
+
+  return "";
+}
+
+function renderProdutoThumbHtml(produto, className = "produto-thumb") {
+  const url = resolveProdutoImageUrl(produto?.imagem_path);
+  if (!url) {
+    return `<span class="${className} ${className}--empty" title="Sem imagem" aria-hidden="true"></span>`;
+  }
+  return `<img class="${className}" src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.classList.add('is-broken')" />`;
+}
+
 function isMissingRelationError(error) {
   if (!error) return false;
   if (error.code === "42P01") return true;
@@ -512,8 +542,11 @@ function renderNovoDocumentoProdutoCombo(item) {
           data-produto-id="${produto.id}"
           data-produto-row="${item.rowId}"
         >
-          <span>${escapeHtml(produto.nome)}</span>
-          <small>${moeda.format(produto.preco || 0)}</small>
+          ${renderProdutoThumbHtml(produto, "produto-combo-thumb")}
+          <span class="produto-combo-option-text">
+            <span>${escapeHtml(produto.nome)}</span>
+            <small>${moeda.format(produto.preco || 0)}</small>
+          </span>
         </button>
       `);
     }
@@ -2252,8 +2285,11 @@ function handleNovoDocumentoItemChange(event) {
                     data-produto-id="${produto.id}"
                     data-produto-row="${rowId}"
                   >
-                    <span>${escapeHtml(produto.nome)}</span>
-                    <small>${moeda.format(produto.preco || 0)}</small>
+                    ${renderProdutoThumbHtml(produto, "produto-combo-thumb")}
+                    <span class="produto-combo-option-text">
+                      <span>${escapeHtml(produto.nome)}</span>
+                      <small>${moeda.format(produto.preco || 0)}</small>
+                    </span>
                   </button>
                 `;
               })
@@ -4223,7 +4259,10 @@ function renderProdutosTable() {
     .map(
       (produto) => `
       <tr>
-        <td>${escapeHtml(produto.nome)}</td>
+        <td class="produto-cell-nome">
+          ${renderProdutoThumbHtml(produto)}
+          <span>${escapeHtml(produto.nome)}</span>
+        </td>
         <td>${escapeHtml(produto.categoria || "-")}</td>
         <td>${moeda.format(produto.preco || 0)}</td>
         <td>${produto.custo == null ? "-" : moeda.format(produto.custo)}</td>
@@ -6393,6 +6432,7 @@ function attachEvents() {
 async function initApp() {
   try {
     const { SUPABASE_URL, SUPABASE_ANON_KEY, SAAS_NAME } = await loadRuntimeConfig();
+    state.supabaseUrl = String(SUPABASE_URL || "").replace(/\/$/, "");
     if (SAAS_NAME) {
       saasName = SAAS_NAME;
     }
