@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260711i" />
+    <link rel="stylesheet" href="styles.css?v=20260711j" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -60,53 +60,72 @@
       </nav>
 
       <main class="layout">
-        <section id="section-dashboard" class="card app-section active-section">
-          <h2>Dashboard</h2>
+        <section id="section-dashboard" class="card app-section active-section dashboard-section">
+          <header class="dashboard-header">
+            <div>
+              <h2>Dashboard</h2>
+              <p class="section-subtitle">Visão rápida de pedidos, faturamento e caixa</p>
+            </div>
+            <div id="dashboardStatus" class="dashboard-status" aria-live="polite">
+              <span class="dashboard-status-dot" aria-hidden="true"></span>
+              <span id="dashboardStatusText">Pronto</span>
+            </div>
+          </header>
+
+          <div class="metric-grid metric-grid-dashboard dashboard-kpi-row">
+            <article class="dashboard-kpi dashboard-kpi-pedidos">
+              <div class="dashboard-kpi-top">
+                <span class="dashboard-kpi-label">Pedidos</span>
+                <span class="dashboard-kpi-badge">Total</span>
+              </div>
+              <strong id="pedidosCount" class="dashboard-kpi-value">0</strong>
+              <div class="metric-months" data-metric-months="pedidos"></div>
+            </article>
+            <article class="dashboard-kpi dashboard-kpi-faturamento">
+              <div class="dashboard-kpi-top">
+                <span class="dashboard-kpi-label">Faturamento</span>
+                <span class="dashboard-kpi-badge">Total</span>
+              </div>
+              <strong id="faturamentoValue" class="dashboard-kpi-value">R$ 0,00</strong>
+              <div class="metric-months" data-metric-months="faturamento"></div>
+            </article>
+          </div>
 
           <div class="dashboard-daily-grid">
-            <div class="dashboard-cash-panel">
+            <div class="dashboard-cash-panel dashboard-panel">
               <div class="section-head dashboard-cash-head">
                 <div>
                   <h3>Faturamento por Dia</h3>
-                  <p id="dailyFaturamentoSubtitulo" class="section-subtitle">Valor dos pedidos emitidos no mês corrente, dia a dia.</p>
+                  <p id="dailyFaturamentoSubtitulo" class="section-subtitle">Pedidos emitidos no mês corrente, dia a dia.</p>
                 </div>
                 <div class="dashboard-cash-summary">
                   <span>Total do mês</span>
                   <strong id="dailyFaturamentoResumo">R$ 0,00</strong>
                 </div>
               </div>
-              <div id="dailyFaturamentoChart" class="cash-month-chart daily-chart" aria-label="Gráfico de faturamento por dia"></div>
+              <div id="dailyFaturamentoChart" class="cash-month-chart daily-chart" aria-label="Gráfico de faturamento por dia">
+                <div class="dashboard-skeleton-bars" aria-hidden="true"></div>
+              </div>
             </div>
 
-            <div class="dashboard-cash-panel">
+            <div class="dashboard-cash-panel dashboard-panel">
               <div class="section-head dashboard-cash-head">
                 <div>
                   <h3>Pedidos por Dia</h3>
-                  <p id="dailyPedidosSubtitulo" class="section-subtitle">Quantidade de pedidos emitidos no mês corrente, dia a dia.</p>
+                  <p id="dailyPedidosSubtitulo" class="section-subtitle">Quantidade de pedidos no mês corrente, dia a dia.</p>
                 </div>
                 <div class="dashboard-cash-summary">
                   <span>Total do mês</span>
                   <strong id="dailyPedidosResumo">0</strong>
                 </div>
               </div>
-              <div id="dailyPedidosChart" class="cash-month-chart daily-chart" aria-label="Gráfico de pedidos por dia"></div>
+              <div id="dailyPedidosChart" class="cash-month-chart daily-chart" aria-label="Gráfico de pedidos por dia">
+                <div class="dashboard-skeleton-bars" aria-hidden="true"></div>
+              </div>
             </div>
           </div>
 
-          <div class="metric-grid metric-grid-dashboard">
-            <article>
-              <span>Pedidos</span>
-              <strong id="pedidosCount">0</strong>
-              <div class="metric-months" data-metric-months="pedidos"></div>
-            </article>
-            <article>
-              <span>Faturamento</span>
-              <strong id="faturamentoValue">R$ 0,00</strong>
-              <div class="metric-months" data-metric-months="faturamento"></div>
-            </article>
-          </div>
-
-          <div class="dashboard-cash-panel">
+          <div class="dashboard-cash-panel dashboard-panel dashboard-panel-main">
             <div class="section-head dashboard-cash-head">
               <div>
                 <div class="dashboard-cash-title-row">
@@ -130,7 +149,9 @@
                 <strong id="entradasCaixaResumo">R$ 0,00</strong>
               </div>
             </div>
-            <div id="entradasCaixaChart" class="cash-month-chart" aria-label="Gráfico de entradas de caixa por mês"></div>
+            <div id="entradasCaixaChart" class="cash-month-chart" aria-label="Gráfico de entradas de caixa por mês">
+              <div class="dashboard-skeleton-bars" aria-hidden="true"></div>
+            </div>
             <div id="entradasCaixaGrid" class="cash-month-grid"></div>
           </div>
         </section>

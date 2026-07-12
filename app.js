@@ -296,6 +296,8 @@ const els = {
   dailyFaturamentoResumo: document.getElementById("dailyFaturamentoResumo"),
   dailyPedidosChart: document.getElementById("dailyPedidosChart"),
   dailyPedidosResumo: document.getElementById("dailyPedidosResumo"),
+  dashboardSection: document.getElementById("section-dashboard"),
+  dashboardStatusText: document.getElementById("dashboardStatusText"),
   estoqueTotalCount: document.getElementById("estoqueTotalCount"),
   estoqueComSaldoCount: document.getElementById("estoqueComSaldoCount"),
   estoquePontoPedidoCount: document.getElementById("estoquePontoPedidoCount"),
@@ -4193,7 +4195,35 @@ function renderDespesasTable() {
   updateTableSortHeaders("despesas");
 }
 
-function renderMetrics() {
+function setDashboardLoading(isLoading, message) {
+  if (els.dashboardSection) {
+    els.dashboardSection.classList.toggle("is-loading", Boolean(isLoading));
+  }
+  if (els.dashboardStatusText) {
+    els.dashboardStatusText.textContent = message
+      || (isLoading ? "Atualizando…" : "Atualizado");
+  }
+}
+
+function animateDashboardBars(root) {
+  if (!root) return;
+  const fills = root.querySelectorAll("[data-bar-h]");
+  if (!fills.length) return;
+  for (const el of fills) {
+    el.style.height = "0%";
+  }
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      for (const el of fills) {
+        el.style.height = el.getAttribute("data-bar-h") || "0%";
+      }
+    });
+  });
+}
+
+function renderMetrics(options = {}) {
+  const withCharts = options.charts !== false;
+
   const clientesTotal = state.clientesLoaded ? state.clientes.length : state.dashboardCounts.clientes;
   if (els.clientesCount) els.clientesCount.textContent = String(clientesTotal);
   const pedidosTotal = Number(state.pedidosCountTotal || 0);
@@ -4238,26 +4268,28 @@ function renderMetrics() {
       ? "Valor total dos pedidos considerando a data de emissão."
       : "Previsto e realizado considerando recebimentos e títulos em aberto.";
   }
- 
-   if (els.entradasCaixaLegenda) {
-     els.entradasCaixaLegenda.innerHTML = state.dashboardCashChartMode === "faturamento"
-       ? `
-         <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-faturamento"></i> Faturamento</span>
-       `
-       : `
-         <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-realized"></i> Realizado</span>
-         <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-forecast"></i> Previsto</span>
-       `;
-   }
+
+  if (els.entradasCaixaLegenda) {
+    els.entradasCaixaLegenda.innerHTML = state.dashboardCashChartMode === "faturamento"
+      ? `
+        <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-faturamento"></i> Faturamento</span>
+      `
+      : `
+        <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-realized"></i> Realizado</span>
+        <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-forecast"></i> Previsto</span>
+      `;
+  }
 
   for (const button of els.dashboardCashModeButtons || []) {
     button.classList.toggle("active", button.getAttribute("data-dashboard-cash-mode") === state.dashboardCashChartMode);
   }
 
-  els.estoqueTotalCount.textContent = `${estoqueTotal} itens`;
-  els.estoqueComSaldoCount.textContent = `${estoqueComSaldo} itens`;
-  els.estoquePontoPedidoCount.textContent = `${estoquePontoPedido} itens`;
-  els.orcamentoAbertoValue.textContent = moeda.format(orcamentoAberto);
+  if (els.estoqueTotalCount) els.estoqueTotalCount.textContent = `${estoqueTotal} itens`;
+  if (els.estoqueComSaldoCount) els.estoqueComSaldoCount.textContent = `${estoqueComSaldo} itens`;
+  if (els.estoquePontoPedidoCount) els.estoquePontoPedidoCount.textContent = `${estoquePontoPedido} itens`;
+  if (els.orcamentoAbertoValue) els.orcamentoAbertoValue.textContent = moeda.format(orcamentoAberto);
+
+  if (!withCharts) return;
 
   renderDashboardMetricMonths();
   renderDashboardDailyCharts();
@@ -4292,7 +4324,6 @@ function renderMetrics() {
 
   if (els.entradasCaixaChart) {
     const maxValue = Math.max(...monthlyCashEntries.map((item) => Number(item.total || 0)), 0);
-    const currentMonthKey = formatMonthKey(new Date());
     const chartBars = monthlyCashEntries
       .map((item) => {
         const value = Number(item.total || 0);
@@ -4315,10 +4346,10 @@ function renderMetrics() {
             <div class="cash-bar-track" aria-hidden="true">
               ${state.dashboardCashChartMode === "recebimentos"
                 ? `
-                  <div class="cash-bar-fill cash-bar-fill-realized" style="height:${realizedHeight}%"></div>
-                  <div class="cash-bar-fill cash-bar-fill-forecast" style="height:${forecastHeight}%"></div>
+                  <div class="cash-bar-fill cash-bar-fill-realized" data-bar-h="${realizedHeight}%" style="height:0%"></div>
+                  <div class="cash-bar-fill cash-bar-fill-forecast" data-bar-h="${forecastHeight}%" style="height:0%"></div>
                 `
-                : `<div class="cash-bar-fill${isCurrentMonth ? " cash-bar-fill-current" : ""}" style="height:${totalHeight}%"></div>`}
+                : `<div class="cash-bar-fill${isCurrentMonth ? " cash-bar-fill-current" : ""}" data-bar-h="${totalHeight}%" style="height:0%"></div>`}
             </div>
             <div class="cash-bar-label">${escapeHtml(item.label)}</div>
           </div>
@@ -4326,6 +4357,7 @@ function renderMetrics() {
       })
       .join("");
     els.entradasCaixaChart.innerHTML = chartBars || '<div class="documento-empty-state">Sem recebimentos registrados.</div>';
+    animateDashboardBars(els.entradasCaixaChart);
     window.requestAnimationFrame(() => {
       els.entradasCaixaChart.scrollLeft = els.entradasCaixaChart.scrollWidth;
     });
@@ -4499,13 +4531,14 @@ function renderDashboardDailyCharts() {
         return `
           <div class="cash-bar-wrap daily-bar-wrap${isToday ? " cash-bar-wrap-current" : ""}" title="${escapeHtml(title)}">
             <div class="cash-bar-track" aria-hidden="true">
-              <div class="cash-bar-fill daily-bar-fill ${colorClass}${isToday ? " cash-bar-fill-current" : ""}" style="height:${height}%">${insideLabel}</div>
+              <div class="cash-bar-fill daily-bar-fill ${colorClass}${isToday ? " cash-bar-fill-current" : ""}" data-bar-h="${height}%" style="height:0%">${insideLabel}</div>
             </div>
             <div class="cash-bar-label">${escapeHtml(dayNum)}</div>
           </div>
         `;
       })
       .join("");
+    animateDashboardBars(node);
   };
 
   renderChart(
@@ -4566,22 +4599,27 @@ async function refreshAll() {
     try {
       if (!state.session || !state.empresaId) return;
 
-      const baseLoads = [
+      setDashboardLoading(true);
+
+      // Dashboard primeiro: pinta a tela cedo e só depois carrega o restante.
+      await Promise.all([
         loadDashboardSnapshot(),
-        loadDashboardDaily(),
-        loadFormasPagamento()
-      ];
+        loadDashboardDaily()
+      ]);
+      renderMetrics({ charts: true });
+      setDashboardLoading(false, "Atualizado");
 
-      if (state.clientesLoaded) baseLoads.push(loadClientes());
-      if (state.produtosLoaded) baseLoads.push(loadProdutos());
-      if (state.pedidosLoaded) baseLoads.push(loadPedidos());
-      if (state.orcamentosLoaded) baseLoads.push(loadOrcamentos());
-      if (state.despesasLoaded) baseLoads.push(loadDespesas());
-      if (state.contasReceberLoaded) baseLoads.push(loadContasReceber(), loadRecebimentos(), loadParcelasReceberPrevistas());
-      if (state.ownerUsersLoaded) baseLoads.push(loadOwnerUsers());
-      if (state.adminLoaded && state.isPlatformAdmin) baseLoads.push(loadAdminEmpresas(), loadAdminVinculos());
+      const secondaryLoads = [loadFormasPagamento()];
+      if (state.clientesLoaded) secondaryLoads.push(loadClientes());
+      if (state.produtosLoaded) secondaryLoads.push(loadProdutos());
+      if (state.pedidosLoaded) secondaryLoads.push(loadPedidos());
+      if (state.orcamentosLoaded) secondaryLoads.push(loadOrcamentos());
+      if (state.despesasLoaded) secondaryLoads.push(loadDespesas());
+      if (state.contasReceberLoaded) secondaryLoads.push(loadContasReceber(), loadRecebimentos(), loadParcelasReceberPrevistas());
+      if (state.ownerUsersLoaded) secondaryLoads.push(loadOwnerUsers());
+      if (state.adminLoaded && state.isPlatformAdmin) secondaryLoads.push(loadAdminEmpresas(), loadAdminVinculos());
 
-      await Promise.all(baseLoads);
+      await Promise.all(secondaryLoads);
 
       renderSelects();
       if (state.clientesLoaded) renderClientesTable();
@@ -4595,13 +4633,15 @@ async function refreshAll() {
         renderAdminEmpresasSelect();
         renderAdminVinculosTable();
       }
-      renderMetrics();
+      // Atualiza totais de outras seções sem remontar os gráficos do dashboard.
+      renderMetrics({ charts: false });
       if (els.novoDocumentoModal && !els.novoDocumentoModal.classList.contains("hidden")) {
         renderNovoDocumentoFormaPagamentoSelect();
         renderNovoDocumentoPagamentoSection();
       }
     } catch (error) {
       console.error(error);
+      setDashboardLoading(false, "Erro ao atualizar");
       showToast(`Erro ao carregar dados: ${error.message}`, "error");
     }
   })();
@@ -5496,9 +5536,12 @@ function attachEvents() {
         other.classList.toggle("active", other === button);
       }
       try {
+        setDashboardLoading(true, "Atualizando período…");
         await loadDashboardSnapshot();
-        renderMetrics();
+        renderMetrics({ charts: true });
+        setDashboardLoading(false, "Atualizado");
       } catch (error) {
+        setDashboardLoading(false, "Erro ao atualizar");
         showToast(`Erro ao atualizar periodo: ${error.message}`, "error");
       }
     });
