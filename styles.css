@@ -1918,8 +1918,20 @@ table thead input {
   gap: 0.2rem;
 }
 
+.documento-modal-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
 .documento-modal-footer .btn {
-  min-width: 180px;
+  min-width: 160px;
+}
+
+.documento-modal-footer-actions .btn {
+  min-width: 0;
 }
 
 textarea {

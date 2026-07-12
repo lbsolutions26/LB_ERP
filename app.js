@@ -231,6 +231,7 @@ const els = {
   novoDocumentoResumoTexto: document.getElementById("novoDocumentoResumoTexto"),
   novoDocumentoTotal: document.getElementById("novoDocumentoTotal"),
   novoDocumentoSubmitBtn: document.getElementById("novoDocumentoSubmitBtn"),
+  novoDocumentoPdfBtn: document.getElementById("novoDocumentoPdfBtn"),
   novoClienteRapidoModal: document.getElementById("novoClienteRapidoModal"),
   closeNovoClienteRapidoModalBtn: document.getElementById("closeNovoClienteRapidoModalBtn"),
   novoClienteRapidoForm: document.getElementById("novoClienteRapidoForm"),
@@ -2307,6 +2308,388 @@ function getDocumentoItensPayload() {
       valorUnitario: Number(item.valorUnitario || 0)
     }))
     .filter((item) => item.descricao || item.produtoId);
+}
+
+function syncNovoDocumentoDraftFromForm() {
+  if (els.novoDocumentoObservacoes) {
+    state.novoDocumentoModal.observacoes = els.novoDocumentoObservacoes.value || "";
+  }
+  if (els.novoDocumentoDataEmissao) {
+    state.novoDocumentoModal.dataEmissao = els.novoDocumentoDataEmissao.value || state.novoDocumentoModal.dataEmissao;
+  }
+  if (els.novoDocumentoStatusSelect) {
+    state.novoDocumentoModal.status = els.novoDocumentoStatusSelect.value || state.novoDocumentoModal.status;
+  }
+  if (els.novoDocumentoClienteId) {
+    state.novoDocumentoModal.clienteId = els.novoDocumentoClienteId.value || state.novoDocumentoModal.clienteId;
+  }
+}
+
+function formatQtyForPdf(value) {
+  const num = Number(value || 0);
+  if (Number.isInteger(num)) return String(num);
+  return num.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
+function getPagamentoResumoTextoParaPdf() {
+  if (state.novoDocumentoModal.tipo !== "pedido") return "";
+  const pag = getNovoDocumentoPagamentoState();
+  const forma = state.formasPagamento.find((item) => String(item.id) === String(pag.formaPagamentoId));
+  const formaNome = forma?.nome || "A combinar";
+  if (pag.modo === "entrada_parcelas") {
+    return `Entrada de ${moeda.format(pag.entrada || 0)} + ${pag.parcelas} parcela(s) · ${formaNome}`;
+  }
+  if (pag.modo === "parcelado") {
+    return `${pag.parcelas} parcela(s) · ${formaNome}`;
+  }
+  return `À vista · ${formaNome}`;
+}
+
+function buildOrcamentoPdfHtml(payload) {
+  const {
+    empresaNome,
+    cliente,
+    dataEmissaoLabel,
+    numeroRef,
+    itens,
+    subtotal,
+    observacoes,
+    pagamentoTexto,
+    geradoEm
+  } = payload;
+
+  const rows = itens
+    .map((item, index) => {
+      const total = Number(item.quantidade || 0) * Number(item.valorUnitario || 0);
+      return `
+        <tr>
+          <td class="col-idx">${index + 1}</td>
+          <td class="col-desc">${escapeHtml(item.descricao || "Item")}</td>
+          <td class="col-num">${escapeHtml(formatQtyForPdf(item.quantidade))}</td>
+          <td class="col-num">${escapeHtml(moeda.format(item.valorUnitario || 0))}</td>
+          <td class="col-num">${escapeHtml(moeda.format(total))}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const clienteLinhas = [
+    cliente?.nome ? `<strong>${escapeHtml(cliente.nome)}</strong>` : "<strong>Cliente não informado</strong>",
+    cliente?.telefone ? `Tel.: ${escapeHtml(cliente.telefone)}` : "",
+    cliente?.email ? `E-mail: ${escapeHtml(cliente.email)}` : ""
+  ].filter(Boolean).join("<br />");
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(payload.fileTitle || "Orcamento")}</title>
+  <style>
+    @page { size: A4; margin: 14mm 12mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: #1f1e1a;
+      background: #fff;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .sheet { max-width: 190mm; margin: 0 auto; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      border-bottom: 3px solid #165d59;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: -0.02em;
+      color: #0f4744;
+    }
+    .brand p { margin: 4px 0 0; color: #5f5a50; }
+    .doc-meta {
+      text-align: right;
+      min-width: 180px;
+    }
+    .badge {
+      display: inline-block;
+      background: #165d59;
+      color: #fff;
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 5px 10px;
+      border-radius: 999px;
+      margin-bottom: 8px;
+    }
+    .doc-meta strong { display: block; font-size: 14px; margin-top: 2px; }
+    .doc-meta span { color: #5f5a50; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .card {
+      border: 1px solid #ddd2c0;
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: #fbf8f2;
+    }
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #165d59;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+    }
+    thead th {
+      background: #165d59;
+      color: #fff;
+      text-align: left;
+      padding: 9px 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    tbody td {
+      padding: 9px 8px;
+      border-bottom: 1px solid #e8dfd0;
+      vertical-align: top;
+    }
+    tbody tr:nth-child(even) td { background: #faf7f1; }
+    .col-idx { width: 36px; text-align: center; color: #6d675c; }
+    .col-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .col-desc { width: 48%; }
+    .totals {
+      margin-top: 14px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .totals-box {
+      min-width: 240px;
+      border: 1px solid #d7cdb9;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .totals-box .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 14px;
+      background: #fff;
+    }
+    .totals-box .row.total {
+      background: #165d59;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .notes {
+      margin-top: 18px;
+      border-top: 1px dashed #d7cdb9;
+      padding-top: 12px;
+    }
+    .notes h3 {
+      margin: 0 0 6px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #165d59;
+    }
+    .notes p { margin: 0; white-space: pre-wrap; color: #3b372f; }
+    .approval {
+      margin-top: 28px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+    }
+    .sign {
+      border-top: 1px solid #9f9687;
+      padding-top: 8px;
+      text-align: center;
+      color: #5f5a50;
+      min-height: 48px;
+    }
+    .footer {
+      margin-top: 28px;
+      font-size: 10px;
+      color: #7a7468;
+      text-align: center;
+    }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .no-print { display: none !important; }
+    }
+    .toolbar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .toolbar button {
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .toolbar .primary { background: #165d59; color: #fff; }
+    .toolbar .ghost { background: #ece7de; color: #1f1e1a; }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="toolbar no-print">
+      <button class="ghost" type="button" onclick="window.close()">Fechar</button>
+      <button class="primary" type="button" onclick="window.print()">Salvar / Imprimir PDF</button>
+    </div>
+
+    <header class="header">
+      <div class="brand">
+        <h1>${escapeHtml(empresaNome || "Empresa")}</h1>
+        <p>Orçamento para aprovação do cliente</p>
+      </div>
+      <div class="doc-meta">
+        <div class="badge">Orçamento</div>
+        <span>Referência</span>
+        <strong>${escapeHtml(numeroRef)}</strong>
+        <span style="display:block;margin-top:8px;">Emissão</span>
+        <strong>${escapeHtml(dataEmissaoLabel)}</strong>
+      </div>
+    </header>
+
+    <section class="grid-2">
+      <div class="card">
+        <h2>Cliente</h2>
+        <div>${clienteLinhas}</div>
+      </div>
+      <div class="card">
+        <h2>Condições</h2>
+        <div>
+          ${pagamentoTexto ? escapeHtml(pagamentoTexto) : "Condições comerciais a combinar."}
+          <br /><span style="color:#5f5a50;">Documento gerado para análise e aprovação.</span>
+        </div>
+      </div>
+    </section>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Descrição</th>
+          <th class="col-num">Qtd</th>
+          <th class="col-num">Valor unit.</th>
+          <th class="col-num">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows || `<tr><td colspan="5">Nenhum item informado.</td></tr>`}
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div class="totals-box">
+        <div class="row total">
+          <span>Total</span>
+          <span>${escapeHtml(moeda.format(subtotal || 0))}</span>
+        </div>
+      </div>
+    </div>
+
+    ${observacoes
+      ? `<section class="notes"><h3>Observações</h3><p>${escapeHtml(observacoes)}</p></section>`
+      : ""}
+
+    <section class="approval">
+      <div class="sign">Assinatura do cliente<br />Data: ____/____/________</div>
+      <div class="sign">Assinatura da empresa<br />${escapeHtml(empresaNome || "")}</div>
+    </section>
+
+    <p class="footer">Gerado em ${escapeHtml(geradoEm)} · Documento não fiscal · Válido para aprovação comercial</p>
+  </div>
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        try { window.focus(); window.print(); } catch (e) {}
+      }, 250);
+    });
+  </script>
+</body>
+</html>`;
+}
+
+function generateDocumentoOrcamentoPdf() {
+  syncNovoDocumentoDraftFromForm();
+
+  const itens = getDocumentoItensPayload();
+  if (!itens.length) {
+    showToast("Adicione ao menos um item antes de gerar o PDF.", "error");
+    return;
+  }
+
+  const cliente = state.clientes.find(
+    (item) => String(item.id) === String(state.novoDocumentoModal.clienteId)
+  );
+  if (!cliente) {
+    showToast("Selecione o cliente antes de gerar o PDF do orçamento.", "error");
+    return;
+  }
+
+  const dataEmissao = state.novoDocumentoModal.dataEmissao || formatDateInput(new Date());
+  const dataEmissaoDate = parseDateInput(dataEmissao) || new Date();
+  const dataEmissaoLabel = dataEmissaoDate.toLocaleDateString("pt-BR");
+  const subtotal = itens.reduce(
+    (sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0),
+    0
+  );
+  const docId = state.novoDocumentoModal.documentoId;
+  const numeroRef = docId
+    ? `ORC-${String(docId).padStart(6, "0")}`
+    : `ORC-RASCUNHO-${dataEmissaoDate.toISOString().slice(0, 10).replace(/-/g, "")}`;
+  const clienteSlug = String(cliente.nome || "cliente")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40) || "cliente";
+  const fileTitle = `Orcamento-${clienteSlug}-${dataEmissaoLabel.replace(/\//g, "-")}`;
+
+  const html = buildOrcamentoPdfHtml({
+    empresaNome: state.empresaNome || saasName || "Empresa",
+    cliente,
+    dataEmissaoLabel,
+    numeroRef,
+    itens,
+    subtotal,
+    observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
+    pagamentoTexto: getPagamentoResumoTextoParaPdf(),
+    geradoEm: new Date().toLocaleString("pt-BR"),
+    fileTitle
+  });
+
+  const win = window.open("", "_blank");
+  if (!win) {
+    showToast("Permita pop-ups no navegador para gerar o PDF.", "error");
+    return;
+  }
+
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  showToast("PDF do orçamento pronto — use Salvar como PDF na impressão.");
 }
 
 async function saveNovoDocumento(event) {
@@ -5481,6 +5864,16 @@ function attachEvents() {
       const clienteId = clienteButton.getAttribute("data-cliente-id") || "";
       setNovoDocumentoCliente(clienteId);
       closeNovoDocumentoClientePanel();
+    });
+  }
+
+  if (els.novoDocumentoPdfBtn) {
+    els.novoDocumentoPdfBtn.addEventListener("click", () => {
+      try {
+        generateDocumentoOrcamentoPdf();
+      } catch (error) {
+        showToast(`Erro ao gerar PDF: ${error.message}`, "error");
+      }
     });
   }
 
