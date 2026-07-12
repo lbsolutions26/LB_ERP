@@ -255,6 +255,8 @@ const els = {
   itensDocumentoModal: document.getElementById("itensDocumentoModal"),
   closeItensDocumentoModalBtn: document.getElementById("closeItensDocumentoModalBtn"),
   itensDocumentoModalTitle: document.getElementById("itensDocumentoModalTitle"),
+  itensDocumentoModalSubtitle: document.getElementById("itensDocumentoModalSubtitle"),
+  novoPedidoClienteBtn: document.getElementById("novoPedidoClienteBtn"),
   itensDocumentoFotoWrap: document.getElementById("itensDocumentoFotoWrap"),
   itensDocumentoFoto: document.getElementById("itensDocumentoFoto"),
     itensDocumentoTableHead: document.getElementById("itensDocumentoTableHead"),
@@ -543,12 +545,18 @@ function closeProdutoModal() {
 
 function openItensDocumentoModal() {
   if (!els.itensDocumentoModal) return;
+  updateItensDocumentoModalChrome();
   els.itensDocumentoModal.classList.remove("hidden");
 }
 
 function closeItensDocumentoModal() {
   if (!els.itensDocumentoModal) return;
   els.itensDocumentoModal.classList.add("hidden");
+  if (els.novoPedidoClienteBtn) els.novoPedidoClienteBtn.classList.add("hidden");
+  if (els.itensDocumentoModalSubtitle) {
+    els.itensDocumentoModalSubtitle.textContent = "";
+    els.itensDocumentoModalSubtitle.classList.add("hidden");
+  }
 }
 
 function openRecebimentoModal() {
@@ -4891,6 +4899,25 @@ function renderClientesTable() {
   updateTableSortHeaders("clientes");
 }
 
+function updateItensDocumentoModalChrome() {
+  const isClientePedidos = state.itensDocumentoModalMode === "cliente_pedidos";
+  if (els.novoPedidoClienteBtn) {
+    els.novoPedidoClienteBtn.classList.toggle("hidden", !isClientePedidos);
+  }
+  if (els.itensDocumentoModalSubtitle) {
+    if (isClientePedidos) {
+      const total = Number(state.itensDocumento?.length || 0);
+      els.itensDocumentoModalSubtitle.textContent = total
+        ? `${total} pedido(s) encontrado(s). Voce pode criar um novo pedido para este cliente.`
+        : "Nenhum pedido ainda. Crie o primeiro pedido para este cliente.";
+      els.itensDocumentoModalSubtitle.classList.remove("hidden");
+    } else {
+      els.itensDocumentoModalSubtitle.textContent = "";
+      els.itensDocumentoModalSubtitle.classList.add("hidden");
+    }
+  }
+}
+
 async function openClientePedidosModal(clienteId) {
   const cliente = state.clientes.find((item) => Number(item.id) === Number(clienteId));
   if (!cliente) {
@@ -4926,7 +4953,27 @@ async function openClientePedidosModal(clienteId) {
   }
   renderItensDocumentoTableHead();
   renderItensDocumentoTable();
+  updateItensDocumentoModalChrome();
   openItensDocumentoModal();
+}
+
+async function openNovoPedidoForCliente(clienteId) {
+  const id = Number(clienteId || state.itensDocumentoClienteId || 0);
+  if (!id) {
+    showToast("Cliente nao informado", "error");
+    return;
+  }
+
+  try {
+    await Promise.all([ensureClientesLoaded(), ensureProdutosLoaded()]);
+  } catch (error) {
+    showToast(`Erro ao carregar dados para novo pedido: ${error.message}`, "error");
+  }
+
+  closeItensDocumentoModal();
+  openNovoDocumentoModal("pedido");
+  setNovoDocumentoCliente(id);
+  showToast("Cliente selecionado no novo pedido");
 }
 
 function renderProdutosTable() {
@@ -6571,6 +6618,16 @@ function attachEvents() {
 
   if (els.closeItensDocumentoModalBtn) {
     els.closeItensDocumentoModalBtn.addEventListener("click", closeItensDocumentoModal);
+  }
+
+  if (els.novoPedidoClienteBtn) {
+    els.novoPedidoClienteBtn.addEventListener("click", async () => {
+      try {
+        await openNovoPedidoForCliente(state.itensDocumentoClienteId);
+      } catch (error) {
+        showToast(`Erro ao abrir novo pedido: ${error.message}`, "error");
+      }
+    });
   }
 
   if (els.itensDocumentoModal) {
