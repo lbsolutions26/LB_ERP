@@ -4299,27 +4299,76 @@ function renderMetrics(options = {}) {
   }
 
   if (els.entradasCaixaGrid) {
-    const entriesHtml = monthlyCashEntries
-      .map((item) => {
-        const realized = Number(item.realized || 0);
-        const forecast = Number(item.forecast || 0);
-        return `
-          <article class="cash-month-card">
-            <span>${escapeHtml(item.label)}</span>
-            <strong>${moeda.format(item.total)}</strong>
-            ${state.dashboardCashChartMode === "faturamento"
-              ? '<span class="cash-month-card-dot" title="Faturamento"><i class="cash-dot cash-dot-faturamento"></i></span>'
-              : `
-                <div class="cash-month-breakdown">
-                  <span><i class="cash-dot cash-dot-realized"></i> ${moeda.format(realized)}</span>
-                  <span><i class="cash-dot cash-dot-forecast"></i> ${moeda.format(forecast)}</span>
-                </div>
-              `}
-          </article>
+    if (!monthlyCashEntries.length) {
+      els.entradasCaixaGrid.innerHTML = '<div class="documento-empty-state">Sem recebimentos registrados.</div>';
+    } else {
+      const isFaturamento = state.dashboardCashChartMode === "faturamento";
+      // Mais recentes primeiro: mais legível que cards empilhados.
+      const rows = [...monthlyCashEntries].reverse();
+      const head = isFaturamento
+        ? `
+          <tr>
+            <th scope="col">Mês</th>
+            <th scope="col" class="cash-month-num">Faturamento</th>
+          </tr>
+        `
+        : `
+          <tr>
+            <th scope="col">Mês</th>
+            <th scope="col" class="cash-month-num">Total</th>
+            <th scope="col" class="cash-month-num">Realizado</th>
+            <th scope="col" class="cash-month-num">Previsto</th>
+            <th scope="col" class="cash-month-mix-col">Composição</th>
+          </tr>
         `;
-      })
-      .join("");
-    els.entradasCaixaGrid.innerHTML = entriesHtml || '<div class="documento-empty-state">Sem recebimentos registrados.</div>';
+      const body = rows
+        .map((item) => {
+          const realized = Number(item.realized || 0);
+          const forecast = Number(item.forecast || 0);
+          const total = Number(item.total || 0);
+          const isCurrent = item.monthKey === currentMonthKey;
+          const realizedPct = total > 0 ? Math.round((realized / total) * 100) : 0;
+          const forecastPct = Math.max(0, 100 - realizedPct);
+          if (isFaturamento) {
+            return `
+              <tr class="${isCurrent ? "is-current" : ""}">
+                <td>
+                  <span class="cash-month-label">${escapeHtml(item.label)}</span>
+                  ${isCurrent ? '<span class="cash-month-tag">atual</span>' : ""}
+                </td>
+                <td class="cash-month-num">${moeda.format(total)}</td>
+              </tr>
+            `;
+          }
+          return `
+            <tr class="${isCurrent ? "is-current" : ""}">
+              <td>
+                <span class="cash-month-label">${escapeHtml(item.label)}</span>
+                ${isCurrent ? '<span class="cash-month-tag">atual</span>' : ""}
+              </td>
+              <td class="cash-month-num cash-month-total">${moeda.format(total)}</td>
+              <td class="cash-month-num cash-month-realized">${moeda.format(realized)}</td>
+              <td class="cash-month-num cash-month-forecast">${moeda.format(forecast)}</td>
+              <td class="cash-month-mix-col">
+                <div class="cash-mix-bar" title="Realizado ${realizedPct}% · Previsto ${forecastPct}%">
+                  <span class="cash-mix-realized" style="width:${realizedPct}%"></span>
+                  <span class="cash-mix-forecast" style="width:${forecastPct}%"></span>
+                </div>
+                <span class="cash-mix-pct">${realizedPct}% real.</span>
+              </td>
+            </tr>
+          `;
+        })
+        .join("");
+      els.entradasCaixaGrid.innerHTML = `
+        <div class="cash-month-table-wrap">
+          <table class="cash-month-table">
+            <thead>${head}</thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+      `;
+    }
   }
 
   if (els.entradasCaixaChart) {

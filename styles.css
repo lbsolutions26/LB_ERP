@@ -657,9 +657,7 @@ h3 {
   gap: 0.55rem;
 }
 
-.cash-month-grid.list-mode {
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-}
+
 
 .dashboard-cash-summary {
   display: grid;
@@ -724,13 +722,152 @@ h3 {
   background: #2f5c9a;
 }
 
-.cash-month-grid {
-  margin-top: 0.9rem;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 0.75rem;
+.cash-month-detail {
+  margin-top: 0.95rem;
   content-visibility: auto;
-  contain-intrinsic-size: auto 180px;
+  contain-intrinsic-size: auto 280px;
+}
+
+.cash-month-table-wrap {
+  overflow-x: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(217, 210, 196, 0.9);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  scrollbar-width: thin;
+}
+
+.cash-month-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  min-width: 520px;
+}
+
+.cash-month-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, #f8f4ec 0%, #f1ebe0 100%);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid #e2d8c6;
+  white-space: nowrap;
+}
+
+.cash-month-table tbody td {
+  padding: 0.72rem 0.85rem;
+  border-bottom: 1px solid #efe7d8;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.cash-month-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.cash-month-table tbody tr:hover td {
+  background: rgba(22, 93, 89, 0.04);
+}
+
+.cash-month-table tbody tr.is-current td {
+  background: rgba(22, 93, 89, 0.07);
+}
+
+.cash-month-table tbody tr.is-current:hover td {
+  background: rgba(22, 93, 89, 0.1);
+}
+
+.cash-month-label {
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--ink);
+  margin-right: 0.4rem;
+}
+
+.cash-month-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: linear-gradient(140deg, var(--brand) 0%, var(--brand-strong) 100%);
+  vertical-align: middle;
+}
+
+.cash-month-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cash-month-total {
+  font-weight: 700;
+}
+
+.cash-month-realized {
+  color: #165d59;
+}
+
+.cash-month-forecast {
+  color: #b05f13;
+}
+
+.cash-month-mix-col {
+  min-width: 140px;
+  width: 22%;
+}
+
+.cash-mix-bar {
+  display: flex;
+  width: 100%;
+  height: 0.55rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #ebe3d4;
+  border: 1px solid #e0d5c0;
+}
+
+.cash-mix-realized {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #3a8f89 0%, #165d59 100%);
+}
+
+.cash-mix-forecast {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #f2b065 0%, #d67c2f 100%);
+}
+
+.cash-mix-pct {
+  display: block;
+  margin-top: 0.28rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+@media (max-width: 640px) {
+  .cash-month-table {
+    min-width: 460px;
+  }
+
+  .cash-month-table thead th,
+  .cash-month-table tbody td {
+    padding: 0.6rem 0.65rem;
+  }
 }
 
 .cash-month-chart {
@@ -890,52 +1027,7 @@ h3 {
   font-weight: 700;
 }
 
-.cash-month-card {
-  padding: 0.8rem 0.85rem;
-  border-radius: 12px;
-  border: 1px solid #e0d5c0;
-  background: rgba(255, 255, 255, 0.92);
-  display: grid;
-  gap: 0.25rem;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
 
-.cash-month-card:hover {
-  border-color: rgba(22, 93, 89, 0.28);
-  box-shadow: 0 4px 12px rgba(33, 32, 28, 0.06);
-}
-
-.cash-month-card span {
-  color: var(--muted);
-  font-size: 0.85rem;
-  text-transform: capitalize;
-}
-
-.cash-month-card strong {
-  font-size: 1rem;
-}
-
-.cash-month-card-dot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  min-height: 0.8rem;
-}
-
-.cash-month-breakdown {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.cash-month-breakdown span {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.74rem;
-  font-weight: 700;
-  color: #8a6f3c;
-  text-transform: none;
-}
 
 .forms {
   display: grid;
