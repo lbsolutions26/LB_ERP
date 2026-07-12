@@ -129,6 +129,8 @@ const state = {
   pedidosTotalCarregado: 0,
   pedidosCountTotal: 0,
   pedidosFaturamentoTotal: 0,
+  pedidosSearchMode: false,
+  pedidosSearchLoading: false,
   clientesLoaded: false,
   produtosLoaded: false,
   contasReceberLoaded: false,
@@ -3650,6 +3652,12 @@ async function ensureAdminLoaded(options = {}) {
 }
 
 async function loadPedidos() {
+  // Se ha filtro ativo, a busca no banco inteiro prevalece.
+  if (hasActivePedidosFilter()) {
+    await loadPedidosFilteredFromDatabase();
+    return;
+  }
+
   const limit = Math.max(1, Number(state.pedidosLimit || 50));
 
   const { data: docsData, error: docsError } = await supabaseClient
@@ -3665,16 +3673,8 @@ async function loadPedidos() {
   if (docsError) throw docsError;
 
   state.pedidosSource = "documentos_venda";
-  state.pedidos = (docsData || []).map((item) => ({
-    id: item.id,
-    data_pedido: item.data_emissao,
-    status: item.status,
-    valor_total: item.total,
-    observacoes: item.observacoes || null,
-    raw_payload: item.raw_payload || null,
-    cliente: item.cliente,
-    cliente_legacy_id: item.cliente_legacy_id
-  }));
+  state.pedidosSearchMode = false;
+  state.pedidos = (docsData || []).map(mapDocumentoToPedido);
   state.pedidosTotalCarregado = state.pedidos.length;
   await loadPedidosProdutos();
 }
@@ -4207,37 +4207,283 @@ function renderPedidosTableHead() {
   `;
 }
 
-function hasActivePedidosFilter() {
-  const views = ["pedidosSintetico", "pedidosAnalitico"];
-  for (const key of views) {
-    const view = getTableViewConfig(key);
-    if (!view) continue;
-    for (const value of Object.values(view.filters || {})) {
-      if (String(value || "").trim()) return true;
-    }
+function getActivePedidosListFilters() {
+  const tableKey = state.pedidosListMode === "analitico" ? "pedidosAnalitico" : "pedidosSintetico";
+  const view = getTableViewConfig(tableKey);
+  const active = {};
+  for (const [field, value] of Object.entries(view?.filters || {})) {
+    const text = String(value || "").trim();
+    if (text) active[field] = text;
   }
-  return false;
+  return active;
 }
 
-function maybeLoadAllPedidosForFilter() {
-  const carregado = Number(state.pedidosTotalCarregado || 0);
-  const total = Number(state.pedidosCountTotal || 0);
-  if (!hasActivePedidosFilter()) return;
-  if (total === 0 || carregado >= total) return;
-  if (maybeLoadAllPedidosForFilter._pending) return;
+function hasActivePedidosFilter() {
+  return Object.keys(getActivePedidosListFilters()).length > 0;
+}
 
-  maybeLoadAllPedidosForFilter._pending = true;
-  window.clearTimeout(maybeLoadAllPedidosForFilter._timer);
-  maybeLoadAllPedidosForFilter._timer = window.setTimeout(async () => {
-    try {
-      state.pedidosLimit = total;
+function parseLooseDateFilter(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+
+  // yyyy-mm-dd
+  let match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const start = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 0, 0, 0, 0);
+    const end = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 23, 59, 59, 999);
+    if (!Number.isNaN(start.getTime())) return { start: start.toISOString(), end: end.toISOString() };
+  }
+
+  // dd/mm/yyyy
+  match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (match) {
+    const start = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]), 0, 0, 0, 0);
+    const end = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]), 23, 59, 59, 999);
+    if (!Number.isNaN(start.getTime())) return { start: start.toISOString(), end: end.toISOString() };
+  }
+
+  // dd/mm
+  match = text.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (match) {
+    const year = new Date().getFullYear();
+    const start = new Date(year, Number(match[2]) - 1, Number(match[1]), 0, 0, 0, 0);
+    const end = new Date(year, Number(match[2]) - 1, Number(match[1]), 23, 59, 59, 999);
+    if (!Number.isNaN(start.getTime())) return { start: start.toISOString(), end: end.toISOString() };
+  }
+
+  // mm/yyyy or yyyy-mm
+  match = text.match(/^(\d{1,2})\/(\d{4})$/);
+  if (match) {
+    const month = Number(match[1]) - 1;
+    const year = Number(match[2]);
+    const start = new Date(year, month, 1, 0, 0, 0, 0);
+    const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    if (!Number.isNaN(start.getTime())) return { start: start.toISOString(), end: end.toISOString() };
+  }
+
+  match = text.match(/^(\d{4})-(\d{2})$/);
+  if (match) {
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const start = new Date(year, month, 1, 0, 0, 0, 0);
+    const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    if (!Number.isNaN(start.getTime())) return { start: start.toISOString(), end: end.toISOString() };
+  }
+
+  return null;
+}
+
+function parseLooseMoneyFilter(value) {
+  const text = String(value || "")
+    .trim()
+    .replace(/r\$/gi, "")
+    .replace(/\s/g, "");
+  if (!text) return null;
+  // 1.234,56 or 1234.56 or 1234
+  let normalized = text;
+  if (normalized.includes(",") && normalized.includes(".")) {
+    normalized = normalized.replace(/\./g, "").replace(",", ".");
+  } else if (normalized.includes(",")) {
+    normalized = normalized.replace(",", ".");
+  }
+  const num = Number(normalized.replace(/[^\d.-]/g, ""));
+  return Number.isFinite(num) ? num : null;
+}
+
+function mapDocumentoToPedido(item) {
+  return {
+    id: item.id,
+    data_pedido: item.data_emissao,
+    status: item.status,
+    valor_total: item.total,
+    observacoes: item.observacoes || null,
+    raw_payload: item.raw_payload || null,
+    cliente: item.cliente,
+    cliente_legacy_id: item.cliente_legacy_id
+  };
+}
+
+async function findDocumentoIdsByProdutoFilter(produtoNeedle) {
+  const needle = String(produtoNeedle || "").trim();
+  if (!needle) return null;
+
+  const { data, error } = await fetchAllSupabaseRows(() =>
+    supabaseClient
+      .from("documento_venda_itens")
+      .select("documento_id")
+      .eq("empresa_id", state.empresaId)
+      .ilike("descricao_item", `%${needle}%`)
+  );
+
+  if (error) throw error;
+  const ids = [...new Set((data || []).map((row) => Number(row.documento_id)).filter(Number.isFinite))];
+  return ids;
+}
+
+async function loadPedidosFilteredFromDatabase() {
+  const filters = getActivePedidosListFilters();
+  if (!Object.keys(filters).length) {
+    if (state.pedidosSearchMode) {
+      state.pedidosSearchMode = false;
+      state.pedidosLimit = 50;
       await loadPedidos();
+    }
+    return;
+  }
+
+  state.pedidosSearchMode = true;
+  state.pedidosSearchLoading = true;
+
+  try {
+    const needsClienteInner = Boolean(filters.cliente);
+    const select = needsClienteInner
+      ? "id, data_emissao, status, total, observacoes, raw_payload, cliente_legacy_id, cliente:clientes!inner(id,nome)"
+      : "id, data_emissao, status, total, observacoes, raw_payload, cliente_legacy_id, cliente:clientes(id,nome)";
+
+    let documentIdsFromProduto = null;
+    if (filters.produto) {
+      documentIdsFromProduto = await findDocumentoIdsByProdutoFilter(filters.produto);
+      if (!documentIdsFromProduto.length) {
+        state.pedidos = [];
+        state.pedidosTotalCarregado = 0;
+        state.pedidosProdutosRaw = [];
+        state.pedidosProdutos = [];
+        return;
+      }
+    }
+
+    const buildQuery = () => {
+      let query = supabaseClient
+        .from("documentos_venda")
+        .select(select)
+        .eq("empresa_id", state.empresaId)
+        .eq("tipo_documento", "pedido")
+        .order("data_emissao", { ascending: false });
+
+      if (filters.pedido) {
+        const cleanId = String(filters.pedido).replace(/[^\d]/g, "");
+        query = query.eq("id", cleanId ? Number(cleanId) : -1);
+      }
+
+      if (filters.status) {
+        query = query.ilike("status", `%${filters.status}%`);
+      }
+
+      if (filters.cliente) {
+        query = query.ilike("cliente.nome", `%${filters.cliente}%`);
+      }
+
+      if (filters.data) {
+        const range = parseLooseDateFilter(filters.data);
+        if (range) {
+          query = query.gte("data_emissao", range.start).lte("data_emissao", range.end);
+        }
+      }
+
+      if (filters.total) {
+        const amount = parseLooseMoneyFilter(filters.total);
+        if (amount != null) {
+          // tolera digitacao aproximada (ex.: 140, 140.00)
+          query = query.gte("total", amount - 0.009).lte("total", amount + 0.009);
+        }
+      }
+
+      if (documentIdsFromProduto) {
+        // PostgREST limita IN muito grande; fatia em blocos no fetch se necessario
+        query = query.in("id", documentIdsFromProduto.slice(0, 200));
+      }
+
+      return query;
+    };
+
+    // Se ha muitos IDs de produto, busca em fatias
+    let docsData = [];
+    if (documentIdsFromProduto && documentIdsFromProduto.length > 200) {
+      const chunks = [];
+      for (let i = 0; i < documentIdsFromProduto.length; i += 200) {
+        chunks.push(documentIdsFromProduto.slice(i, i + 200));
+      }
+      for (const chunk of chunks) {
+        const { data, error } = await fetchAllSupabaseRows(() => {
+          let query = supabaseClient
+            .from("documentos_venda")
+            .select(select)
+            .eq("empresa_id", state.empresaId)
+            .eq("tipo_documento", "pedido")
+            .in("id", chunk)
+            .order("data_emissao", { ascending: false });
+
+          if (filters.pedido) {
+            const cleanId = String(filters.pedido).replace(/[^\d]/g, "");
+            query = query.eq("id", cleanId ? Number(cleanId) : -1);
+          }
+          if (filters.status) query = query.ilike("status", `%${filters.status}%`);
+          if (filters.cliente) query = query.ilike("cliente.nome", `%${filters.cliente}%`);
+          if (filters.data) {
+            const range = parseLooseDateFilter(filters.data);
+            if (range) query = query.gte("data_emissao", range.start).lte("data_emissao", range.end);
+          }
+          if (filters.total) {
+            const amount = parseLooseMoneyFilter(filters.total);
+            if (amount != null) query = query.gte("total", amount - 0.009).lte("total", amount + 0.009);
+          }
+          return query;
+        });
+        if (error) throw error;
+        docsData.push(...(data || []));
+      }
+      // dedupe by id
+      const byId = new Map(docsData.map((row) => [row.id, row]));
+      docsData = [...byId.values()].sort((a, b) => {
+        const da = new Date(a.data_emissao || 0).getTime();
+        const db = new Date(b.data_emissao || 0).getTime();
+        return db - da;
+      });
+    } else {
+      const { data, error } = await fetchAllSupabaseRows(buildQuery);
+      if (error) throw error;
+      docsData = data || [];
+    }
+
+    // Filtros textuais de data (quando nao deu para parsear data exata) e total parcial
+    if (filters.data && !parseLooseDateFilter(filters.data)) {
+      const needle = filters.data.toLowerCase();
+      docsData = docsData.filter((row) => {
+        const label = row.data_emissao ? new Date(row.data_emissao).toLocaleDateString("pt-BR") : "";
+        return label.toLowerCase().includes(needle);
+      });
+    }
+
+    state.pedidosSource = "documentos_venda";
+    state.pedidos = docsData.map(mapDocumentoToPedido);
+    state.pedidosTotalCarregado = state.pedidos.length;
+    await loadPedidosProdutos();
+  } finally {
+    state.pedidosSearchLoading = false;
+  }
+}
+
+function schedulePedidosDatabaseSearch() {
+  window.clearTimeout(schedulePedidosDatabaseSearch._timer);
+  schedulePedidosDatabaseSearch._timer = window.setTimeout(async () => {
+    if (schedulePedidosDatabaseSearch._running) {
+      schedulePedidosDatabaseSearch._pending = true;
+      return;
+    }
+    schedulePedidosDatabaseSearch._running = true;
+    try {
+      await loadPedidosFilteredFromDatabase();
       renderPedidosSection();
       renderMetrics();
     } catch (error) {
-      showToast(`Erro ao carregar pedidos para filtrar: ${error.message}`, "error");
+      console.error(error);
+      showToast(`Erro ao buscar pedidos: ${error.message}`, "error");
     } finally {
-      maybeLoadAllPedidosForFilter._pending = false;
+      schedulePedidosDatabaseSearch._running = false;
+      if (schedulePedidosDatabaseSearch._pending) {
+        schedulePedidosDatabaseSearch._pending = false;
+        schedulePedidosDatabaseSearch();
+      }
     }
   }, 350);
 }
@@ -4247,10 +4493,33 @@ function updatePedidosLoadMoreUI() {
   const carregado = Number(state.pedidosTotalCarregado || 0);
   const total = Number(state.pedidosCountTotal || 0);
   const restante = Math.max(0, total - carregado);
-  const deveMostrar = emListaSintetica && total > 0 && restante > 0;
-  els.pedidosLoadMoreWrap.classList.toggle("hidden", !deveMostrar);
+  const emBusca = Boolean(state.pedidosSearchMode);
+  const deveMostrar = emListaSintetica && !emBusca && total > 0 && restante > 0;
+  els.pedidosLoadMoreWrap.classList.toggle("hidden", !deveMostrar && !(emListaSintetica && emBusca));
 
-  if (!deveMostrar) return;
+  if (emListaSintetica && emBusca) {
+    els.pedidosLoadMoreWrap.classList.remove("hidden");
+    if (els.pedidosLoadMoreInfo) {
+      els.pedidosLoadMoreInfo.textContent = state.pedidosSearchLoading
+        ? "Buscando em todos os pedidos..."
+        : `Busca no banco: ${carregado} pedido(s) encontrado(s).`;
+    }
+    if (els.pedidosLoadMoreBtn) {
+      els.pedidosLoadMoreBtn.classList.add("hidden");
+    }
+    if (els.pedidosLoadAllBtn) {
+      els.pedidosLoadAllBtn.classList.add("hidden");
+    }
+    return;
+  }
+
+  if (els.pedidosLoadMoreBtn) els.pedidosLoadMoreBtn.classList.remove("hidden");
+  if (els.pedidosLoadAllBtn) els.pedidosLoadAllBtn.classList.remove("hidden");
+
+  if (!deveMostrar) {
+    els.pedidosLoadMoreWrap.classList.add("hidden");
+    return;
+  }
 
   if (els.pedidosLoadMoreInfo) {
     els.pedidosLoadMoreInfo.textContent = `Exibindo ${carregado} de ${total} pedidos. Restantes: ${restante}.`;
@@ -4282,6 +4551,10 @@ function renderPedidosSection() {
       els.pedidosSectionSubtitle.textContent = `Veja o consolidado por produto com quantidade, valor vendido e ultima movimentacao. ${getPedidosProdutoFilterSummary()}`;
     } else if (state.pedidosListMode === "analitico") {
       els.pedidosSectionSubtitle.textContent = "Veja cada item vendido por pedido com cliente, produto, quantidade e valor.";
+    } else if (state.pedidosSearchMode) {
+      els.pedidosSectionSubtitle.textContent = state.pedidosSearchLoading
+        ? "Buscando pedidos em todo o banco..."
+        : `Filtro ativo no banco inteiro — ${Number(state.pedidosTotalCarregado || 0)} pedido(s) encontrado(s).`;
     } else {
       els.pedidosSectionSubtitle.textContent = "Crie pedidos e orcamentos com itens em grade, subtotal automatico e salvamento mais claro.";
     }
@@ -6537,7 +6810,7 @@ function attachEvents() {
     rerenderTableView(tableKey);
 
     if (tableKey === "pedidosSintetico" || tableKey === "pedidosAnalitico") {
-      maybeLoadAllPedidosForFilter();
+      schedulePedidosDatabaseSearch();
     }
 
     window.requestAnimationFrame(() => {
