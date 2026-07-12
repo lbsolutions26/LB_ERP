@@ -1838,6 +1838,18 @@ img.produto-combo-thumb.is-broken {
   width: min(860px, 100%);
 }
 
+.cliente-row.is-clickable {
+  cursor: pointer;
+}
+
+.cliente-row.is-clickable:hover td {
+  background: rgba(22, 93, 89, 0.05);
+}
+
+.cliente-nome-link {
+  font-weight: 700;
+}
+
 .produto-combo-option:hover,
 .produto-combo-option.active {
   border-color: var(--brand);

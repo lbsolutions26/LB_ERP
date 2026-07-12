@@ -852,12 +852,60 @@ function getNovoDocumentoPagamentoState() {
   };
 }
 
-function setNovoDocumentoPagamentoField(field, value) {
+function setNovoDocumentoPagamentoField(field, value, options = {}) {
+  const current = getNovoDocumentoPagamentoState();
+  let nextValue = value;
+
+  if (field === "parcelas") {
+    const parsed = Number(value);
+    nextValue = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
+    // Se o usuario aumenta parcelas no modo a vista, muda para parcelado automaticamente.
+    if (nextValue > 1 && current.modo === "avista") {
+      state.novoDocumentoModal.pagamento = {
+        ...current,
+        modo: "parcelado",
+        parcelas: nextValue
+      };
+      if (els.novoDocumentoPagamentoModo) els.novoDocumentoPagamentoModo.value = "parcelado";
+      if (!options.skipRender) renderNovoDocumentoPagamentoSection({ preserveFocus: true });
+      return;
+    }
+  }
+
   state.novoDocumentoModal.pagamento = {
-    ...getNovoDocumentoPagamentoState(),
-    [field]: value
+    ...current,
+    [field]: nextValue
   };
-  renderNovoDocumentoPagamentoSection();
+
+  if (options.skipRender) {
+    updateNovoDocumentoPagamentoResumoOnly();
+    return;
+  }
+  renderNovoDocumentoPagamentoSection({ preserveFocus: true });
+}
+
+function updateNovoDocumentoPagamentoResumoOnly() {
+  if (!els.novoDocumentoPagamentoSection || state.novoDocumentoModal.tipo !== "pedido") return;
+  const pagamentoState = getNovoDocumentoPagamentoState();
+  const subtotal = getNovoDocumentoSubtotal();
+  const plano = buildPagamentoPlano(subtotal, pagamentoState);
+  const saldo = Math.max(
+    0,
+    subtotal - Number(pagamentoState.modo === "avista" ? subtotal : pagamentoState.entrada || 0)
+  );
+  const parcelaBase = plano.parcelas.find((parcela) => parcela.status === "pendente") || plano.parcelas[0];
+  if (els.novoDocumentoPagamentoResumo) {
+    els.novoDocumentoPagamentoResumo.textContent =
+      `Saldo ${moeda.format(saldo)} • ${plano.parcelas.length} registro${plano.parcelas.length === 1 ? "" : "s"}` +
+      (parcelaBase ? ` • ${moeda.format(Number(parcelaBase.valor || 0) / 100)}` : "");
+  }
+
+  // Mantem o campo de parcelas sempre editavel (nao trava em 1).
+  if (els.novoDocumentoPagamentoParcelas) {
+    els.novoDocumentoPagamentoParcelas.disabled = false;
+    els.novoDocumentoPagamentoParcelas.readOnly = false;
+    els.novoDocumentoPagamentoParcelas.min = "1";
+  }
 }
 
 function getPaymentLabels(modo) {
@@ -966,7 +1014,7 @@ function buildPagamentoPlano(total, pagamentoState) {
   };
 }
 
-function renderNovoDocumentoPagamentoSection() {
+function renderNovoDocumentoPagamentoSection(options = {}) {
   if (!els.novoDocumentoPagamentoSection) return;
   const isPedido = state.novoDocumentoModal.tipo === "pedido";
   els.novoDocumentoPagamentoSection.classList.toggle("hidden", !isPedido);
@@ -978,13 +1026,28 @@ function renderNovoDocumentoPagamentoSection() {
   const plano = buildPagamentoPlano(subtotal, pagamentoState);
   const saldo = Math.max(0, subtotal - Number(pagamentoState.modo === "avista" ? subtotal : pagamentoState.entrada || 0));
   const parcelaBase = plano.parcelas.find((parcela) => parcela.status === "pendente") || plano.parcelas[0];
+  const activeEl = document.activeElement;
+  const preserveFocus = Boolean(options.preserveFocus);
 
-  if (els.novoDocumentoPagamentoModo) els.novoDocumentoPagamentoModo.value = pagamentoState.modo;
-  if (els.novoDocumentoPagamentoForma) els.novoDocumentoPagamentoForma.value = pagamentoState.formaPagamentoId || "";
-  if (els.novoDocumentoPagamentoEntrada) els.novoDocumentoPagamentoEntrada.value = String(pagamentoState.entrada || 0);
-  if (els.novoDocumentoPagamentoParcelas) els.novoDocumentoPagamentoParcelas.value = String(pagamentoState.parcelas || 1);
-  if (els.novoDocumentoPagamentoPrimeiroVencimento) els.novoDocumentoPagamentoPrimeiroVencimento.value = pagamentoState.vencimentoPrimeiraParcela;
-  if (els.novoDocumentoPagamentoIntervalo) els.novoDocumentoPagamentoIntervalo.value = String(pagamentoState.intervaloDias || 30);
+  const setIfNotFocused = (el, value) => {
+    if (!el) return;
+    if (preserveFocus && activeEl === el) return;
+    el.value = value;
+  };
+
+  setIfNotFocused(els.novoDocumentoPagamentoModo, pagamentoState.modo);
+  setIfNotFocused(els.novoDocumentoPagamentoForma, pagamentoState.formaPagamentoId || "");
+  setIfNotFocused(els.novoDocumentoPagamentoEntrada, String(pagamentoState.entrada || 0));
+  setIfNotFocused(els.novoDocumentoPagamentoParcelas, String(pagamentoState.parcelas || 1));
+  setIfNotFocused(els.novoDocumentoPagamentoPrimeiroVencimento, pagamentoState.vencimentoPrimeiraParcela);
+  setIfNotFocused(els.novoDocumentoPagamentoIntervalo, String(pagamentoState.intervaloDias || 30));
+
+  // Sempre editavel — o travamento em 1 vinha do re-render forçando o valor.
+  if (els.novoDocumentoPagamentoParcelas) {
+    els.novoDocumentoPagamentoParcelas.disabled = false;
+    els.novoDocumentoPagamentoParcelas.readOnly = false;
+    els.novoDocumentoPagamentoParcelas.removeAttribute("readonly");
+  }
 
   const parcelasLabelNode = document.querySelector("[data-pagamento-parcelas-label]");
   const helpTextNode = document.querySelector("[data-pagamento-help]");
@@ -1001,7 +1064,11 @@ function renderNovoDocumentoPagamentoSection() {
       (parcelaBase ? ` • ${moeda.format(Number(parcelaBase.valor || 0) / 100)}` : "");
   }
 
-  renderNovoDocumentoParcelasEditor();
+  // Nao reconstroi o editor de parcelas se o usuario esta digitando nos campos de pagamento.
+  const editingPaymentField = preserveFocus && activeEl && els.novoDocumentoPagamentoSection.contains(activeEl);
+  if (!editingPaymentField) {
+    renderNovoDocumentoParcelasEditor();
+  }
 
   return plano;
 }
@@ -2131,7 +2198,8 @@ function updateNovoDocumentoResumo() {
   }
 
   if (state.novoDocumentoModal.tipo === "pedido") {
-    renderNovoDocumentoPagamentoSection();
+    // Atualiza so o resumo para nao sobrescrever o campo de parcelas enquanto digita.
+    updateNovoDocumentoPagamentoResumoOnly();
   }
 }
 
@@ -3129,10 +3197,16 @@ function renderItensDocumentoTable() {
   renderItensDocumentoFotoBanner();
 
   if (!state.itensDocumento.length) {
-    const colspan = state.itensDocumentoModalMode === "pedidos_produto" ? 7 : 4;
+    const colspan = state.itensDocumentoModalMode === "pedidos_produto"
+      ? 7
+      : state.itensDocumentoModalMode === "cliente_pedidos"
+        ? 6
+        : 4;
     const message = state.itensDocumentoModalMode === "pedidos_produto"
       ? "Nenhum pedido encontrado para este produto."
-      : "Sem itens para este documento.";
+      : state.itensDocumentoModalMode === "cliente_pedidos"
+        ? "Nenhum pedido encontrado para este cliente."
+        : "Sem itens para este documento.";
     els.itensDocumentoTable.innerHTML = `<tr><td colspan="${colspan}">${message}</td></tr>`;
     return;
   }
@@ -3152,6 +3226,30 @@ function renderItensDocumentoTable() {
         </tr>
       `
       )
+      .join("");
+    return;
+  }
+
+  if (state.itensDocumentoModalMode === "cliente_pedidos") {
+    els.itensDocumentoTable.innerHTML = state.itensDocumento
+      .map((pedido) => {
+        const data = pedido.data_pedido ? new Date(pedido.data_pedido).toLocaleDateString("pt-BR") : "-";
+        return `
+          <tr>
+            <td class="pedido-cell-id">
+              ${renderPedidoThumbHtml(pedido)}
+              <span>#${escapeHtml(pedido.id)}</span>
+            </td>
+            <td>${data}</td>
+            <td>${escapeHtml(pedido.status || "-")}</td>
+            <td>${moeda.format(pedido.valor_total || 0)}</td>
+            <td>
+              <button type="button" class="action-edit" data-edit-pedido="${pedido.id}">Editar</button>
+              <button type="button" class="action-edit" data-view-pedido-itens="${pedido.id}">Itens</button>
+            </td>
+          </tr>
+        `;
+      })
       .join("");
     return;
   }
@@ -4016,6 +4114,19 @@ function renderItensDocumentoTableHead() {
     return;
   }
 
+  if (state.itensDocumentoModalMode === "cliente_pedidos") {
+    els.itensDocumentoTableHead.innerHTML = `
+      <tr>
+        <th>Pedido</th>
+        <th>Data</th>
+        <th>Status</th>
+        <th>Total</th>
+        <th></th>
+      </tr>
+    `;
+    return;
+  }
+
   els.itensDocumentoTableHead.innerHTML = `
     <tr>
       <th>Item</th>
@@ -4761,16 +4872,61 @@ function renderClientesTable() {
   els.clientesTable.innerHTML = rows
     .map(
       (cliente) => `
-      <tr>
-        <td>${escapeHtml(cliente.nome)}</td>
+      <tr class="cliente-row is-clickable" data-view-cliente-pedidos="${cliente.id}" title="Ver pedidos deste cliente">
+        <td>
+          <button type="button" class="action-link cliente-nome-link" data-view-cliente-pedidos="${cliente.id}">
+            ${escapeHtml(cliente.nome)}
+          </button>
+        </td>
         <td>${escapeHtml(cliente.telefone || "-")}</td>
         <td>${escapeHtml(cliente.email || "-")}</td>
-        <td><button class="action-delete" data-del-cliente="${cliente.id}">Excluir</button></td>
+        <td>
+          <button type="button" class="action-edit" data-view-cliente-pedidos="${cliente.id}">Pedidos</button>
+          <button type="button" class="action-delete" data-del-cliente="${cliente.id}">Excluir</button>
+        </td>
       </tr>
     `
     )
     .join("");
   updateTableSortHeaders("clientes");
+}
+
+async function openClientePedidosModal(clienteId) {
+  const cliente = state.clientes.find((item) => Number(item.id) === Number(clienteId));
+  if (!cliente) {
+    showToast("Cliente nao encontrado", "error");
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("documentos_venda")
+    .select("id, data_emissao, status, total, raw_payload, cliente_legacy_id, cliente:clientes(id,nome)")
+    .eq("empresa_id", state.empresaId)
+    .eq("tipo_documento", "pedido")
+    .eq("cliente_id", Number(clienteId))
+    .order("data_emissao", { ascending: false });
+
+  if (error) throw error;
+
+  state.itensDocumentoModalMode = "cliente_pedidos";
+  state.itensDocumentoPedidoFoto = "";
+  state.itensDocumentoPedidoId = null;
+  state.itensDocumentoClienteId = Number(clienteId);
+  state.itensDocumento = (data || []).map((item) => ({
+    id: item.id,
+    data_pedido: item.data_emissao,
+    status: item.status,
+    valor_total: item.total,
+    raw_payload: item.raw_payload || null,
+    cliente: item.cliente || { id: cliente.id, nome: cliente.nome }
+  }));
+
+  if (els.itensDocumentoModalTitle) {
+    els.itensDocumentoModalTitle.textContent = `Pedidos de ${cliente.nome}`;
+  }
+  renderItensDocumentoTableHead();
+  renderItensDocumentoTable();
+  openItensDocumentoModal();
 }
 
 function renderProdutosTable() {
@@ -6548,19 +6704,28 @@ function attachEvents() {
 
   if (els.novoDocumentoPagamentoParcelas) {
     els.novoDocumentoPagamentoParcelas.addEventListener("input", () => {
-      setNovoDocumentoPagamentoField("parcelas", Number(els.novoDocumentoPagamentoParcelas.value || 1));
+      const raw = els.novoDocumentoPagamentoParcelas.value;
+      const parsed = parseInt(String(raw), 10);
+      const value = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+      setNovoDocumentoPagamentoField("parcelas", value, { skipRender: true });
+    });
+    els.novoDocumentoPagamentoParcelas.addEventListener("change", () => {
+      const raw = els.novoDocumentoPagamentoParcelas.value;
+      const parsed = parseInt(String(raw), 10);
+      const value = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+      setNovoDocumentoPagamentoField("parcelas", value, { skipRender: false });
     });
   }
 
   if (els.novoDocumentoPagamentoPrimeiroVencimento) {
     els.novoDocumentoPagamentoPrimeiroVencimento.addEventListener("change", () => {
-      setNovoDocumentoPagamentoField("vencimentoPrimeiraParcela", els.novoDocumentoPagamentoPrimeiroVencimento.value || "");
+      setNovoDocumentoPagamentoField("vencimentoPrimeiraParcela", els.novoDocumentoPagamentoPrimeiroVencimento.value || "", { skipRender: true });
     });
   }
 
   if (els.novoDocumentoPagamentoIntervalo) {
     els.novoDocumentoPagamentoIntervalo.addEventListener("input", () => {
-      setNovoDocumentoPagamentoField("intervaloDias", Number(els.novoDocumentoPagamentoIntervalo.value || 30));
+      setNovoDocumentoPagamentoField("intervaloDias", Number(els.novoDocumentoPagamentoIntervalo.value || 30), { skipRender: true });
     });
   }
 
