@@ -1887,6 +1887,43 @@ img.produto-combo-thumb.is-broken {
   background: linear-gradient(160deg, #dbf0ed 0%, #fff7ea 100%);
 }
 
+.documento-pedido-foto-wrap {
+  margin-top: 0.65rem;
+  padding: 0.65rem;
+  border-radius: 14px;
+  border: 1px solid rgba(22, 93, 89, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  gap: 0.55rem;
+  justify-items: start;
+}
+
+.documento-pedido-foto {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid #e0d5c0;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.documento-pedido-foto-meta {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.documento-pedido-foto-meta strong {
+  font-size: 0.92rem !important;
+  color: var(--brand-strong);
+}
+
+.documento-pedido-foto-meta span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .summary-label {
   color: var(--muted);
   font-size: 0.9rem;

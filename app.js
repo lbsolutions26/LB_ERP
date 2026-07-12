@@ -217,6 +217,8 @@ const els = {
   novoDocumentoForm: document.getElementById("novoDocumentoForm"),
   novoDocumentoModalTitle: document.getElementById("novoDocumentoModalTitle"),
   novoDocumentoModalSubtitle: document.getElementById("novoDocumentoModalSubtitle"),
+  novoDocumentoFotoWrap: document.getElementById("novoDocumentoFotoWrap"),
+  novoDocumentoFoto: document.getElementById("novoDocumentoFoto"),
   novoDocumentoClienteSearch: document.getElementById("novoDocumentoClienteSearch"),
   novoDocumentoClienteId: document.getElementById("novoDocumentoClienteId"),
   novoDocumentoClienteTrigger: document.getElementById("novoDocumentoClienteTrigger"),
@@ -772,6 +774,7 @@ function createDocumentoDraft(tipo = "pedido") {
     status: config.defaultStatus,
     observacoes: "",
     dataEmissao: formatDateInput(new Date()),
+    fotoUrl: "",
     pagamento: createPagamentoDraft(),
     parcelasEditadas: null,
     parcelasOriginaisSnapshot: null,
@@ -2182,6 +2185,31 @@ function renderNovoDocumentoItensGrid(options = {}) {
   }
 }
 
+function renderNovoDocumentoPedidoFoto() {
+  const wrap = els.novoDocumentoFotoWrap;
+  const img = els.novoDocumentoFoto;
+  if (!wrap || !img) return;
+
+  const url = resolveProdutoImageUrl(state.novoDocumentoModal.fotoUrl || "");
+  if (!url) {
+    wrap.classList.add("hidden");
+    img.removeAttribute("src");
+    delete img.dataset.imagePreview;
+    delete img.dataset.imageTitle;
+    return;
+  }
+
+  const title = state.novoDocumentoModal.documentoId
+    ? `Pedido #${state.novoDocumentoModal.documentoId}`
+    : "Foto do pedido";
+  img.src = url;
+  img.alt = title;
+  img.dataset.imagePreview = url;
+  img.dataset.imageTitle = title;
+  img.classList.add("is-clickable");
+  wrap.classList.remove("hidden");
+}
+
 function renderNovoDocumentoModal() {
   if (!els.novoDocumentoModal) return;
   const config = getDocumentoModalConfig(state.novoDocumentoModal.tipo);
@@ -2191,7 +2219,9 @@ function renderNovoDocumentoModal() {
     els.novoDocumentoModalTitle.textContent = isEdit ? config.titulo.replace("Novo", "Editar") : config.titulo;
   }
   if (els.novoDocumentoModalSubtitle) {
-    els.novoDocumentoModalSubtitle.textContent = config.subtitulo;
+    els.novoDocumentoModalSubtitle.textContent = isEdit && state.novoDocumentoModal.fotoUrl
+      ? "Edite os dados do pedido. A foto do pedido aparece no resumo ao lado."
+      : config.subtitulo;
   }
   if (els.novoDocumentoObservacoes) {
     els.novoDocumentoObservacoes.value = state.novoDocumentoModal.observacoes || "";
@@ -2205,6 +2235,7 @@ function renderNovoDocumentoModal() {
   renderNovoDocumentoFormaPagamentoSelect();
   renderNovoDocumentoItensGrid();
   renderNovoDocumentoPagamentoSection();
+  renderNovoDocumentoPedidoFoto();
 
   for (const button of Array.from(document.querySelectorAll("[data-documento-tipo]"))) {
     button.classList.toggle("active", button.getAttribute("data-documento-tipo") === state.novoDocumentoModal.tipo);
@@ -2329,6 +2360,7 @@ async function loadDocumentoForEdit(tipo, documentoId) {
     dataEmissao: documento.data_emissao
       ? formatDateInput(new Date(documento.data_emissao))
       : formatDateInput(new Date()),
+    fotoUrl: getPedidoFotoUrl(documento),
     pagamento: {
       ...createPagamentoDraft(),
       ...(documento.raw_payload?.pagamento || {})
