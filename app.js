@@ -4462,7 +4462,12 @@ function renderDashboardDailyCharts() {
     els.dailyPedidosResumo.textContent = formatCompactNumber(totalPedidos);
   }
 
-  const renderChart = (node, valueOf, formatValue, colorClass) => {
+  const formatCurrencyNoCents = (value) => {
+    const rounded = Math.round(Number(value || 0));
+    return `R$ ${rounded.toLocaleString("pt-BR")}`;
+  };
+
+  const renderChart = (node, valueOf, formatValue, formatInside, colorClass) => {
     if (!node) return;
     if (!rows.length) {
       node.innerHTML = '<div class="documento-empty-state">Sem dados para o mes atual.</div>';
@@ -4478,10 +4483,13 @@ function renderDashboardDailyCharts() {
         const title = row.dia
           ? `${new Date(`${row.dia}T12:00:00`).toLocaleDateString("pt-BR")}: ${formatValue(value)}`
           : formatValue(value);
+        const insideLabel = value > 0
+          ? `<span class="daily-bar-inside-label">${escapeHtml(formatInside(value))}</span>`
+          : "";
         return `
           <div class="cash-bar-wrap daily-bar-wrap${isToday ? " cash-bar-wrap-current" : ""}" title="${escapeHtml(title)}">
             <div class="cash-bar-track" aria-hidden="true">
-              <div class="cash-bar-fill ${colorClass}${isToday ? " cash-bar-fill-current" : ""}" style="height:${height}%"></div>
+              <div class="cash-bar-fill daily-bar-fill ${colorClass}${isToday ? " cash-bar-fill-current" : ""}" style="height:${height}%">${insideLabel}</div>
             </div>
             <div class="cash-bar-label">${escapeHtml(dayNum)}</div>
           </div>
@@ -4494,11 +4502,13 @@ function renderDashboardDailyCharts() {
     els.dailyFaturamentoChart,
     (row) => row.faturamento,
     (value) => moeda.format(value),
+    (value) => formatCurrencyNoCents(value),
     "cash-bar-fill-realized"
   );
   renderChart(
     els.dailyPedidosChart,
     (row) => row.pedidosCount,
+    (value) => formatCompactNumber(value),
     (value) => formatCompactNumber(value),
     "cash-bar-fill-forecast"
   );

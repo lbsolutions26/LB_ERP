@@ -540,6 +540,28 @@ h3 {
   cursor: help;
 }
 
+.daily-bar-fill {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 0.35rem;
+  overflow: hidden;
+}
+
+.daily-bar-inside-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 @media (max-width: 900px) {
   .dashboard-daily-grid {
     grid-template-columns: 1fr;
