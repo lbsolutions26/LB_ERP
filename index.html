@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712b" />
+    <link rel="stylesheet" href="styles.css?v=20260712c" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -526,32 +526,94 @@
     </div>
 
     <div id="produtoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="produtoModalTitle">
-      <div class="modal-card">
-        <div class="modal-head">
-          <h3 id="produtoModalTitle">Novo Produto</h3>
+      <div class="modal-card modal-produto-card">
+        <div class="modal-head modal-produto-head">
+          <div>
+            <h3 id="produtoModalTitle">Novo Produto</h3>
+            <p id="produtoModalSubtitle" class="modal-subtitle">Preencha os dados e confira a imagem do produto.</p>
+          </div>
           <button id="closeProdutoModalBtn" class="btn btn-ghost" type="button">Fechar</button>
         </div>
-        <form id="produtoForm">
-          <input name="nome" placeholder="Produto" required />
-          <input name="categoria" placeholder="Categoria" />
-          <input name="preco" placeholder="Preco" type="number" min="0" step="0.01" required />
-          <input name="custo" placeholder="Custo" type="number" min="0" step="0.01" />
-          <input name="margem" placeholder="Margem (%)" type="number" step="0.01" />
-          <input name="estoque" placeholder="Estoque" type="number" min="0" step="1" value="0" />
-          <input name="ponto_pedido" placeholder="Ponto de pedido" type="number" min="0" step="1" value="0" />
-          <input name="descricao" placeholder="Descricao" />
-          <input name="imagem_path" placeholder="Imagem (path/url)" />
-          <select name="controla_estoque">
-            <option value="sim">Controla estoque: Sim</option>
-            <option value="nao">Controla estoque: Nao</option>
-          </select>
-          <select name="ativo">
-            <option value="sim">Ativo: Sim</option>
-            <option value="nao">Ativo: Nao</option>
-          </select>
-          <button id="produtoSubmitBtn" type="submit" class="btn">Salvar Produto</button>
+        <form id="produtoForm" class="produto-form">
+          <div class="produto-form-layout">
+            <aside class="produto-form-media">
+              <div class="produto-form-preview" id="produtoImagePreviewWrap">
+                <img id="produtoImagePreview" class="produto-form-preview-img hidden" alt="Pré-visualização do produto" />
+                <div id="produtoImageEmpty" class="produto-form-preview-empty">
+                  <strong>Sem imagem</strong>
+                  <span>Cole a URL da imagem ao lado para visualizar</span>
+                </div>
+                <button id="produtoImageZoomBtn" class="btn btn-ghost produto-form-zoom-btn hidden" type="button">Ampliar imagem</button>
+              </div>
+              <label class="produto-form-field">
+                URL da imagem
+                <input name="imagem_path" id="produtoImagemPathInput" placeholder="https://... ou caminho do storage" />
+              </label>
+            </aside>
+
+            <div class="produto-form-fields">
+              <label class="produto-form-field produto-form-field-full">
+                Nome do produto
+                <input name="nome" placeholder="Ex.: Banco MTB GTS" required />
+              </label>
+              <label class="produto-form-field">
+                Categoria
+                <input name="categoria" placeholder="Ex.: Selim" />
+              </label>
+              <label class="produto-form-field">
+                Preço de venda
+                <input name="preco" placeholder="0,00" type="number" min="0" step="0.01" required />
+              </label>
+              <label class="produto-form-field">
+                Custo
+                <input name="custo" placeholder="0,00" type="number" min="0" step="0.01" />
+              </label>
+              <label class="produto-form-field">
+                Margem (%)
+                <input name="margem" placeholder="0" type="number" step="0.01" />
+              </label>
+              <label class="produto-form-field">
+                Estoque
+                <input name="estoque" placeholder="0" type="number" min="0" step="1" value="0" />
+              </label>
+              <label class="produto-form-field">
+                Ponto de pedido
+                <input name="ponto_pedido" placeholder="0" type="number" min="0" step="1" value="0" />
+              </label>
+              <label class="produto-form-field">
+                Controla estoque
+                <select name="controla_estoque">
+                  <option value="sim">Sim</option>
+                  <option value="nao">Nao</option>
+                </select>
+              </label>
+              <label class="produto-form-field">
+                Ativo
+                <select name="ativo">
+                  <option value="sim">Sim</option>
+                  <option value="nao">Nao</option>
+                </select>
+              </label>
+              <label class="produto-form-field produto-form-field-full">
+                Descrição
+                <textarea name="descricao" rows="3" placeholder="Detalhes do produto, observações internas..."></textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="produto-form-actions">
+            <button id="produtoSubmitBtn" type="submit" class="btn">Salvar Produto</button>
+          </div>
         </form>
       </div>
+    </div>
+
+    <div id="imageLightbox" class="image-lightbox hidden" role="dialog" aria-modal="true" aria-label="Imagem ampliada">
+      <button id="closeImageLightboxBtn" class="image-lightbox-close" type="button" aria-label="Fechar">×</button>
+      <figure class="image-lightbox-figure">
+        <img id="imageLightboxImg" alt="" />
+        <figcaption id="imageLightboxCaption"></figcaption>
+      </figure>
     </div>
 
     <div id="itensDocumentoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="itensDocumentoModalTitle">
@@ -857,6 +919,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260712b"></script>
+    <script type="module" src="app.js?v=20260712c"></script>
   </body>
 </html>

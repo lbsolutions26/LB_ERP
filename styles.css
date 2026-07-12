@@ -1183,6 +1183,8 @@ table thead input {
   padding: 0.18rem 0.6rem;
   font-size: 0.8rem;
   font-weight: 700;
+  border: 1px solid transparent;
+}
 
 @media (max-width: 720px) {
   .pedidos-toolbar {
@@ -1203,8 +1205,6 @@ table thead input {
   .pedidos-view-toggle-btn {
     flex: 1;
   }
-}
-  border: 1px solid transparent;
 }
 
 .status-chip.aberto {
@@ -1314,6 +1314,190 @@ table thead input {
 
 .modal-documento-card {
   width: min(1120px, 100%);
+}
+
+.modal-produto-card {
+  width: min(920px, 100%);
+}
+
+.modal-produto-head {
+  align-items: flex-start;
+}
+
+.produto-form {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.produto-form-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.produto-form-media,
+.produto-form-fields {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.produto-form-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.produto-form-field {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #3d372d;
+}
+
+.produto-form-field-full {
+  grid-column: 1 / -1;
+}
+
+.produto-form-field input,
+.produto-form-field select,
+.produto-form-field textarea {
+  width: 100%;
+  font-weight: 500;
+}
+
+.produto-form-preview {
+  position: relative;
+  min-height: 240px;
+  border-radius: 16px;
+  border: 1px solid #e0d5c0;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(22, 93, 89, 0.08), transparent 45%),
+    linear-gradient(180deg, #fffefb 0%, #f5efe5 100%);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 0.75rem;
+}
+
+.produto-form-preview-img {
+  width: 100%;
+  height: 240px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #fff;
+  cursor: zoom-in;
+  box-shadow: 0 8px 22px rgba(33, 32, 28, 0.08);
+}
+
+.produto-form-preview-empty {
+  display: grid;
+  gap: 0.25rem;
+  text-align: center;
+  color: var(--muted);
+  padding: 1rem;
+}
+
+.produto-form-preview-empty strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.produto-form-zoom-btn {
+  position: absolute;
+  right: 0.7rem;
+  bottom: 0.7rem;
+}
+
+.produto-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid rgba(217, 210, 196, 0.8);
+}
+
+.produto-thumb.is-clickable,
+.produto-combo-thumb.is-clickable,
+.produto-form-preview-img.is-clickable {
+  cursor: zoom-in;
+}
+
+.produto-thumb.is-clickable:hover,
+.produto-combo-thumb.is-clickable:hover {
+  outline: 2px solid rgba(22, 93, 89, 0.35);
+  outline-offset: 1px;
+}
+
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(12, 16, 20, 0.82);
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  backdrop-filter: blur(3px);
+}
+
+.image-lightbox.hidden {
+  display: none !important;
+}
+
+.image-lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.image-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.image-lightbox-figure {
+  margin: 0;
+  max-width: min(960px, 100%);
+  max-height: calc(100vh - 2.5rem);
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+}
+
+.image-lightbox-figure img {
+  max-width: 100%;
+  max-height: calc(100vh - 5.5rem);
+  object-fit: contain;
+  border-radius: 14px;
+  background: #111;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+
+.image-lightbox-figure figcaption {
+  color: #f4f1ea;
+  font-weight: 600;
+  text-align: center;
+  max-width: 60ch;
+}
+
+@media (max-width: 760px) {
+  .produto-form-layout,
+  .produto-form-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .produto-form-preview,
+  .produto-form-preview-img {
+    min-height: 200px;
+    height: 200px;
+  }
 }
 
 .documento-modal-form {

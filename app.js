@@ -196,7 +196,16 @@ const els = {
   closeProdutoModalBtn: document.getElementById("closeProdutoModalBtn"),
   produtoModal: document.getElementById("produtoModal"),
   produtoModalTitle: document.getElementById("produtoModalTitle"),
+  produtoModalSubtitle: document.getElementById("produtoModalSubtitle"),
   produtoSubmitBtn: document.getElementById("produtoSubmitBtn"),
+  produtoImagePreview: document.getElementById("produtoImagePreview"),
+  produtoImageEmpty: document.getElementById("produtoImageEmpty"),
+  produtoImageZoomBtn: document.getElementById("produtoImageZoomBtn"),
+  produtoImagemPathInput: document.getElementById("produtoImagemPathInput"),
+  imageLightbox: document.getElementById("imageLightbox"),
+  imageLightboxImg: document.getElementById("imageLightboxImg"),
+  imageLightboxCaption: document.getElementById("imageLightboxCaption"),
+  closeImageLightboxBtn: document.getElementById("closeImageLightboxBtn"),
   openPedidoModalBtn: document.getElementById("openPedidoModalBtn"),
   novoDocumentoModal: document.getElementById("novoDocumentoModal"),
   closeNovoDocumentoModalBtn: document.getElementById("closeNovoDocumentoModalBtn"),
@@ -385,10 +394,76 @@ function resolveProdutoImageUrl(imagemPath) {
 
 function renderProdutoThumbHtml(produto, className = "produto-thumb") {
   const url = resolveProdutoImageUrl(produto?.imagem_path);
+  const title = String(produto?.nome || "Produto").trim();
   if (!url) {
     return `<span class="${className} ${className}--empty" title="Sem imagem" aria-hidden="true"></span>`;
   }
-  return `<img class="${className}" src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.classList.add('is-broken')" />`;
+  return `<img
+    class="${className} is-clickable"
+    src="${escapeHtml(url)}"
+    alt="${escapeHtml(title)}"
+    title="Clique para ampliar"
+    loading="lazy"
+    decoding="async"
+    referrerpolicy="no-referrer"
+    data-image-preview="${escapeHtml(url)}"
+    data-image-title="${escapeHtml(title)}"
+    onerror="this.classList.add('is-broken'); this.removeAttribute('data-image-preview');"
+  />`;
+}
+
+function openImageLightbox(url, title = "") {
+  if (!els.imageLightbox || !els.imageLightboxImg || !url) return;
+  els.imageLightboxImg.src = url;
+  els.imageLightboxImg.alt = title || "Imagem do produto";
+  if (els.imageLightboxCaption) {
+    els.imageLightboxCaption.textContent = title || "";
+    els.imageLightboxCaption.classList.toggle("hidden", !title);
+  }
+  els.imageLightbox.classList.remove("hidden");
+}
+
+function closeImageLightbox() {
+  if (!els.imageLightbox) return;
+  els.imageLightbox.classList.add("hidden");
+  if (els.imageLightboxImg) {
+    els.imageLightboxImg.removeAttribute("src");
+    els.imageLightboxImg.alt = "";
+  }
+  if (els.imageLightboxCaption) {
+    els.imageLightboxCaption.textContent = "";
+  }
+}
+
+function updateProdutoFormImagePreview() {
+  const raw = els.produtoImagemPathInput?.value || els.produtoForm?.elements?.namedItem("imagem_path")?.value || "";
+  const url = resolveProdutoImageUrl(raw);
+  const title = els.produtoForm?.elements?.namedItem("nome")?.value || "Produto";
+
+  if (els.produtoImagePreview) {
+    if (url) {
+      els.produtoImagePreview.src = url;
+      els.produtoImagePreview.alt = title;
+      els.produtoImagePreview.classList.remove("hidden");
+      els.produtoImagePreview.classList.add("is-clickable");
+      els.produtoImagePreview.dataset.imagePreview = url;
+      els.produtoImagePreview.dataset.imageTitle = title;
+    } else {
+      els.produtoImagePreview.removeAttribute("src");
+      els.produtoImagePreview.classList.add("hidden");
+      els.produtoImagePreview.classList.remove("is-clickable");
+      delete els.produtoImagePreview.dataset.imagePreview;
+      delete els.produtoImagePreview.dataset.imageTitle;
+    }
+  }
+
+  if (els.produtoImageEmpty) {
+    els.produtoImageEmpty.classList.toggle("hidden", Boolean(url));
+  }
+  if (els.produtoImageZoomBtn) {
+    els.produtoImageZoomBtn.classList.toggle("hidden", !url);
+    els.produtoImageZoomBtn.disabled = !url;
+  }
 }
 
 function isMissingRelationError(error) {
@@ -3035,9 +3110,13 @@ function setProdutoFormMode({ editing = false, produto = null } = {}) {
     if (els.produtoModalTitle) {
       els.produtoModalTitle.textContent = "Novo Produto";
     }
+    if (els.produtoModalSubtitle) {
+      els.produtoModalSubtitle.textContent = "Cadastre o item e, se quiser, cole a URL da imagem.";
+    }
     if (els.produtoSubmitBtn) {
       els.produtoSubmitBtn.textContent = "Salvar Produto";
     }
+    updateProdutoFormImagePreview();
     return;
   }
 
@@ -3047,6 +3126,9 @@ function setProdutoFormMode({ editing = false, produto = null } = {}) {
   els.produtoForm.dataset.editId = String(produto.id);
   if (els.produtoModalTitle) {
     els.produtoModalTitle.textContent = "Editar Produto";
+  }
+  if (els.produtoModalSubtitle) {
+    els.produtoModalSubtitle.textContent = "Atualize os dados e confira a imagem do produto.";
   }
   if (els.produtoSubmitBtn) {
     els.produtoSubmitBtn.textContent = "Salvar Alteracoes";
@@ -3070,6 +3152,7 @@ function setProdutoFormMode({ editing = false, produto = null } = {}) {
   setValue("imagem_path", produto.imagem_path || "");
   setValue("ativo", produto.ativo ? "sim" : "nao");
   setValue("controla_estoque", produto.controla_estoque === false ? "nao" : "sim");
+  updateProdutoFormImagePreview();
 }
 
 function openProdutoCreateModal() {
@@ -5827,6 +5910,67 @@ function attachEvents() {
       }
     });
   }
+
+  if (els.produtoImagemPathInput) {
+    els.produtoImagemPathInput.addEventListener("input", updateProdutoFormImagePreview);
+    els.produtoImagemPathInput.addEventListener("change", updateProdutoFormImagePreview);
+  }
+
+  const produtoNomeField = els.produtoForm?.elements?.namedItem("nome");
+  if (produtoNomeField instanceof HTMLElement) {
+    produtoNomeField.addEventListener("input", updateProdutoFormImagePreview);
+  }
+
+  if (els.produtoImageZoomBtn) {
+    els.produtoImageZoomBtn.addEventListener("click", () => {
+      const url = els.produtoImagePreview?.dataset?.imagePreview || els.produtoImagePreview?.src || "";
+      const title = els.produtoForm?.elements?.namedItem("nome")?.value || "Produto";
+      if (url) openImageLightbox(url, title);
+    });
+  }
+
+  if (els.produtoImagePreview) {
+    els.produtoImagePreview.addEventListener("click", () => {
+      const url = els.produtoImagePreview.dataset.imagePreview || els.produtoImagePreview.src || "";
+      const title = els.produtoImagePreview.dataset.imageTitle
+        || els.produtoForm?.elements?.namedItem("nome")?.value
+        || "Produto";
+      if (url) openImageLightbox(url, title);
+    });
+  }
+
+  if (els.closeImageLightboxBtn) {
+    els.closeImageLightboxBtn.addEventListener("click", closeImageLightbox);
+  }
+
+  if (els.imageLightbox) {
+    els.imageLightbox.addEventListener("click", (event) => {
+      if (event.target === els.imageLightbox) closeImageLightbox();
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const preview = target.closest("[data-image-preview]");
+    if (!preview) return;
+    // No combo de produtos, zoom na miniatura sem selecionar o item.
+    if (target.closest(".produto-combo-option") && target instanceof HTMLImageElement) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    // No modal de produto o handler proprio ja cobre a preview principal.
+    if (preview.id === "produtoImagePreview") return;
+    const url = preview.getAttribute("data-image-preview") || "";
+    const title = preview.getAttribute("data-image-title") || preview.getAttribute("alt") || "Produto";
+    if (url) openImageLightbox(url, title);
+  }, true);
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && els.imageLightbox && !els.imageLightbox.classList.contains("hidden")) {
+      closeImageLightbox();
+    }
+  });
 
   if (els.closeItensDocumentoModalBtn) {
     els.closeItensDocumentoModalBtn.addEventListener("click", closeItensDocumentoModal);
