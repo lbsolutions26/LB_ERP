@@ -7099,6 +7099,8 @@ function attachEvents() {
     if (!(target instanceof HTMLElement)) return;
 
     const clienteId = target.getAttribute("data-del-cliente");
+    const clientePedidosId = target.closest("[data-view-cliente-pedidos]")?.getAttribute("data-view-cliente-pedidos")
+      || target.getAttribute("data-view-cliente-pedidos");
     const produtoEditId = target.getAttribute("data-edit-produto");
     const produtoId = target.getAttribute("data-del-produto");
     const pedidoId = target.getAttribute("data-del-pedido");
@@ -7113,6 +7115,11 @@ function attachEvents() {
     const despesaId = target.getAttribute("data-del-despesa");
 
     try {
+      // Clique no nome/linha do cliente (exceto botao Excluir)
+      if (clientePedidosId && !target.closest("[data-del-cliente]")) {
+        await openClientePedidosModal(Number(clientePedidosId));
+        return;
+      }
       if (produtoEditId) {
         openProdutoEditModal(Number(produtoEditId));
         return;
@@ -7120,6 +7127,7 @@ function attachEvents() {
       const pedidoEditId = target.getAttribute("data-edit-pedido");
       const orcamentoEditId = target.getAttribute("data-edit-orcamento");
       if (pedidoEditId) {
+        closeItensDocumentoModal();
         await openNovoDocumentoEditModal("pedido", Number(pedidoEditId));
         return;
       }
