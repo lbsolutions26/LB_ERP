@@ -4196,22 +4196,19 @@ function renderDespesasTable() {
 function renderMetrics() {
   const clientesTotal = state.clientesLoaded ? state.clientes.length : state.dashboardCounts.clientes;
   if (els.clientesCount) els.clientesCount.textContent = String(clientesTotal);
-  const pedidosTotal = state.pedidosLoaded ? state.pedidos.length : state.pedidosCountTotal;
+  const pedidosTotal = Number(state.pedidosCountTotal || 0);
   if (els.pedidosCount) els.pedidosCount.textContent = String(pedidosTotal);
   const despesasTotal = state.despesasLoaded ? state.despesas.length : state.dashboardCounts.despesas;
   if (els.despesasCount) els.despesasCount.textContent = String(despesasTotal);
 
   if (els.pedidosCount) {
-    els.pedidosCount.title = pedidosTotal >= 1000
-      ? "Pedidos carregados por paginacao para evitar truncamento em 1000 registros."
+    const carregado = Number(state.pedidosTotalCarregado || 0);
+    els.pedidosCount.title = state.pedidosLoaded && carregado > 0 && carregado < pedidosTotal
+      ? `Total no dashboard: ${pedidosTotal}. Carregados na lista de pedidos: ${carregado}.`
       : "";
   }
 
-  const faturamento = state.pedidosLoaded
-    ? state.pedidos
-        .filter((pedido) => pedido.status === "fechado")
-        .reduce((sum, pedido) => sum + Number(pedido.valor_total || 0), 0)
-    : Number(state.pedidosFaturamentoTotal || 0);
+  const faturamento = Number(state.pedidosFaturamentoTotal || 0);
   if (els.faturamentoValue) els.faturamentoValue.textContent = moeda.format(faturamento);
 
   const estoqueTotal = state.produtosLoaded ? state.produtos.length : state.dashboardCounts.produtosTotal;
