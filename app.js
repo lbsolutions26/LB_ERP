@@ -209,6 +209,7 @@ const els = {
   novoDocumentoClientePanel: document.getElementById("novoDocumentoClientePanel"),
   novoDocumentoClienteOptions: document.getElementById("novoDocumentoClienteOptions"),
   novoDocumentoStatusSelect: document.getElementById("novoDocumentoStatusSelect"),
+  novoDocumentoDataEmissao: document.getElementById("novoDocumentoDataEmissao"),
   novoDocumentoObservacoes: document.getElementById("novoDocumentoObservacoes"),
   novoDocumentoItemsGrid: document.getElementById("novoDocumentoItemsGrid"),
   novoDocumentoPagamentoSection: document.getElementById("novoDocumentoPagamentoSection"),
@@ -578,6 +579,7 @@ function createDocumentoDraft(tipo = "pedido") {
     clienteId: "",
     status: config.defaultStatus,
     observacoes: "",
+    dataEmissao: formatDateInput(new Date()),
     pagamento: createPagamentoDraft(),
     parcelasEditadas: null,
     parcelasOriginaisSnapshot: null,
@@ -1945,6 +1947,9 @@ function renderNovoDocumentoModal() {
   if (els.novoDocumentoObservacoes) {
     els.novoDocumentoObservacoes.value = state.novoDocumentoModal.observacoes || "";
   }
+  if (els.novoDocumentoDataEmissao) {
+    els.novoDocumentoDataEmissao.value = state.novoDocumentoModal.dataEmissao || formatDateInput(new Date());
+  }
 
   renderNovoDocumentoClienteSelect();
   renderNovoDocumentoStatusSelect();
@@ -2003,7 +2008,7 @@ function normalizeDocumentoItem(item) {
 async function loadDocumentoForEdit(tipo, documentoId) {
   const { data: documento, error: documentoError } = await supabaseClient
     .from("documentos_venda")
-    .select("id, cliente_id, status, observacoes, total, raw_payload")
+    .select("id, cliente_id, status, observacoes, total, raw_payload, data_emissao")
     .eq("empresa_id", state.empresaId)
     .eq("id", documentoId)
     .eq("tipo_documento", tipo)
@@ -2072,6 +2077,9 @@ async function loadDocumentoForEdit(tipo, documentoId) {
     clienteId: documento.cliente_id ? String(documento.cliente_id) : "",
     status: documento.status || "aberto",
     observacoes: documento.observacoes || "",
+    dataEmissao: documento.data_emissao
+      ? formatDateInput(new Date(documento.data_emissao))
+      : formatDateInput(new Date()),
     pagamento: {
       ...createPagamentoDraft(),
       ...(documento.raw_payload?.pagamento || {})
@@ -2209,12 +2217,17 @@ async function saveNovoDocumento(event) {
   const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
   const status = String(formData.get("status") || draft.status || "aberto");
   const observacoes = String(formData.get("observacoes") || "").trim();
+  const dataEmissaoInput = String(formData.get("data_emissao") || draft.dataEmissao || "").trim();
   const itens = getDocumentoItensPayload();
   const pagamentoState = getNovoDocumentoPagamentoState();
 
   if (!itens.length) {
     throw new Error("Adicione ao menos um item antes de salvar.");
   }
+
+  const dataEmissaoIso = dataEmissaoInput
+    ? new Date(`${dataEmissaoInput}T12:00:00`).toISOString()
+    : new Date().toISOString();
 
   const subtotal = itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
   const documentoPayload = {
@@ -2232,7 +2245,7 @@ async function saveNovoDocumento(event) {
       itens: itens.length,
       pagamento: pagamentoState
     },
-    data_emissao: new Date().toISOString()
+    data_emissao: dataEmissaoIso
   };
 
   let documentoId = draft.documentoId;

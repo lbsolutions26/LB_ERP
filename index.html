@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260711h" />
+    <link rel="stylesheet" href="styles.css?v=20260711i" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -593,6 +593,11 @@
                 <select id="novoDocumentoStatusSelect" name="status" required></select>
               </label>
 
+              <label>
+                Data de emissao
+                <input id="novoDocumentoDataEmissao" name="data_emissao" type="date" required />
+              </label>
+
               <label class="documento-observacoes-field">
                 Observacoes
                 <textarea id="novoDocumentoObservacoes" name="observacoes" rows="4" placeholder="Observacoes, instrucoes ou observacao comercial"></textarea>
@@ -829,6 +834,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260711h"></script>
+    <script type="module" src="app.js?v=20260711i"></script>
   </body>
 </html>
