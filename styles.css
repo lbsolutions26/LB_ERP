@@ -1596,11 +1596,6 @@ table thead input {
   font-size: 1.45rem;
 }
 
-.documento-add-item {
-  width: 100%;
-  justify-content: center;
-}
-
 .documento-items-panel {
   display: grid;
   gap: 0.75rem;
@@ -1738,39 +1733,98 @@ table thead input {
   font-size: 0.9rem;
 }
 
-.documento-items-grid {
+.documento-items-grid,
+.documento-items-sheet {
   display: grid;
-  gap: 0.7rem;
+  gap: 0.55rem;
+}
+
+.documento-items-sheet-inner {
+  border: 1px solid #e0d5c0;
+  border-radius: 14px;
+  overflow: visible;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(33, 32, 28, 0.04);
 }
 
 .documento-items-head-row {
   display: grid;
-  grid-template-columns: minmax(260px, 1.6fr) 90px 120px 120px 110px;
-  gap: 0.6rem;
-  padding: 0 0.45rem;
+  grid-template-columns: minmax(220px, 1.8fr) 88px 120px 120px 44px;
+  gap: 0.45rem;
+  padding: 0.55rem 0.7rem;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 0.72rem;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: linear-gradient(180deg, #f8f4ec 0%, #f1ebe0 100%);
+  border-bottom: 1px solid #e2d8c6;
 }
 
 .documento-item-row {
   display: grid;
-  grid-template-columns: minmax(260px, 1.6fr) 90px 120px 120px 110px;
-  gap: 0.6rem;
-  align-items: end;
+  grid-template-columns: minmax(220px, 1.8fr) 88px 120px 120px 44px;
+  gap: 0.45rem;
+  align-items: center;
   background: #fff;
-  border: 1px solid #e1d8c8;
-  border-radius: 14px;
-  padding: 0.85rem;
+  border: 0;
+  border-bottom: 1px solid #efe7d8;
+  border-radius: 0;
+  padding: 0.45rem 0.7rem;
+  position: relative;
+  transition: background 0.12s ease;
+}
+
+.documento-item-row:last-of-type {
+  border-bottom: 0;
+}
+
+.documento-item-row:hover {
+  background: rgba(22, 93, 89, 0.03);
+}
+
+.documento-item-row.is-blank {
+  background: linear-gradient(180deg, #fffcf7 0%, #faf6ee 100%);
+}
+
+.documento-item-row.is-blank:hover {
+  background: #f7f2e8;
+}
+
+.documento-item-row.is-blank .produto-combo-trigger {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.documento-item-row:has(.produto-combo-panel:not(.hidden)) {
+  z-index: 6;
+}
+
+.documento-item-cell--produto {
+  position: relative;
+  z-index: 1;
+}
+
+.documento-item-row:has(.produto-combo-panel:not(.hidden)) .documento-item-cell--produto {
+  z-index: 7;
 }
 
 .documento-item-cell {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.2rem;
+  min-width: 0;
 }
 
 .documento-item-cell input {
   width: 100%;
+  padding: 0.5rem 0.55rem;
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.documento-item-cell--qty input,
+.documento-item-cell--price input {
+  text-align: right;
 }
 
 .documento-item-cell--produto .produto-combo-trigger,
@@ -1778,20 +1832,67 @@ table thead input {
   width: 100%;
 }
 
+.documento-item-cell--produto .produto-combo-trigger {
+  min-height: 2.45rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+}
+
 .documento-item-total {
-  display: grid;
-  gap: 0.25rem;
-  justify-items: start;
-  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 2.45rem;
+  padding: 0 0.25rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .documento-item-total strong {
-  font-size: 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.documento-item-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .documento-item-remove {
-  align-self: center;
-  white-space: nowrap;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.documento-item-remove:hover {
+  background: #f8e8e8;
+  border-color: #e2bdbd;
+  color: var(--danger);
+}
+
+.documento-item-remove-placeholder {
+  width: 2rem;
+  height: 2rem;
+  display: inline-block;
+}
+
+.documento-items-foot-hint {
+  margin: 0;
+  padding: 0 0.15rem;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .documento-empty-state {
@@ -1870,12 +1971,14 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
-  .documento-item-row {
-    grid-template-columns: 1fr 1fr;
+  .documento-items-sheet-inner {
+    overflow-x: auto;
   }
 
-  .documento-items-head-row {
-    display: none;
+  .documento-items-head-row,
+  .documento-item-row {
+    grid-template-columns: minmax(180px, 1.6fr) 80px 110px 110px 40px;
+    min-width: 560px;
   }
 
   .documento-payment-grid {
@@ -1893,10 +1996,6 @@ textarea:focus {
   .financeiro-filters {
     grid-template-columns: 1fr;
   }
-
-  .documento-item-remove {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 640px) {
@@ -1909,13 +2008,62 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
-  .documento-item-row {
-    grid-template-columns: 1fr;
+  .documento-items-head-row {
+    display: none;
   }
 
-  .documento-item-total,
-  .documento-item-remove {
+  .documento-item-row {
+    grid-template-columns: 1fr 1fr;
+    min-width: 0;
+    gap: 0.55rem;
+    padding: 0.75rem;
+    border: 1px solid #e8dfd0;
+    border-radius: 12px;
+    margin: 0.45rem;
+    border-bottom: 1px solid #e8dfd0;
+  }
+
+  .documento-item-row + .documento-item-row {
+    margin-top: 0;
+  }
+
+  .documento-item-cell--produto {
     grid-column: 1 / -1;
+  }
+
+  .documento-item-cell::before {
+    content: attr(data-col-label);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+  }
+
+  .documento-item-total {
+    justify-content: space-between;
+    background: #f7f2e8;
+    border-radius: 8px;
+    padding: 0.45rem 0.55rem;
+  }
+
+  .documento-item-total::before {
+    content: attr(data-col-label);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+  }
+
+  .documento-item-actions {
+    justify-content: flex-end;
+  }
+
+  .documento-items-sheet-inner {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
   }
 
   .documento-payment-grid {

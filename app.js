@@ -484,7 +484,8 @@ function setNovoDocumentoProduto(rowId, produtoId) {
     item.descricao = produto.nome || item.descricao;
     item.valorUnitario = Number(produto.preco || 0);
   }
-  renderNovoDocumentoItensGrid();
+  ensureTrailingEmptyDocumentoItem();
+  renderNovoDocumentoItensGrid({ focusRowId: rowId, focusField: "quantidade" });
 }
 
 function renderNovoDocumentoProdutoCombo(item) {
@@ -571,6 +572,44 @@ function createDocumentoDraftItem(produto = null) {
     quantidade: 1,
     valorUnitario: Number(produto?.preco || 0)
   };
+}
+
+function isDocumentoItemFilled(item) {
+  return Boolean(String(item?.descricao || "").trim() || item?.produtoId);
+}
+
+/** Mantém sempre uma linha em branco no final para incluir o próximo item sem botão. */
+function ensureTrailingEmptyDocumentoItem() {
+  const items = state.novoDocumentoModal.itens;
+  if (!Array.isArray(items)) {
+    state.novoDocumentoModal.itens = [createDocumentoDraftItem()];
+    return true;
+  }
+
+  if (!items.length) {
+    items.push(createDocumentoDraftItem());
+    return true;
+  }
+
+  let changed = false;
+  while (items.length > 1) {
+    const last = items[items.length - 1];
+    const prev = items[items.length - 2];
+    if (!isDocumentoItemFilled(last) && !isDocumentoItemFilled(prev)) {
+      items.pop();
+      changed = true;
+    } else {
+      break;
+    }
+  }
+
+  const last = items[items.length - 1];
+  if (isDocumentoItemFilled(last)) {
+    items.push(createDocumentoDraftItem());
+    changed = true;
+  }
+
+  return changed;
 }
 
 function createDocumentoDraft(tipo = "pedido") {
@@ -1867,23 +1906,36 @@ function renderNovoDocumentoFormaPagamentoSelect() {
   els.novoDocumentoPagamentoForma.value = selectedId;
 }
 
-function renderNovoDocumentoItemRow(item) {
+function renderNovoDocumentoItemRow(item, options = {}) {
   const rowTotal = getNovoDocumentoItemTotal(item);
+  const filled = isDocumentoItemFilled(item);
+  const isBlank = Boolean(options.isBlank);
+  const canRemove = filled || (state.novoDocumentoModal.itens.length > 1 && !isBlank);
+  const rowClass = [
+    "documento-item-row",
+    isBlank ? "is-blank" : "",
+    filled ? "is-filled" : ""
+  ].filter(Boolean).join(" ");
+
   return `
-    <article class="documento-item-row" data-documento-item-row="${item.rowId}">
-      <div class="documento-item-cell documento-item-cell--produto">
+    <article class="${rowClass}" data-documento-item-row="${item.rowId}">
+      <div class="documento-item-cell documento-item-cell--produto" data-col-label="Produto">
         ${renderNovoDocumentoProdutoCombo(item)}
       </div>
-      <div class="documento-item-cell documento-item-cell--qty">
-        <input data-documento-item-field="quantidade" type="number" min="0.001" step="0.001" value="${escapeHtml(item.quantidade ?? 1)}" />
+      <div class="documento-item-cell documento-item-cell--qty" data-col-label="Qtd">
+        <input data-documento-item-field="quantidade" type="number" min="0.001" step="0.001" value="${escapeHtml(item.quantidade ?? 1)}" ${isBlank ? 'placeholder="1"' : ""} />
       </div>
-      <div class="documento-item-cell documento-item-cell--price">
-        <input data-documento-item-field="valorUnitario" type="number" min="0" step="0.01" value="${escapeHtml(item.valorUnitario ?? 0)}" />
+      <div class="documento-item-cell documento-item-cell--price" data-col-label="Valor unit.">
+        <input data-documento-item-field="valorUnitario" type="number" min="0" step="0.01" value="${escapeHtml(item.valorUnitario ?? 0)}" ${isBlank ? 'placeholder="0,00"' : ""} />
       </div>
-      <div class="documento-item-total">
-        <strong data-documento-item-total>${moeda.format(rowTotal)}</strong>
+      <div class="documento-item-total" data-col-label="Total">
+        <strong data-documento-item-total>${isBlank && !filled ? "—" : moeda.format(rowTotal)}</strong>
       </div>
-      <button type="button" class="btn btn-ghost documento-item-remove" data-documento-item-remove="${item.rowId}">Remover</button>
+      <div class="documento-item-actions">
+        ${canRemove
+          ? `<button type="button" class="documento-item-remove" data-documento-item-remove="${item.rowId}" title="Remover linha" aria-label="Remover linha">×</button>`
+          : `<span class="documento-item-remove-placeholder" aria-hidden="true"></span>`}
+      </div>
     </article>
   `;
 }
@@ -1914,14 +1966,14 @@ function updateNovoDocumentoResumo() {
   }
 }
 
-function renderNovoDocumentoItensGrid() {
+function renderNovoDocumentoItensGrid(options = {}) {
   if (!els.novoDocumentoItemsGrid) return;
-  if (!state.novoDocumentoModal.itens.length) {
-    state.novoDocumentoModal.itens = [createDocumentoDraftItem()];
-  }
+  ensureTrailingEmptyDocumentoItem();
 
+  const items = state.novoDocumentoModal.itens;
+  const lastIndex = items.length - 1;
   const header = `
-    <div class="documento-items-head-row">
+    <div class="documento-items-head-row" aria-hidden="true">
       <span>Produto</span>
       <span>Qtd</span>
       <span>Valor unit.</span>
@@ -1930,9 +1982,38 @@ function renderNovoDocumentoItensGrid() {
     </div>
   `;
 
-  els.novoDocumentoItemsGrid.innerHTML = header + state.novoDocumentoModal.itens.map((item) => renderNovoDocumentoItemRow(item)).join("");
+  const rowsHtml = items
+    .map((item, index) => renderNovoDocumentoItemRow(item, {
+      isBlank: index === lastIndex && !isDocumentoItemFilled(item)
+    }))
+    .join("");
+
+  els.novoDocumentoItemsGrid.innerHTML = `
+    <div class="documento-items-sheet-inner">
+      ${header}
+      ${rowsHtml}
+    </div>
+    <p class="documento-items-foot-hint">Nova linha pronta no final da grade — basta selecionar o próximo produto.</p>
+  `;
 
   updateNovoDocumentoResumo();
+
+  if (options.focusRowId) {
+    window.requestAnimationFrame(() => {
+      const row = els.novoDocumentoItemsGrid.querySelector(`[data-documento-item-row="${options.focusRowId}"]`);
+      if (!(row instanceof HTMLElement)) return;
+      if (options.focusField) {
+        const field = row.querySelector(`[data-documento-item-field="${options.focusField}"]`);
+        if (field instanceof HTMLInputElement) {
+          field.focus();
+          field.select();
+          return;
+        }
+      }
+      const trigger = row.querySelector("[data-produto-combo-trigger]");
+      if (trigger instanceof HTMLElement) trigger.focus();
+    });
+  }
 }
 
 function renderNovoDocumentoModal() {
@@ -2102,15 +2183,33 @@ function setNovoDocumentoTipo(tipo) {
 }
 
 function addNovoDocumentoItem(produto = null) {
-  state.novoDocumentoModal.itens.push(createDocumentoDraftItem(produto));
-  renderNovoDocumentoItensGrid();
+  // Se a última linha está vazia, preenche ela; senão, acrescenta.
+  const items = state.novoDocumentoModal.itens;
+  const last = items[items.length - 1];
+  if (last && !isDocumentoItemFilled(last) && produto) {
+    last.produtoId = produto?.id ? String(produto.id) : "";
+    last.descricao = produto?.nome || "";
+    last.produtoSearch = "";
+    last.quantidade = 1;
+    last.valorUnitario = Number(produto?.preco || 0);
+  } else if (last && !isDocumentoItemFilled(last) && !produto) {
+    // Já existe linha em branco — só garante e foca nela.
+  } else {
+    items.push(createDocumentoDraftItem(produto));
+  }
+  ensureTrailingEmptyDocumentoItem();
+  const focusId = produto
+    ? (items.find((item) => String(item.produtoId) === String(produto.id))?.rowId || items[items.length - 2]?.rowId)
+    : items[items.length - 1]?.rowId;
+  renderNovoDocumentoItensGrid({
+    focusRowId: focusId,
+    focusField: produto ? "quantidade" : null
+  });
 }
 
 function removeNovoDocumentoItem(rowId) {
   state.novoDocumentoModal.itens = state.novoDocumentoModal.itens.filter((item) => item.rowId !== rowId);
-  if (!state.novoDocumentoModal.itens.length) {
-    state.novoDocumentoModal.itens = [createDocumentoDraftItem()];
-  }
+  ensureTrailingEmptyDocumentoItem();
   renderNovoDocumentoItensGrid();
 }
 
@@ -5385,10 +5484,6 @@ function attachEvents() {
     });
   }
 
-  if (els.addDocumentoItemBtn) {
-    els.addDocumentoItemBtn.addEventListener("click", () => addNovoDocumentoItem());
-  }
-
   if (els.novoDocumentoForm) {
     els.novoDocumentoForm.addEventListener("submit", async (event) => {
       try {
@@ -5531,9 +5626,11 @@ function attachEvents() {
         return;
       }
 
-      const rowId = target.getAttribute("data-documento-item-remove");
-      if (!rowId) return;
-      removeNovoDocumentoItem(rowId);
+      const removeBtn = target.closest("[data-documento-item-remove]");
+      if (removeBtn) {
+        const rowId = removeBtn.getAttribute("data-documento-item-remove");
+        if (rowId) removeNovoDocumentoItem(rowId);
+      }
     });
   }
 
