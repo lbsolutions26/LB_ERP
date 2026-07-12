@@ -2015,11 +2015,21 @@ function renderNovoDocumentoFormaPagamentoSelect() {
   els.novoDocumentoPagamentoForma.value = selectedId;
 }
 
+function getDocumentoItemProduto(item) {
+  if (!item?.produtoId) return null;
+  return state.produtos.find((produto) => String(produto.id) === String(item.produtoId)) || null;
+}
+
 function renderNovoDocumentoItemRow(item, options = {}) {
   const rowTotal = getNovoDocumentoItemTotal(item);
   const filled = isDocumentoItemFilled(item);
   const isBlank = Boolean(options.isBlank);
   const canRemove = filled || (state.novoDocumentoModal.itens.length > 1 && !isBlank);
+  const produto = getDocumentoItemProduto(item);
+  const thumbProduto = produto || {
+    nome: item.descricao || "Produto",
+    imagem_path: item.imagem_path || null
+  };
   const rowClass = [
     "documento-item-row",
     isBlank ? "is-blank" : "",
@@ -2029,7 +2039,12 @@ function renderNovoDocumentoItemRow(item, options = {}) {
   return `
     <article class="${rowClass}" data-documento-item-row="${item.rowId}">
       <div class="documento-item-cell documento-item-cell--produto" data-col-label="Produto">
-        ${renderNovoDocumentoProdutoCombo(item)}
+        <div class="documento-item-produto-wrap">
+          ${renderProdutoThumbHtml(thumbProduto, "documento-item-thumb")}
+          <div class="documento-item-produto-combo">
+            ${renderNovoDocumentoProdutoCombo(item)}
+          </div>
+        </div>
       </div>
       <div class="documento-item-cell documento-item-cell--qty" data-col-label="Qtd">
         <input data-documento-item-field="quantidade" type="number" min="0.001" step="0.001" value="${escapeHtml(item.quantidade ?? 1)}" ${isBlank ? 'placeholder="1"' : ""} />
@@ -2412,12 +2427,18 @@ function handleNovoDocumentoItemChange(event) {
 
 function getDocumentoItensPayload() {
   return state.novoDocumentoModal.itens
-    .map((item) => ({
-      produtoId: item.produtoId ? Number(item.produtoId) : null,
-      descricao: String(item.descricao || "").trim(),
-      quantidade: Number(item.quantidade || 0),
-      valorUnitario: Number(item.valorUnitario || 0)
-    }))
+    .map((item) => {
+      const produto = getDocumentoItemProduto(item);
+      const imagemPath = produto?.imagem_path || item.imagem_path || null;
+      return {
+        produtoId: item.produtoId ? Number(item.produtoId) : null,
+        descricao: String(item.descricao || produto?.nome || "").trim(),
+        quantidade: Number(item.quantidade || 0),
+        valorUnitario: Number(item.valorUnitario || 0),
+        imagemPath,
+        imagemUrl: resolveProdutoImageUrl(imagemPath)
+      };
+    })
     .filter((item) => item.descricao || item.produtoId);
 }
 
@@ -2472,10 +2493,18 @@ function buildOrcamentoPdfHtml(payload) {
   const rows = itens
     .map((item, index) => {
       const total = Number(item.quantidade || 0) * Number(item.valorUnitario || 0);
+      const img = item.imagemUrl
+        ? `<img class="item-photo" src="${escapeHtml(item.imagemUrl)}" alt="" />`
+        : `<span class="item-photo item-photo-empty"></span>`;
       return `
         <tr>
           <td class="col-idx">${index + 1}</td>
-          <td class="col-desc">${escapeHtml(item.descricao || "Item")}</td>
+          <td class="col-desc">
+            <div class="item-desc-wrap">
+              ${img}
+              <span>${escapeHtml(item.descricao || "Item")}</span>
+            </div>
+          </td>
           <td class="col-num">${escapeHtml(formatQtyForPdf(item.quantidade))}</td>
           <td class="col-num">${escapeHtml(moeda.format(item.valorUnitario || 0))}</td>
           <td class="col-num">${escapeHtml(moeda.format(total))}</td>
@@ -2581,9 +2610,31 @@ function buildOrcamentoPdfHtml(payload) {
       vertical-align: top;
     }
     tbody tr:nth-child(even) td { background: #faf7f1; }
-    .col-idx { width: 36px; text-align: center; color: #6d675c; }
-    .col-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .col-desc { width: 48%; }
+    .col-idx { width: 36px; text-align: center; color: #6d675c; vertical-align: middle; }
+    .col-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; vertical-align: middle; }
+    .col-desc { width: 52%; vertical-align: middle; }
+    .item-desc-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .item-desc-wrap span {
+      line-height: 1.35;
+    }
+    .item-photo {
+      width: 48px;
+      height: 48px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid #e0d5c0;
+      background: #f4efe6;
+      flex: 0 0 auto;
+    }
+    .item-photo-empty {
+      display: inline-block;
+      background: linear-gradient(135deg, #f4efe6 0%, #e8dfd0 100%);
+    }
     .totals {
       margin-top: 14px;
       display: flex;
@@ -2732,10 +2783,26 @@ function buildOrcamentoPdfHtml(payload) {
     <p class="footer">Gerado em ${escapeHtml(geradoEm)} · Documento não fiscal · Válido para aprovação comercial</p>
   </div>
   <script>
+    function waitForImages(timeoutMs) {
+      var images = Array.prototype.slice.call(document.images || []);
+      if (!images.length) return Promise.resolve();
+      return Promise.race([
+        Promise.all(images.map(function (img) {
+          if (img.complete) return Promise.resolve();
+          return new Promise(function (resolve) {
+            img.onload = resolve;
+            img.onerror = resolve;
+          });
+        })),
+        new Promise(function (resolve) { setTimeout(resolve, timeoutMs || 2500); })
+      ]);
+    }
     window.addEventListener("load", function () {
-      setTimeout(function () {
-        try { window.focus(); window.print(); } catch (e) {}
-      }, 250);
+      waitForImages(3000).then(function () {
+        setTimeout(function () {
+          try { window.focus(); window.print(); } catch (e) {}
+        }, 200);
+      });
     });
   </script>
 </body>
