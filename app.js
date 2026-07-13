@@ -2769,6 +2769,8 @@ function openNovoDocumentoModal(tipo = "pedido") {
   state.novoDocumentoModal = createDocumentoDraft(tipo);
   renderNovoDocumentoModal();
   els.novoDocumentoModal.classList.remove("hidden");
+  // Pré-carrega gerador de PDF enquanto o usuário preenche o formulário
+  preloadHtml2Pdf();
 }
 
 async function openNovoDocumentoEditModal(tipo, documentoId) {
@@ -2779,6 +2781,7 @@ async function openNovoDocumentoEditModal(tipo, documentoId) {
   if (els.novoDocumentoModal) {
     els.novoDocumentoModal.classList.remove("hidden");
   }
+  preloadHtml2Pdf();
 }
 
 function closeNovoDocumentoModal() {
@@ -3558,6 +3561,128 @@ function getPagamentoResumoTextoParaPdf() {
   return `À vista · ${formaNome}`;
 }
 
+/** Resolve o cliente do PDF de forma robusta (lista local, label da UI ou fetch pontual). */
+async function resolveClienteForPdf() {
+  const clienteId = String(state.novoDocumentoModal.clienteId || els.novoDocumentoClienteId?.value || "").trim();
+  if (!clienteId) return null;
+
+  try {
+    await ensureClientesLoaded();
+  } catch (err) {
+    console.warn("Falha ao garantir clientes para PDF", err);
+  }
+
+  let cliente = state.clientes.find((item) => String(item.id) === clienteId) || null;
+  if (cliente?.nome) return cliente;
+
+  // Fallback: nome já exibido no seletor do modal
+  const label = String(els.novoDocumentoClienteLabel?.textContent || "").trim();
+  if (label && label !== "Selecione um cliente") {
+    cliente = {
+      id: clienteId,
+      nome: label,
+      telefone: cliente?.telefone || "",
+      email: cliente?.email || ""
+    };
+  }
+
+  // Último recurso: busca só este cliente no Supabase
+  if ((!cliente?.nome || !cliente?.telefone) && supabaseClient && state.empresaId) {
+    try {
+      const { data, error } = await supabaseClient
+        .from("clientes")
+        .select("id, nome, telefone, email")
+        .eq("empresa_id", state.empresaId)
+        .eq("id", clienteId)
+        .maybeSingle();
+      if (!error && data?.nome) {
+        cliente = data;
+        const idx = state.clientes.findIndex((item) => String(item.id) === String(data.id));
+        if (idx >= 0) state.clientes[idx] = data;
+        else state.clientes.push(data);
+      }
+    } catch (err) {
+      console.warn("Falha ao buscar cliente para PDF", err);
+    }
+  }
+
+  return cliente?.nome ? cliente : cliente;
+}
+
+/** Converte URL de imagem em data URL (evita CORS/blank no html2canvas). */
+async function imageUrlToDataUrl(url, timeoutMs = 3500) {
+  const src = String(url || "").trim();
+  if (!src) return "";
+  if (/^data:/i.test(src)) return src;
+
+  try {
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = controller
+      ? setTimeout(() => {
+          try {
+            controller.abort();
+          } catch (_) {
+            /* ignore */
+          }
+        }, timeoutMs)
+      : null;
+
+    const res = await fetch(src, {
+      mode: "cors",
+      credentials: "omit",
+      signal: controller?.signal
+    });
+    if (timer) clearTimeout(timer);
+    if (!res.ok) return "";
+    const blob = await res.blob();
+    if (!blob || !String(blob.type || "").startsWith("image/")) return "";
+
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    });
+  } catch (_) {
+    return "";
+  }
+}
+
+/** Prepara itens do PDF com miniaturas embutidas (data URL) para renderização rápida e estável. */
+async function prepareItensForPdf(itens) {
+  const list = Array.isArray(itens) ? itens : [];
+  const withImages = await Promise.all(
+    list.map(async (item) => {
+      const remoteUrl = String(item.imagemUrl || "").trim();
+      if (!remoteUrl) return { ...item, imagemUrl: "" };
+      const dataUrl = await imageUrlToDataUrl(remoteUrl);
+      return { ...item, imagemUrl: dataUrl || "" };
+    })
+  );
+  return withImages;
+}
+
+function waitForElementImages(root, timeoutMs = 2500) {
+  const images = Array.from(root?.querySelectorAll?.("img") || []);
+  if (!images.length) return Promise.resolve();
+  return Promise.race([
+    Promise.all(
+      images.map(
+        (img) =>
+          new Promise((resolve) => {
+            if (img.complete) {
+              resolve();
+              return;
+            }
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+          })
+      )
+    ),
+    new Promise((resolve) => setTimeout(resolve, timeoutMs))
+  ]);
+}
+
 function buildOrcamentoPdfHtml(payload) {
   const {
     empresaNome,
@@ -3574,21 +3699,24 @@ function buildOrcamentoPdfHtml(payload) {
     autoPrint = false
   } = payload;
   const tipoLabel = docLabel || "Orçamento";
+  const clienteNome = String(cliente?.nome || "").trim();
+  const clienteTel = String(cliente?.telefone || "").trim();
+  const clienteEmail = String(cliente?.email || "").trim();
 
-  const rows = itens
+  const rows = (itens || [])
     .map((item, index) => {
       const total = Number(item.quantidade || 0) * Number(item.valorUnitario || 0);
       const img = item.imagemUrl
-        ? `<img class="item-photo" src="${escapeHtml(item.imagemUrl)}" alt="" />`
+        ? `<img class="item-photo" src="${escapeHtml(item.imagemUrl)}" alt="" crossorigin="anonymous" />`
         : `<span class="item-photo item-photo-empty"></span>`;
       return `
         <tr>
           <td class="col-idx">${index + 1}</td>
           <td class="col-desc">
-            <div class="item-desc-wrap">
-              ${img}
-              <span>${escapeHtml(item.descricao || "Item")}</span>
-            </div>
+            <table class="item-desc-table"><tr>
+              <td class="item-photo-cell">${img}</td>
+              <td class="item-text-cell">${escapeHtml(item.descricao || "Item")}</td>
+            </tr></table>
           </td>
           <td class="col-num">${escapeHtml(formatQtyForPdf(item.quantidade))}</td>
           <td class="col-num">${escapeHtml(moeda.format(item.valorUnitario || 0))}</td>
@@ -3599,11 +3727,12 @@ function buildOrcamentoPdfHtml(payload) {
     .join("");
 
   const clienteLinhas = [
-    cliente?.nome ? `<strong>${escapeHtml(cliente.nome)}</strong>` : "<strong>Cliente não informado</strong>",
-    cliente?.telefone ? `Tel.: ${escapeHtml(cliente.telefone)}` : "",
-    cliente?.email ? `E-mail: ${escapeHtml(cliente.email)}` : ""
+    clienteNome ? `<strong>${escapeHtml(clienteNome)}</strong>` : "<strong>Cliente não informado</strong>",
+    clienteTel ? `Tel.: ${escapeHtml(clienteTel)}` : "",
+    clienteEmail ? `E-mail: ${escapeHtml(clienteEmail)}` : ""
   ].filter(Boolean).join("<br />");
 
+  // Layout com table (não flex/grid): html2canvas renderiza de forma confiável.
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -3615,21 +3744,36 @@ function buildOrcamentoPdfHtml(payload) {
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Segoe UI", Arial, sans-serif;
+      padding: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #1f1e1a;
+      background: #fff;
+      font-size: 12px;
+      line-height: 1.45;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .sheet {
+      width: 700px;
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 8px 4px 16px;
+      font-family: Arial, Helvetica, sans-serif;
       color: #1f1e1a;
       background: #fff;
       font-size: 12px;
       line-height: 1.45;
     }
-    .sheet { max-width: 190mm; margin: 0 auto; }
     .header {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: flex-start;
+      width: 100%;
+      border-collapse: collapse;
       border-bottom: 3px solid #165d59;
-      padding-bottom: 14px;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
+      padding-bottom: 0;
+    }
+    .header td {
+      vertical-align: top;
+      padding: 0 0 12px 0;
     }
     .brand h1 {
       margin: 0;
@@ -3640,7 +3784,7 @@ function buildOrcamentoPdfHtml(payload) {
     .brand p { margin: 4px 0 0; color: #5f5a50; }
     .doc-meta {
       text-align: right;
-      min-width: 180px;
+      width: 200px;
     }
     .badge {
       display: inline-block;
@@ -3654,19 +3798,24 @@ function buildOrcamentoPdfHtml(payload) {
       border-radius: 999px;
       margin-bottom: 8px;
     }
-    .doc-meta strong { display: block; font-size: 14px; margin-top: 2px; }
+    .doc-meta strong { display: block; font-size: 14px; margin-top: 2px; color: #1f1e1a; }
     .doc-meta span { color: #5f5a50; }
     .grid-2 {
-      display: grid;
-      grid-template-columns: 1.2fr 1fr;
-      gap: 14px;
-      margin-bottom: 18px;
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 12px 0;
+      margin: 0 -12px 16px;
+    }
+    .grid-2 td {
+      width: 50%;
+      vertical-align: top;
     }
     .card {
       border: 1px solid #ddd2c0;
       border-radius: 10px;
       padding: 12px 14px;
       background: #fbf8f2;
+      color: #1f1e1a;
     }
     .card h2 {
       margin: 0 0 8px;
@@ -3675,12 +3824,13 @@ function buildOrcamentoPdfHtml(payload) {
       letter-spacing: 0.05em;
       color: #165d59;
     }
-    table {
+    .card .card-body { color: #1f1e1a; }
+    table.items {
       width: 100%;
       border-collapse: collapse;
       margin-top: 4px;
     }
-    thead th {
+    table.items thead th {
       background: #165d59;
       color: #fff;
       text-align: left;
@@ -3689,24 +3839,21 @@ function buildOrcamentoPdfHtml(payload) {
       text-transform: uppercase;
       letter-spacing: 0.03em;
     }
-    tbody td {
+    table.items tbody td {
       padding: 9px 8px;
       border-bottom: 1px solid #e8dfd0;
-      vertical-align: top;
+      vertical-align: middle;
+      color: #1f1e1a;
+      background: #fff;
     }
-    tbody tr:nth-child(even) td { background: #faf7f1; }
-    .col-idx { width: 36px; text-align: center; color: #6d675c; vertical-align: middle; }
-    .col-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; vertical-align: middle; }
-    .col-desc { width: 52%; vertical-align: middle; }
-    .item-desc-wrap {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-    }
-    .item-desc-wrap span {
-      line-height: 1.35;
-    }
+    table.items tbody tr:nth-child(even) td { background: #faf7f1; }
+    .col-idx { width: 36px; text-align: center; color: #6d675c; }
+    .col-num { text-align: right; white-space: nowrap; }
+    .col-desc { width: 52%; }
+    .item-desc-table { width: 100%; border-collapse: collapse; }
+    .item-desc-table td { border: 0 !important; padding: 0 !important; background: transparent !important; vertical-align: middle; }
+    .item-photo-cell { width: 56px; }
+    .item-text-cell { padding-left: 10px !important; line-height: 1.35; color: #1f1e1a; }
     .item-photo {
       width: 48px;
       height: 48px;
@@ -3714,36 +3861,45 @@ function buildOrcamentoPdfHtml(payload) {
       border-radius: 8px;
       border: 1px solid #e0d5c0;
       background: #f4efe6;
-      flex: 0 0 auto;
+      display: block;
     }
     .item-photo-empty {
-      display: inline-block;
-      background: linear-gradient(135deg, #f4efe6 0%, #e8dfd0 100%);
+      display: block;
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      border: 1px solid #e0d5c0;
+      background: #f4efe6;
     }
     .totals {
       margin-top: 14px;
-      display: flex;
-      justify-content: flex-end;
+      text-align: right;
     }
     .totals-box {
+      display: inline-block;
       min-width: 240px;
       border: 1px solid #d7cdb9;
       border-radius: 10px;
       overflow: hidden;
+      text-align: left;
     }
     .totals-box .row {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .totals-box .row td {
       padding: 10px 14px;
       background: #fff;
+      color: #1f1e1a;
     }
-    .totals-box .row.total {
+    .totals-box .row.total td {
       background: #165d59;
       color: #fff;
       font-size: 15px;
       font-weight: 700;
     }
+    .totals-box .row .lbl { text-align: left; }
+    .totals-box .row .val { text-align: right; white-space: nowrap; }
     .notes {
       margin-top: 18px;
       border-top: 1px dashed #d7cdb9;
@@ -3758,11 +3914,12 @@ function buildOrcamentoPdfHtml(payload) {
     }
     .notes p { margin: 0; white-space: pre-wrap; color: #3b372f; }
     .approval {
-      margin-top: 28px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 28px;
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 28px 0;
+      margin: 28px -28px 0;
     }
+    .approval td { width: 50%; vertical-align: top; }
     .sign {
       border-top: 1px solid #9f9687;
       padding-top: 8px;
@@ -3781,9 +3938,7 @@ function buildOrcamentoPdfHtml(payload) {
       .no-print { display: none !important; }
     }
     .toolbar {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
+      text-align: right;
       margin-bottom: 12px;
     }
     .toolbar button {
@@ -3792,6 +3947,7 @@ function buildOrcamentoPdfHtml(payload) {
       padding: 8px 12px;
       font-weight: 700;
       cursor: pointer;
+      margin-left: 8px;
     }
     .toolbar .primary { background: #165d59; color: #fff; }
     .toolbar .ghost { background: #ece7de; color: #1f1e1a; }
@@ -3804,38 +3960,46 @@ function buildOrcamentoPdfHtml(payload) {
       <button class="primary" type="button" onclick="window.print()">Imprimir / Salvar PDF</button>
     </div>
 
-    <header class="header">
-      <div class="brand">
-        <h1>${escapeHtml(empresaNome || "Empresa")}</h1>
-        <p>${escapeHtml(tipoLabel)} para o cliente</p>
-      </div>
-      <div class="doc-meta">
-        <div class="badge">${escapeHtml(tipoLabel)}</div>
-        <span>Referência</span>
-        <strong>${escapeHtml(numeroRef)}</strong>
-        <span style="display:block;margin-top:8px;">Emissão</span>
-        <strong>${escapeHtml(dataEmissaoLabel)}</strong>
-      </div>
-    </header>
+    <table class="header">
+      <tr>
+        <td class="brand">
+          <h1>${escapeHtml(empresaNome || "Empresa")}</h1>
+          <p>${escapeHtml(tipoLabel)} para o cliente</p>
+        </td>
+        <td class="doc-meta">
+          <div class="badge">${escapeHtml(tipoLabel)}</div>
+          <span>Referência</span>
+          <strong>${escapeHtml(numeroRef)}</strong>
+          <span style="display:block;margin-top:8px;">Emissão</span>
+          <strong>${escapeHtml(dataEmissaoLabel)}</strong>
+        </td>
+      </tr>
+    </table>
 
-    <section class="grid-2">
-      <div class="card">
-        <h2>Cliente</h2>
-        <div>${clienteLinhas}</div>
-      </div>
-      <div class="card">
-        <h2>Condições</h2>
-        <div>
-          ${pagamentoTexto ? escapeHtml(pagamentoTexto) : "Condições comerciais a combinar."}
-          <br /><span style="color:#5f5a50;">Documento gerado para análise e aprovação.</span>
-        </div>
-      </div>
-    </section>
+    <table class="grid-2">
+      <tr>
+        <td>
+          <div class="card">
+            <h2>Cliente</h2>
+            <div class="card-body">${clienteLinhas}</div>
+          </div>
+        </td>
+        <td>
+          <div class="card">
+            <h2>Condições</h2>
+            <div class="card-body">
+              ${pagamentoTexto ? escapeHtml(pagamentoTexto) : "Condições comerciais a combinar."}
+              <br /><span style="color:#5f5a50;">Documento gerado para análise e aprovação.</span>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </table>
 
     ${bicicleta && (bicicleta.marca || bicicleta.modelo || bicicleta.tamanhoAro || bicicleta.cor || bicicleta.acessorios)
-      ? `<section class="card" style="margin-bottom:14px;">
+      ? `<div class="card" style="margin-bottom:14px;">
           <h2>Bicicleta</h2>
-          <div>
+          <div class="card-body">
             ${[
               bicicleta.marca ? `<strong>Marca:</strong> ${escapeHtml(bicicleta.marca)}` : "",
               bicicleta.modelo ? `<strong>Modelo:</strong> ${escapeHtml(bicicleta.modelo)}` : "",
@@ -3844,10 +4008,10 @@ function buildOrcamentoPdfHtml(payload) {
               bicicleta.acessorios ? `<strong>Acessórios:</strong> ${escapeHtml(bicicleta.acessorios)}` : ""
             ].filter(Boolean).join("<br />")}
           </div>
-        </section>`
+        </div>`
       : ""}
 
-    <table>
+    <table class="items">
       <thead>
         <tr>
           <th>#</th>
@@ -3864,10 +4028,12 @@ function buildOrcamentoPdfHtml(payload) {
 
     <div class="totals">
       <div class="totals-box">
-        <div class="row total">
-          <span>Total</span>
-          <span>${escapeHtml(moeda.format(subtotal || 0))}</span>
-        </div>
+        <table class="row total">
+          <tr>
+            <td class="lbl">Total</td>
+            <td class="val">${escapeHtml(moeda.format(subtotal || 0))}</td>
+          </tr>
+        </table>
       </div>
     </div>
 
@@ -3875,10 +4041,12 @@ function buildOrcamentoPdfHtml(payload) {
       ? `<section class="notes"><h3>Observações</h3><p>${escapeHtml(observacoes)}</p></section>`
       : ""}
 
-    <section class="approval">
-      <div class="sign">Assinatura do cliente<br />Data: ____/____/________</div>
-      <div class="sign">Assinatura da empresa<br />${escapeHtml(empresaNome || "")}</div>
-    </section>
+    <table class="approval">
+      <tr>
+        <td><div class="sign">Assinatura do cliente<br />Data: ____/____/________</div></td>
+        <td><div class="sign">Assinatura da empresa<br />${escapeHtml(empresaNome || "")}</div></td>
+      </tr>
+    </table>
 
     <p class="footer">Gerado em ${escapeHtml(geradoEm)} · Documento não fiscal · Válido para aprovação comercial</p>
   </div>
@@ -4055,11 +4223,22 @@ function openPdfViewerModal({ blob, fileName, title, shareText }) {
   return true;
 }
 
+let html2pdfLoadPromise = null;
+
 async function ensureHtml2PdfLoaded() {
   if (typeof window.html2pdf === "function") return window.html2pdf;
-  await new Promise((resolve, reject) => {
+  if (html2pdfLoadPromise) {
+    await html2pdfLoadPromise;
+    if (typeof window.html2pdf === "function") return window.html2pdf;
+  }
+
+  html2pdfLoadPromise = new Promise((resolve, reject) => {
     const existing = document.querySelector('script[data-html2pdf="1"]');
     if (existing) {
+      if (typeof window.html2pdf === "function") {
+        resolve();
+        return;
+      }
       existing.addEventListener("load", () => resolve(), { once: true });
       existing.addEventListener("error", () => reject(new Error("Falha ao carregar gerador de PDF")), { once: true });
       return;
@@ -4072,10 +4251,26 @@ async function ensureHtml2PdfLoaded() {
     script.onerror = () => reject(new Error("Falha ao carregar gerador de PDF"));
     document.head.appendChild(script);
   });
+
+  try {
+    await html2pdfLoadPromise;
+  } catch (err) {
+    html2pdfLoadPromise = null;
+    throw err;
+  }
+
   if (typeof window.html2pdf !== "function") {
+    html2pdfLoadPromise = null;
     throw new Error("Gerador de PDF indisponível");
   }
   return window.html2pdf;
+}
+
+/** Pré-carrega o gerador de PDF em background (ex.: ao abrir o modal). */
+function preloadHtml2Pdf() {
+  ensureHtml2PdfLoaded().catch(() => {
+    /* silencioso: gera sob demanda se falhar */
+  });
 }
 
 /**
@@ -4085,58 +4280,11 @@ async function ensureHtml2PdfLoaded() {
 async function generateDocumentoOrcamentoPdf() {
   syncNovoDocumentoDraftFromForm();
 
-  const itens = getDocumentoItensPayload();
-  if (!itens.length) {
+  const itensRaw = getDocumentoItensPayload();
+  if (!itensRaw.length) {
     showToast("Adicione ao menos um item antes de gerar o PDF.", "error");
     return;
   }
-
-  const cliente = state.clientes.find(
-    (item) => String(item.id) === String(state.novoDocumentoModal.clienteId)
-  );
-  if (!cliente) {
-    showToast("Selecione o cliente antes de gerar o PDF.", "error");
-    return;
-  }
-
-  const dataEmissao = state.novoDocumentoModal.dataEmissao || formatDateInput(new Date());
-  const dataEmissaoDate = parseDateInput(dataEmissao) || new Date();
-  const dataEmissaoLabel = dataEmissaoDate.toLocaleDateString("pt-BR");
-  const subtotal = itens.reduce(
-    (sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0),
-    0
-  );
-  const docId = state.novoDocumentoModal.documentoId;
-  const isPedido = state.novoDocumentoModal.tipo === "pedido";
-  const numeroRef = docId
-    ? `${isPedido ? "PED" : "ORC"}-${String(docId).padStart(6, "0")}`
-    : `${isPedido ? "PED" : "ORC"}-RASCUNHO-${dataEmissaoDate.toISOString().slice(0, 10).replace(/-/g, "")}`;
-  const clienteSlug = String(cliente.nome || "cliente")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40) || "cliente";
-  const fileTitle = `${isPedido ? "Pedido" : "Orcamento"}-${clienteSlug}-${dataEmissaoLabel.replace(/\//g, "-")}`;
-  const fileName = `${fileTitle}.pdf`;
-  const shareText = `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef} — ${cliente.nome || ""}`.trim();
-
-  const bicicleta = createBicicletaDraft(state.novoDocumentoModal.bicicleta);
-  const html = buildOrcamentoPdfHtml({
-    empresaNome: state.empresaNome || saasName || "Empresa",
-    cliente,
-    dataEmissaoLabel,
-    numeroRef,
-    itens,
-    subtotal,
-    observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
-    pagamentoTexto: getPagamentoResumoTextoParaPdf(),
-    bicicleta: isPedido && isBicicletaFilled(bicicleta) ? bicicleta : null,
-    docLabel: isPedido ? "Pedido" : "Orçamento",
-    geradoEm: new Date().toLocaleString("pt-BR"),
-    fileTitle,
-    autoPrint: false
-  });
 
   const btn = els.novoDocumentoPdfBtn;
   const btnLabel = btn?.textContent || "Abrir PDF";
@@ -4145,63 +4293,63 @@ async function generateDocumentoOrcamentoPdf() {
     btn.textContent = "Gerando PDF...";
   }
 
+  let cliente = null;
+  let dataEmissaoLabel = "";
+  let numeroRef = "";
+  let fileTitle = "";
+  let fileName = "";
+  let shareText = "";
+  let subtotal = 0;
+  let isPedido = false;
+  let bicicleta = null;
+  let itens = itensRaw;
+  let pdfPayload = null;
+
   try {
-    await ensureHtml2PdfLoaded();
+    // Biblioteca + cliente em paralelo para reduzir espera percebida
+    const [, resolvedCliente] = await Promise.all([
+      ensureHtml2PdfLoaded(),
+      resolveClienteForPdf()
+    ]);
 
-    const parser = new DOMParser();
-    const parsed = parser.parseFromString(html, "text/html");
-    const sheet = parsed.querySelector(".sheet");
-    if (!sheet) throw new Error("Falha ao montar o documento");
-
-    // Host offscreen com estilos do HTML gerado
-    const host = document.createElement("div");
-    host.setAttribute("aria-hidden", "true");
-    host.style.cssText = "position:fixed;left:-10000px;top:0;width:210mm;background:#fff;pointer-events:none;";
-    const styleNodes = parsed.querySelectorAll("style");
-    styleNodes.forEach((st) => host.appendChild(st.cloneNode(true)));
-    host.appendChild(sheet.cloneNode(true));
-    // Remove toolbar da conversão
-    host.querySelectorAll(".no-print").forEach((el) => el.remove());
-    document.body.appendChild(host);
-
-    try {
-      const target = host.querySelector(".sheet") || host;
-      const opt = {
-        margin: [8, 8, 8, 8],
-        filename: fileName,
-        image: { type: "jpeg", quality: 0.96 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-          backgroundColor: "#ffffff"
-        },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["css", "legacy"] }
-      };
-
-      const blob = await window
-        .html2pdf()
-        .set(opt)
-        .from(target)
-        .outputPdf("blob");
-
-      if (!(blob instanceof Blob)) throw new Error("PDF inválido");
-
-      // Abre na hora — sem forçar "Salvar em..."
-      openPdfViewerModal({
-        blob,
-        fileName,
-        title: `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef}`,
-        shareText
-      });
-    } finally {
-      host.remove();
+    cliente = resolvedCliente;
+    if (!cliente || !String(state.novoDocumentoModal.clienteId || "").trim()) {
+      showToast("Selecione o cliente antes de gerar o PDF.", "error");
+      return;
     }
-  } catch (error) {
-    console.warn("Falha ao gerar PDF nativo, usando prévia HTML", error);
-    const htmlFallback = buildOrcamentoPdfHtml({
+    if (!String(cliente.nome || "").trim()) {
+      showToast("Cliente sem nome cadastrado. Atualize o cadastro e tente de novo.", "error");
+      return;
+    }
+
+    // Miniaturas embutidas (data URL) — evita PDF em branco por CORS e acelera o canvas
+    if (btn) btn.textContent = "Preparando...";
+    itens = await prepareItensForPdf(itensRaw);
+
+    const dataEmissao = state.novoDocumentoModal.dataEmissao || formatDateInput(new Date());
+    const dataEmissaoDate = parseDateInput(dataEmissao) || new Date();
+    dataEmissaoLabel = dataEmissaoDate.toLocaleDateString("pt-BR");
+    subtotal = itens.reduce(
+      (sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0),
+      0
+    );
+    const docId = state.novoDocumentoModal.documentoId;
+    isPedido = state.novoDocumentoModal.tipo === "pedido";
+    numeroRef = docId
+      ? `${isPedido ? "PED" : "ORC"}-${String(docId).padStart(6, "0")}`
+      : `${isPedido ? "PED" : "ORC"}-RASCUNHO-${dataEmissaoDate.toISOString().slice(0, 10).replace(/-/g, "")}`;
+    const clienteSlug = String(cliente.nome || "cliente")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40) || "cliente";
+    fileTitle = `${isPedido ? "Pedido" : "Orcamento"}-${clienteSlug}-${dataEmissaoLabel.replace(/\//g, "-")}`;
+    fileName = `${fileTitle}.pdf`;
+    shareText = `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef} — ${cliente.nome || ""}`.trim();
+    bicicleta = createBicicletaDraft(state.novoDocumentoModal.bicicleta);
+
+    pdfPayload = {
       empresaNome: state.empresaNome || saasName || "Empresa",
       cliente,
       dataEmissaoLabel,
@@ -4215,9 +4363,113 @@ async function generateDocumentoOrcamentoPdf() {
       geradoEm: new Date().toLocaleString("pt-BR"),
       fileTitle,
       autoPrint: false
-    });
-    if (openOrcamentoHtmlPreview(htmlFallback)) {
-      showToast("Prévia aberta. No celular use Compartilhar do navegador se precisar enviar.");
+    };
+
+    const html = buildOrcamentoPdfHtml(pdfPayload);
+    const parser = new DOMParser();
+    const parsed = parser.parseFromString(html, "text/html");
+    const sheet = parsed.querySelector(".sheet");
+    if (!sheet) throw new Error("Falha ao montar o documento");
+
+    // Host quase invisível MAS no viewport (left:-10000px gera PDF em branco no html2canvas)
+    const host = document.createElement("div");
+    host.setAttribute("aria-hidden", "true");
+    host.style.cssText = [
+      "position:fixed",
+      "left:0",
+      "top:0",
+      "width:794px",
+      "opacity:0.01",
+      "pointer-events:none",
+      "z-index:-1",
+      "background:#fff",
+      "overflow:hidden"
+    ].join(";");
+    const styleNodes = parsed.querySelectorAll("style");
+    styleNodes.forEach((st) => host.appendChild(st.cloneNode(true)));
+    host.appendChild(sheet.cloneNode(true));
+    host.querySelectorAll(".no-print").forEach((el) => el.remove());
+    document.body.appendChild(host);
+
+    try {
+      const target = host.querySelector(".sheet") || host;
+      await waitForElementImages(target, 2000);
+
+      // Escala menor no celular = bem mais rápido, ainda legível em A4
+      const isMobile = window.matchMedia?.("(max-width: 900px)")?.matches
+        || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+      const scale = isMobile ? 1.25 : 1.5;
+
+      if (btn) btn.textContent = "Gerando PDF...";
+
+      const opt = {
+        margin: [8, 8, 8, 8],
+        filename: fileName,
+        image: { type: "jpeg", quality: 0.92 },
+        html2canvas: {
+          scale,
+          useCORS: true,
+          allowTaint: false,
+          logging: false,
+          backgroundColor: "#ffffff",
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: 794,
+          onclone(clonedDoc) {
+            const clonedSheet = clonedDoc.querySelector(".sheet");
+            if (clonedSheet) {
+              clonedSheet.style.width = "700px";
+              clonedSheet.style.color = "#1f1e1a";
+              clonedSheet.style.background = "#fff";
+              clonedSheet.style.fontFamily = "Arial, Helvetica, sans-serif";
+            }
+          }
+        },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["css", "legacy"] }
+      };
+
+      const blob = await window
+        .html2pdf()
+        .set(opt)
+        .from(target)
+        .outputPdf("blob");
+
+      if (!(blob instanceof Blob) || blob.size < 500) {
+        throw new Error("PDF gerado está vazio ou inválido");
+      }
+
+      openPdfViewerModal({
+        blob,
+        fileName,
+        title: `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef}`,
+        shareText
+      });
+    } finally {
+      host.remove();
+    }
+  } catch (error) {
+    console.warn("Falha ao gerar PDF nativo, usando prévia HTML", error);
+    const fallbackPayload = pdfPayload || {
+      empresaNome: state.empresaNome || saasName || "Empresa",
+      cliente: cliente || { nome: els.novoDocumentoClienteLabel?.textContent || "Cliente" },
+      dataEmissaoLabel: dataEmissaoLabel || new Date().toLocaleDateString("pt-BR"),
+      numeroRef: numeroRef || "DOC",
+      itens,
+      subtotal: subtotal || itens.reduce(
+        (sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0),
+        0
+      ),
+      observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
+      pagamentoTexto: getPagamentoResumoTextoParaPdf(),
+      bicicleta: isPedido && bicicleta && isBicicletaFilled(bicicleta) ? bicicleta : null,
+      docLabel: state.novoDocumentoModal.tipo === "pedido" ? "Pedido" : "Orçamento",
+      geradoEm: new Date().toLocaleString("pt-BR"),
+      fileTitle: fileTitle || "Documento",
+      autoPrint: false
+    };
+    if (openOrcamentoHtmlPreview(buildOrcamentoPdfHtml(fallbackPayload))) {
+      showToast("Prévia aberta com os dados do documento. Use Imprimir/Salvar PDF se precisar.");
     }
   } finally {
     if (btn) {
