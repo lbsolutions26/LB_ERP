@@ -68,6 +68,7 @@ export function installComprasModule(ctx) {
         notas: [],
         contas: [],
         parcelas: [],
+        pagamentos: [],
         filters: {
           notaBusca: "",
           notaStatus: "",
@@ -85,6 +86,7 @@ export function installComprasModule(ctx) {
     if (!s.compras.filters.despesasCols) {
       s.compras.filters.despesasCols = defaultDespesasColFilters();
     }
+    if (!Array.isArray(s.compras.pagamentos)) s.compras.pagamentos = [];
     if (!s.notaEntradaModal) {
       s.notaEntradaModal = createNotaDraft();
     }
@@ -235,23 +237,32 @@ export function installComprasModule(ctx) {
     let vencidas = 0;
     let semana = 0;
     let pagasMes = 0;
+
+    // Em aberto / vencidas / a vencer: usam VENCIMENTO (compromissos ainda em aberto)
     for (const r of rows) {
       const saldo = Math.max(0, Number(r.valor_parcela || 0) - Number(r.valor_pago || 0));
       if (r.status !== "pago" && r.status !== "cancelado") {
         aberto += saldo;
         if (r.vencimento) {
-          const v = new Date(r.vencimento);
-          if (v < today) vencidas += 1;
-          else if (v <= week) semana += saldo;
-        }
-      }
-      if (r.status === "pago" && r.vencimento) {
-        const v = new Date(r.vencimento);
-        if (v.getMonth() === now.getMonth() && v.getFullYear() === now.getFullYear()) {
-          pagasMes += Number(r.valor_pago || r.valor_parcela || 0);
+          const v = new Date(`${String(r.vencimento).slice(0, 10)}T12:00:00`);
+          if (!Number.isNaN(v.getTime())) {
+            if (v < today) vencidas += 1;
+            else if (v <= week) semana += saldo;
+          }
         }
       }
     }
+
+    // Pagas no mês: usa DATA REAL DE PAGAMENTO (tabela pagamentos), não vencimento/emissão
+    for (const p of state().compras.pagamentos || []) {
+      if (!p?.data_pagamento) continue;
+      const d = new Date(`${String(p.data_pagamento).slice(0, 10)}T12:00:00`);
+      if (Number.isNaN(d.getTime())) continue;
+      if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+        pagasMes += Number(p.valor || 0);
+      }
+    }
+
     if (e.despesasKpiAberto) e.despesasKpiAberto.textContent = moeda.format(aberto);
     if (e.despesasKpiVencidas) e.despesasKpiVencidas.textContent = String(vencidas);
     if (e.despesasKpiSemana) e.despesasKpiSemana.textContent = moeda.format(semana);
@@ -545,6 +556,7 @@ export function installComprasModule(ctx) {
     const contaIds = (contas || []).map((c) => c.id);
     if (!contaIds.length) {
       state().compras.parcelas = [];
+      state().compras.pagamentos = [];
       return;
     }
 
@@ -564,6 +576,25 @@ export function installComprasModule(ctx) {
       parcelas.push(...(data || []));
     }
     state().compras.parcelas = parcelas;
+
+    // Baixas reais (data_pagamento) — usadas no KPI "Pagas no mês"
+    const parcelaIds = parcelas.map((p) => p.id).filter(Boolean);
+    const pagamentos = [];
+    for (let i = 0; i < parcelaIds.length; i += chunk) {
+      const slice = parcelaIds.slice(i, i + chunk);
+      const { data, error: payErr } = await sb()
+        .from("pagamentos")
+        .select("id, parcela_id, data_pagamento, valor")
+        .eq("empresa_id", state().empresaId)
+        .in("parcela_id", slice);
+      if (payErr) {
+        // tabela ausente em bases antigas: segue sem quebrar a tela
+        if (String(payErr.message || "").toLowerCase().includes("does not exist")) break;
+        throw payErr;
+      }
+      pagamentos.push(...(data || []));
+    }
+    state().compras.pagamentos = pagamentos;
   }
 
   async function ensureComprasLoaded(options = {}) {
