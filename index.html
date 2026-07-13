@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712s" />
+    <link rel="stylesheet" href="styles.css?v=20260712t" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -56,6 +56,7 @@
         <button class="tab" data-section="despesas">Contas a Pagar</button>
         <button class="tab" data-section="produtos">Produtos</button>
         <button class="tab" data-section="estoque">Estoque</button>
+        <button class="tab" data-section="calendario">Calendário</button>
         <button id="ownerUsersTab" class="tab hidden" data-section="usuarios">Usuarios</button>
         <button class="tab" data-section="relatorios">Relatorios</button>
         <button id="adminTab" class="tab hidden" data-section="admin">Admin SaaS</button>
@@ -806,6 +807,93 @@
                 <tbody id="estoqueInventarioTable"></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <section id="section-calendario" class="card app-section hidden">
+          <div class="section-head">
+            <div>
+              <h2>Calendário</h2>
+              <p id="calendarioSectionSubtitle" class="section-subtitle">
+                Horários padrão de funcionamento e feriados / dias de fechamento.
+              </p>
+            </div>
+            <div class="pedidos-toolbar">
+              <div class="pedidos-view-toggle" role="tablist" aria-label="Visões do calendário">
+                <button type="button" class="pedidos-view-toggle-btn active" data-calendario-view="horarios">Horários</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-calendario-view="feriados">Feriados</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-calendario-view="agenda">Agenda</button>
+              </div>
+              <button id="openFeriadoModalBtn" class="btn" type="button">Novo feriado</button>
+            </div>
+          </div>
+
+          <div class="metric-grid relatorio-grid estoque-kpi-grid">
+            <article><span>Dias abertos na semana</span><strong id="calendarioKpiDiasAbertos">0/7</strong></article>
+            <article><span>Feriados no ano / recorrentes</span><strong id="calendarioKpiFeriadosAno">0</strong></article>
+            <article><span>Fechamentos futuros</span><strong id="calendarioKpiProximos">0</strong></article>
+          </div>
+
+          <div id="calendarioHorariosView" class="calendario-view">
+            <p class="section-subtitle estoque-view-hint">
+              Marque os dias em que a empresa abre e defina o expediente. O 2º turno é opcional (ex.: 08–12 e 13–18).
+            </p>
+            <div class="table-wrap">
+              <table class="calendario-horarios-table">
+                <thead>
+                  <tr>
+                    <th>Dia</th>
+                    <th>Status</th>
+                    <th>Início</th>
+                    <th>Fim</th>
+                    <th>2º início</th>
+                    <th>2º fim</th>
+                    <th>Obs.</th>
+                  </tr>
+                </thead>
+                <tbody id="calendarioHorariosTable"></tbody>
+              </table>
+            </div>
+            <div class="documento-modal-footer" style="margin-top: 1rem; justify-content: flex-end">
+              <button id="calendarioSaveHorariosBtn" type="button" class="btn">Salvar horários</button>
+            </div>
+          </div>
+
+          <div id="calendarioFeriadosView" class="calendario-view hidden">
+            <div class="estoque-filters">
+              <label>Buscar<input id="calendarioFeriadoBusca" type="search" placeholder="Nome, data ou tipo" /></label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Nome</th>
+                    <th>Tipo</th>
+                    <th>Horário</th>
+                    <th>Recorrente</th>
+                    <th>Obs.</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="calendarioFeriadosTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="calendarioAgendaView" class="calendario-view hidden">
+            <div class="calendario-agenda-head">
+              <button id="calendarioAgendaPrevBtn" type="button" class="btn btn-ghost">←</button>
+              <h3 id="calendarioAgendaTitulo">Mês</h3>
+              <button id="calendarioAgendaNextBtn" type="button" class="btn btn-ghost">→</button>
+            </div>
+            <div class="calendario-legend">
+              <span class="calendario-legend-item calendario-day--aberto">Aberto</span>
+              <span class="calendario-legend-item calendario-day--fechado">Fechado</span>
+              <span class="calendario-legend-item calendario-day--feriado">Feriado</span>
+              <span class="calendario-legend-item calendario-day--parcial">Parcial</span>
+            </div>
+            <div id="calendarioAgendaGrid" class="calendario-agenda-grid"></div>
           </div>
         </section>
 
@@ -1565,6 +1653,46 @@
       </div>
     </div>
 
+    <div id="feriadoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="feriadoModalTitle">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="feriadoModalTitle">Novo feriado / fechamento</h3>
+            <p class="modal-subtitle">Dias em que a empresa não abre ou opera em horário especial.</p>
+          </div>
+          <button id="closeFeriadoModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+        <form id="feriadoForm" class="estoque-movimento-form">
+          <label>Data<input name="data" type="date" required /></label>
+          <label>Nome<input name="nome" required placeholder="Ex.: Natal, Recesso de Carnaval" /></label>
+          <label>Tipo
+            <select name="tipo">
+              <option value="feriado">Feriado</option>
+              <option value="recesso">Recesso</option>
+              <option value="folga">Folga</option>
+              <option value="outro">Outro</option>
+            </select>
+          </label>
+          <label class="checkbox-inline">
+            <input type="checkbox" name="fecha_dia_todo" checked />
+            Fecha o dia inteiro
+          </label>
+          <div id="feriadoHorarioWrap" class="hidden">
+            <label>Funciona de<input name="hora_inicio" type="time" /></label>
+            <label>Até<input name="hora_fim" type="time" /></label>
+          </div>
+          <label class="checkbox-inline">
+            <input type="checkbox" name="recorrente" />
+            Repetir todo ano (mesmo dia/mês)
+          </label>
+          <label>Observações<textarea name="observacoes" rows="2" placeholder="Opcional"></textarea></label>
+          <div class="documento-modal-footer">
+            <button type="submit" class="btn">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div id="fornecedorModal" class="modal-overlay modal-overlay--stack hidden" role="dialog" aria-modal="true" aria-labelledby="fornecedorModalTitle">
       <div class="modal-card">
         <div class="modal-head">
@@ -1760,6 +1888,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260712s"></script>
+    <script type="module" src="app.js?v=20260712t"></script>
   </body>
 </html>

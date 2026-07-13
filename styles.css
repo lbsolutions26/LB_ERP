@@ -2894,3 +2894,120 @@ tr.is-clickable-row:hover {
 .modal-overlay--stack {
   z-index: 45;
 }
+
+/* ===== Calendario ===== */
+.calendario-horarios-table input[type='time'],
+.calendario-horarios-table input[type='text'] {
+  width: 100%;
+  min-width: 6rem;
+}
+.calendario-check {
+  white-space: nowrap;
+}
+.calendario-row-past {
+  opacity: 0.65;
+}
+.calendario-agenda-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+.calendario-agenda-head h3 {
+  margin: 0;
+  text-transform: capitalize;
+}
+.calendario-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.calendario-legend-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--line);
+}
+.calendario-agenda-grid {
+  display: grid;
+  gap: 0.5rem;
+}
+.calendario-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+}
+.calendario-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+.calendario-day {
+  min-height: 5.2rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.4rem 0.45rem;
+  background: #fff;
+  display: grid;
+  align-content: start;
+  gap: 0.25rem;
+}
+.calendario-day--empty {
+  background: transparent;
+  border-color: transparent;
+}
+.calendario-day-num {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.calendario-day-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.25;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.calendario-day--aberto {
+  background: #e8f7ee;
+  border-color: #b7e4c7;
+}
+.calendario-day--fechado {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+}
+.calendario-day--feriado {
+  background: #fdecee;
+  border-color: #f3b5be;
+}
+.calendario-day--parcial {
+  background: #fff6e5;
+  border-color: #f0d59a;
+}
+.calendario-day.is-today {
+  box-shadow: inset 0 0 0 2px var(--brand, #165d59);
+}
+.calendario-legend-item.calendario-day--aberto,
+.calendario-legend-item.calendario-day--fechado,
+.calendario-legend-item.calendario-day--feriado,
+.calendario-legend-item.calendario-day--parcial {
+  min-height: auto;
+}
+@media (max-width: 800px) {
+  .calendario-day {
+    min-height: 4rem;
+  }
+  .calendario-day-label {
+    font-size: 0.65rem;
+  }
+}

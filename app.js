@@ -1,8 +1,10 @@
 import { installComprasModule } from "./compras.js";
+import { installCalendarioModule } from "./calendario.js";
 
 let supabaseClient;
 let saasName = "LB ERP SaaS";
 let comprasModule = null;
+let calendarioModule = null;
 
 function isConfigUsable(config) {
   if (!config || !config.SUPABASE_URL || !config.SUPABASE_ANON_KEY) {
@@ -364,6 +366,29 @@ const els = {
   contaPagarEditTotals: document.getElementById("contaPagarEditTotals"),
   contaPagarEditAddParcelaBtn: document.getElementById("contaPagarEditAddParcelaBtn"),
   contaPagarEditDeleteBtn: document.getElementById("contaPagarEditDeleteBtn"),
+  // Calendario
+  calendarioSectionSubtitle: document.getElementById("calendarioSectionSubtitle"),
+  calendarioViewButtons: Array.from(document.querySelectorAll("[data-calendario-view]")),
+  calendarioHorariosView: document.getElementById("calendarioHorariosView"),
+  calendarioFeriadosView: document.getElementById("calendarioFeriadosView"),
+  calendarioAgendaView: document.getElementById("calendarioAgendaView"),
+  calendarioHorariosTable: document.getElementById("calendarioHorariosTable"),
+  calendarioFeriadosTable: document.getElementById("calendarioFeriadosTable"),
+  calendarioSaveHorariosBtn: document.getElementById("calendarioSaveHorariosBtn"),
+  calendarioFeriadoBusca: document.getElementById("calendarioFeriadoBusca"),
+  calendarioKpiDiasAbertos: document.getElementById("calendarioKpiDiasAbertos"),
+  calendarioKpiFeriadosAno: document.getElementById("calendarioKpiFeriadosAno"),
+  calendarioKpiProximos: document.getElementById("calendarioKpiProximos"),
+  calendarioAgendaGrid: document.getElementById("calendarioAgendaGrid"),
+  calendarioAgendaTitulo: document.getElementById("calendarioAgendaTitulo"),
+  calendarioAgendaPrevBtn: document.getElementById("calendarioAgendaPrevBtn"),
+  calendarioAgendaNextBtn: document.getElementById("calendarioAgendaNextBtn"),
+  openFeriadoModalBtn: document.getElementById("openFeriadoModalBtn"),
+  feriadoModal: document.getElementById("feriadoModal"),
+  closeFeriadoModalBtn: document.getElementById("closeFeriadoModalBtn"),
+  feriadoForm: document.getElementById("feriadoForm"),
+  feriadoModalTitle: document.getElementById("feriadoModalTitle"),
+  feriadoHorarioWrap: document.getElementById("feriadoHorarioWrap"),
   ownerUserForm: document.getElementById("ownerUserForm"),
   adminEmpresaForm: document.getElementById("adminEmpresaForm"),
   adminInviteForm: document.getElementById("adminInviteForm"),
@@ -8129,8 +8154,27 @@ function initComprasModule() {
   return comprasModule;
 }
 
+function initCalendarioModule() {
+  if (calendarioModule) return calendarioModule;
+  calendarioModule = installCalendarioModule({
+    getState: () => state,
+    getEls: () => els,
+    getSupabase: () => supabaseClient,
+    helpers: {
+      moeda,
+      escapeHtml,
+      showToast,
+      formatDateInput
+    }
+  });
+  calendarioModule.ensureStateDefaults();
+  calendarioModule.attachCalendarioEvents();
+  return calendarioModule;
+}
+
 function attachEvents() {
   initComprasModule();
+  initCalendarioModule();
   els.refreshBtn.addEventListener("click", refreshAll);
   els.loginForm.addEventListener("submit", async (event) => {
     try {
@@ -8197,6 +8241,8 @@ function attachEvents() {
           await ensureEstoqueLoaded();
         } else if (sectionName === "compras") {
           if (comprasModule) await comprasModule.ensureComprasLoaded();
+        } else if (sectionName === "calendario") {
+          if (calendarioModule) await calendarioModule.ensureCalendarioLoaded();
         } else if (sectionName === "orcamentos") {
           await ensureOrcamentosLoaded();
           renderOrcamentosTable();
