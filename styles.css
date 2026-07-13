@@ -1565,11 +1565,16 @@ table thead input {
 }
 
 .documento-meta-panel label,
+.documento-meta-panel .documento-field,
 .documento-observacoes-field {
   display: grid;
   gap: 0.35rem;
   font-weight: 600;
   color: #3d372d;
+}
+
+.documento-field-label {
+  display: block;
 }
 
 .cliente-combo {

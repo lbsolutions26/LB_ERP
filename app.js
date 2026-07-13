@@ -837,6 +837,10 @@ function setNovoDocumentoCliente(clienteId) {
   if (els.novoDocumentoClienteId) {
     els.novoDocumentoClienteId.value = state.novoDocumentoModal.clienteId;
   }
+  // Limpa o filtro de busca para o label/lista refletirem a escolha.
+  if (els.novoDocumentoClienteSearch) {
+    els.novoDocumentoClienteSearch.value = "";
+  }
   renderNovoDocumentoClienteSelect();
 }
 
@@ -2436,7 +2440,7 @@ function renderNovoDocumentoItemRow(item, options = {}) {
         </div>
       </div>
       <div class="documento-item-cell documento-item-cell--qty" data-col-label="Qtd">
-        <input data-documento-item-field="quantidade" type="number" min="0.001" step="0.001" value="${escapeHtml(item.quantidade ?? 1)}" ${isBlank ? 'placeholder="1"' : ""} />
+        <input data-documento-item-field="quantidade" type="number" min="1" step="1" value="${escapeHtml(item.quantidade ?? 1)}" ${isBlank ? 'placeholder="1"' : ""} />
       </div>
       <div class="documento-item-cell documento-item-cell--price" data-col-label="Valor unit.">
         <input data-documento-item-field="valorUnitario" type="number" min="0" step="0.01" value="${escapeHtml(item.valorUnitario ?? 0)}" ${isBlank ? 'placeholder="0,00"' : ""} />
@@ -8813,7 +8817,9 @@ function attachEvents() {
   }
 
   if (els.novoDocumentoClienteTrigger) {
-    els.novoDocumentoClienteTrigger.addEventListener("click", () => {
+    els.novoDocumentoClienteTrigger.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       if (els.novoDocumentoClientePanel?.classList.contains("hidden")) {
         openNovoDocumentoClientePanel();
       } else {
@@ -8855,12 +8861,16 @@ function attachEvents() {
   }
 
   if (els.novoDocumentoClientePanel) {
-    els.novoDocumentoClientePanel.addEventListener("click", (event) => {
+    // mousedown (em vez de click) evita perder a seleção quando o input de busca
+    // perde o foco e o browser reordena o evento de clique.
+    els.novoDocumentoClientePanel.addEventListener("mousedown", (event) => {
       const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
+      if (!(target instanceof Element)) return;
 
       const quickNew = target.closest("[data-cliente-quick-new]");
       if (quickNew) {
+        event.preventDefault();
+        event.stopPropagation();
         closeNovoDocumentoClientePanel();
         openNovoClienteRapidoModal();
         return;
@@ -8868,9 +8878,14 @@ function attachEvents() {
 
       const clienteButton = target.closest("[data-cliente-id]");
       if (!clienteButton) return;
+      event.preventDefault();
+      event.stopPropagation();
       const clienteId = clienteButton.getAttribute("data-cliente-id") || "";
       setNovoDocumentoCliente(clienteId);
       closeNovoDocumentoClientePanel();
+      if (els.novoDocumentoClienteTrigger) {
+        els.novoDocumentoClienteTrigger.focus();
+      }
     });
   }
 
