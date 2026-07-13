@@ -3568,8 +3568,12 @@ function buildOrcamentoPdfHtml(payload) {
     subtotal,
     observacoes,
     pagamentoTexto,
-    geradoEm
+    bicicleta,
+    docLabel,
+    geradoEm,
+    autoPrint = false
   } = payload;
+  const tipoLabel = docLabel || "Orçamento";
 
   const rows = itens
     .map((item, index) => {
@@ -3797,16 +3801,16 @@ function buildOrcamentoPdfHtml(payload) {
   <div class="sheet">
     <div class="toolbar no-print">
       <button class="ghost" type="button" onclick="window.close()">Fechar</button>
-      <button class="primary" type="button" onclick="window.print()">Salvar / Imprimir PDF</button>
+      <button class="primary" type="button" onclick="window.print()">Imprimir / Salvar PDF</button>
     </div>
 
     <header class="header">
       <div class="brand">
         <h1>${escapeHtml(empresaNome || "Empresa")}</h1>
-        <p>Orçamento para aprovação do cliente</p>
+        <p>${escapeHtml(tipoLabel)} para o cliente</p>
       </div>
       <div class="doc-meta">
-        <div class="badge">Orçamento</div>
+        <div class="badge">${escapeHtml(tipoLabel)}</div>
         <span>Referência</span>
         <strong>${escapeHtml(numeroRef)}</strong>
         <span style="display:block;margin-top:8px;">Emissão</span>
@@ -3827,6 +3831,21 @@ function buildOrcamentoPdfHtml(payload) {
         </div>
       </div>
     </section>
+
+    ${bicicleta && (bicicleta.marca || bicicleta.modelo || bicicleta.tamanhoAro || bicicleta.cor || bicicleta.acessorios)
+      ? `<section class="card" style="margin-bottom:14px;">
+          <h2>Bicicleta</h2>
+          <div>
+            ${[
+              bicicleta.marca ? `<strong>Marca:</strong> ${escapeHtml(bicicleta.marca)}` : "",
+              bicicleta.modelo ? `<strong>Modelo:</strong> ${escapeHtml(bicicleta.modelo)}` : "",
+              bicicleta.tamanhoAro ? `<strong>Aro:</strong> ${escapeHtml(bicicleta.tamanhoAro)}` : "",
+              bicicleta.cor ? `<strong>Cor:</strong> ${escapeHtml(bicicleta.cor)}` : "",
+              bicicleta.acessorios ? `<strong>Acessórios:</strong> ${escapeHtml(bicicleta.acessorios)}` : ""
+            ].filter(Boolean).join("<br />")}
+          </div>
+        </section>`
+      : ""}
 
     <table>
       <thead>
@@ -3880,9 +3899,11 @@ function buildOrcamentoPdfHtml(payload) {
     }
     window.addEventListener("load", function () {
       waitForImages(3000).then(function () {
-        setTimeout(function () {
+        ${autoPrint
+          ? `setTimeout(function () {
           try { window.focus(); window.print(); } catch (e) {}
-        }, 200);
+        }, 200);`
+          : ""}
       });
     });
   </script>
@@ -3890,7 +3911,48 @@ function buildOrcamentoPdfHtml(payload) {
 </html>`;
 }
 
-function generateDocumentoOrcamentoPdf() {
+function openOrcamentoHtmlPreview(html) {
+  const win = window.open("", "_blank");
+  if (!win) {
+    showToast("Permita pop-ups no navegador para abrir o documento.", "error");
+    return false;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  return true;
+}
+
+async function ensureHtml2PdfLoaded() {
+  if (typeof window.html2pdf === "function") return window.html2pdf;
+  await new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-html2pdf="1"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Falha ao carregar gerador de PDF")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.async = true;
+    script.dataset.html2pdf = "1";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Falha ao carregar gerador de PDF"));
+    document.head.appendChild(script);
+  });
+  if (typeof window.html2pdf !== "function") {
+    throw new Error("Gerador de PDF indisponível");
+  }
+  return window.html2pdf;
+}
+
+/**
+ * Gera PDF real e tenta:
+ * 1) Compartilhar no celular (WhatsApp etc.)
+ * 2) Abrir o PDF direto no visualizador
+ * 3) Fallback: abrir prévia HTML
+ */
+async function generateDocumentoOrcamentoPdf() {
   syncNovoDocumentoDraftFromForm();
 
   const itens = getDocumentoItensPayload();
@@ -3903,7 +3965,7 @@ function generateDocumentoOrcamentoPdf() {
     (item) => String(item.id) === String(state.novoDocumentoModal.clienteId)
   );
   if (!cliente) {
-    showToast("Selecione o cliente antes de gerar o PDF do orçamento.", "error");
+    showToast("Selecione o cliente antes de gerar o PDF.", "error");
     return;
   }
 
@@ -3915,17 +3977,20 @@ function generateDocumentoOrcamentoPdf() {
     0
   );
   const docId = state.novoDocumentoModal.documentoId;
+  const isPedido = state.novoDocumentoModal.tipo === "pedido";
   const numeroRef = docId
-    ? `ORC-${String(docId).padStart(6, "0")}`
-    : `ORC-RASCUNHO-${dataEmissaoDate.toISOString().slice(0, 10).replace(/-/g, "")}`;
+    ? `${isPedido ? "PED" : "ORC"}-${String(docId).padStart(6, "0")}`
+    : `${isPedido ? "PED" : "ORC"}-RASCUNHO-${dataEmissaoDate.toISOString().slice(0, 10).replace(/-/g, "")}`;
   const clienteSlug = String(cliente.nome || "cliente")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 40) || "cliente";
-  const fileTitle = `Orcamento-${clienteSlug}-${dataEmissaoLabel.replace(/\//g, "-")}`;
+  const fileTitle = `${isPedido ? "Pedido" : "Orcamento"}-${clienteSlug}-${dataEmissaoLabel.replace(/\//g, "-")}`;
+  const fileName = `${fileTitle}.pdf`;
 
+  const bicicleta = createBicicletaDraft(state.novoDocumentoModal.bicicleta);
   const html = buildOrcamentoPdfHtml({
     empresaNome: state.empresaNome || saasName || "Empresa",
     cliente,
@@ -3935,20 +4000,129 @@ function generateDocumentoOrcamentoPdf() {
     subtotal,
     observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
     pagamentoTexto: getPagamentoResumoTextoParaPdf(),
+    bicicleta: isPedido && isBicicletaFilled(bicicleta) ? bicicleta : null,
+    docLabel: isPedido ? "Pedido" : "Orçamento",
     geradoEm: new Date().toLocaleString("pt-BR"),
-    fileTitle
+    fileTitle,
+    autoPrint: false
   });
 
-  const win = window.open("", "_blank");
-  if (!win) {
-    showToast("Permita pop-ups no navegador para gerar o PDF.", "error");
-    return;
+  const btn = els.novoDocumentoPdfBtn;
+  const btnLabel = btn?.textContent || "Abrir PDF";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Gerando PDF...";
   }
 
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  showToast("PDF do orçamento pronto — use Salvar como PDF na impressão.");
+  try {
+    await ensureHtml2PdfLoaded();
+
+    const parser = new DOMParser();
+    const parsed = parser.parseFromString(html, "text/html");
+    const sheet = parsed.querySelector(".sheet");
+    if (!sheet) throw new Error("Falha ao montar o documento");
+
+    // Host offscreen com estilos do HTML gerado
+    const host = document.createElement("div");
+    host.setAttribute("aria-hidden", "true");
+    host.style.cssText = "position:fixed;left:-10000px;top:0;width:210mm;background:#fff;pointer-events:none;";
+    const styleNodes = parsed.querySelectorAll("style");
+    styleNodes.forEach((st) => host.appendChild(st.cloneNode(true)));
+    host.appendChild(sheet.cloneNode(true));
+    // Remove toolbar da conversão
+    host.querySelectorAll(".no-print").forEach((el) => el.remove());
+    document.body.appendChild(host);
+
+    try {
+      const target = host.querySelector(".sheet") || host;
+      const opt = {
+        margin: [8, 8, 8, 8],
+        filename: fileName,
+        image: { type: "jpeg", quality: 0.96 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          backgroundColor: "#ffffff"
+        },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["css", "legacy"] }
+      };
+
+      const blob = await window
+        .html2pdf()
+        .set(opt)
+        .from(target)
+        .outputPdf("blob");
+
+      if (!(blob instanceof Blob)) throw new Error("PDF inválido");
+
+      const file = new File([blob], fileName, { type: "application/pdf" });
+
+      // Celular: compartilhar direto (WhatsApp, Drive, etc.)
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: fileName,
+            text: `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef} — ${cliente.nome || ""}`.trim()
+          });
+          showToast("PDF pronto — escolha onde enviar");
+          return;
+        } catch (shareErr) {
+          if (shareErr?.name === "AbortError") return;
+          // continua para abrir no visualizador
+        }
+      }
+
+      const url = URL.createObjectURL(blob);
+      const opened = window.open(url, "_blank");
+      if (!opened) {
+        // Fallback: força download/abertura
+        const a = document.createElement("a");
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        // download ajuda no desktop; no mobile costuma abrir o visualizador
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast("PDF gerado. Se não abriu, permita pop-ups ou use o arquivo baixado.");
+      } else {
+        showToast("PDF aberto");
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+    } finally {
+      host.remove();
+    }
+  } catch (error) {
+    console.warn("Falha ao gerar PDF nativo, usando prévia HTML", error);
+    const htmlFallback = buildOrcamentoPdfHtml({
+      empresaNome: state.empresaNome || saasName || "Empresa",
+      cliente,
+      dataEmissaoLabel,
+      numeroRef,
+      itens,
+      subtotal,
+      observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
+      pagamentoTexto: getPagamentoResumoTextoParaPdf(),
+      bicicleta: isPedido && isBicicletaFilled(bicicleta) ? bicicleta : null,
+      docLabel: isPedido ? "Pedido" : "Orçamento",
+      geradoEm: new Date().toLocaleString("pt-BR"),
+      fileTitle,
+      autoPrint: false
+    });
+    if (openOrcamentoHtmlPreview(htmlFallback)) {
+      showToast("Prévia aberta. No celular use Compartilhar do navegador se precisar enviar.");
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = btnLabel;
+    }
+  }
 }
 
 async function saveNovoDocumento(event) {
@@ -9812,11 +9986,9 @@ function attachEvents() {
 
   if (els.novoDocumentoPdfBtn) {
     els.novoDocumentoPdfBtn.addEventListener("click", () => {
-      try {
-        generateDocumentoOrcamentoPdf();
-      } catch (error) {
+      generateDocumentoOrcamentoPdf().catch((error) => {
         showToast(`Erro ao gerar PDF: ${error.message}`, "error");
-      }
+      });
     });
   }
 
