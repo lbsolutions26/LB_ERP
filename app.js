@@ -1339,6 +1339,13 @@ function renderNovoDocumentoPagamentoSection(options = {}) {
     els.novoDocumentoPagamentoEntrada.closest("label")?.classList.toggle("hidden", pagamentoState.modo !== "entrada_parcelas");
   }
 
+  // A vista e recebimento imediato: nao faz sentido pedir primeiro vencimento.
+  if (els.novoDocumentoPagamentoPrimeiroVencimento) {
+    els.novoDocumentoPagamentoPrimeiroVencimento
+      .closest("label")
+      ?.classList.toggle("hidden", pagamentoState.modo === "avista");
+  }
+
   if (els.novoDocumentoPagamentoResumo) {
     els.novoDocumentoPagamentoResumo.textContent =
       `Saldo ${moeda.format(saldo)} • ${plano.parcelas.length} registro${plano.parcelas.length === 1 ? "" : "s"}` +
