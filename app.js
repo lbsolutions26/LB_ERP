@@ -6726,7 +6726,11 @@ function renderPedidosSection() {
   }
 
   if (els.pedidosListModeToggle) {
-    els.pedidosListModeToggle.classList.toggle("hidden", state.pedidosView !== "pedidos");
+    const showListMode = state.pedidosView === "pedidos";
+    // Mantém o slot no desktop (evita botões trocando de lugar); some no mobile via CSS.
+    els.pedidosListModeToggle.classList.toggle("hidden", !showListMode);
+    els.pedidosListModeToggle.classList.toggle("is-inactive", !showListMode);
+    els.pedidosListModeToggle.setAttribute("aria-hidden", showListMode ? "false" : "true");
   }
 
   updatePedidosLoadMoreUI();

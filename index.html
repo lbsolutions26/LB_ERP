@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260713i" />
+    <link rel="stylesheet" href="styles.css?v=20260713k" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -306,21 +306,24 @@
         </section>
 
         <section id="section-pedidos" class="card app-section hidden">
-          <div class="section-head">
-            <div>
-              <h2>Pedidos</h2>
-              <p id="pedidosSectionSubtitle" class="section-subtitle">Crie pedidos e orcamentos com itens em grade, subtotal automatico e salvamento mais claro.</p>
+          <div class="pedidos-section-header">
+            <div class="pedidos-section-top">
+              <div class="pedidos-section-title">
+                <h2>Pedidos</h2>
+                <p id="pedidosSectionSubtitle" class="section-subtitle">Crie pedidos e orcamentos com itens em grade, subtotal automatico e salvamento mais claro.</p>
+              </div>
+              <button id="openPedidoModalBtn" class="btn pedidos-new-btn" type="button">Novo Pedido</button>
             </div>
-            <div class="pedidos-toolbar">
-              <div class="pedidos-view-toggle" role="tablist" aria-label="Alternar visualizacao dos pedidos">
+
+            <div class="pedidos-nav" aria-label="Navegacao da aba pedidos">
+              <div class="pedidos-view-toggle pedidos-view-toggle--main" role="tablist" aria-label="Alternar visualizacao dos pedidos">
                 <button type="button" class="pedidos-view-toggle-btn active" data-pedidos-view="pedidos">Lista</button>
                 <button type="button" class="pedidos-view-toggle-btn" data-pedidos-view="produtos">Produtos vendidos</button>
               </div>
-              <div id="pedidosListModeToggle" class="pedidos-view-toggle pedidos-subview-toggle" role="tablist" aria-label="Alternar nivel da lista de pedidos">
+              <div id="pedidosListModeToggle" class="pedidos-view-toggle pedidos-view-toggle--mode pedidos-subview-toggle" role="tablist" aria-label="Alternar nivel da lista de pedidos">
                 <button type="button" class="pedidos-view-toggle-btn active" data-pedidos-list-mode="sintetico">Sintetico</button>
                 <button type="button" class="pedidos-view-toggle-btn" data-pedidos-list-mode="analitico">Analitico</button>
               </div>
-              <button id="openPedidoModalBtn" class="btn" type="button">Novo Pedido</button>
             </div>
           </div>
           <div id="pedidosProdutosFilters" class="pedidos-filters hidden">
@@ -2003,6 +2006,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260713j"></script>
+    <script type="module" src="app.js?v=20260713k"></script>
   </body>
 </html>
