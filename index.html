@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712p" />
+    <link rel="stylesheet" href="styles.css?v=20260712q" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -1552,9 +1552,6 @@
             <label>Desconto (R$)<input id="notaEntradaDesconto" type="number" min="0" step="0.01" value="0" /></label>
             <label>Frete (R$)<input id="notaEntradaFrete" type="number" min="0" step="0.01" value="0" /></label>
             <label>Outras despesas (R$)<input id="notaEntradaOutras" type="number" min="0" step="0.01" value="0" /></label>
-            <label>Parcelas<input id="notaEntradaParcelas" type="number" min="1" step="1" value="1" /></label>
-            <label>1º vencimento<input id="notaEntradaVenc" type="date" /></label>
-            <label>Intervalo (dias)<input id="notaEntradaIntervalo" type="number" min="1" step="1" value="30" /></label>
             <label>Forma de pagamento<select id="notaEntradaFormaPagamento"></select></label>
             <label class="nota-entrada-full">Observações<textarea id="notaEntradaObs" rows="2"></textarea></label>
           </div>
@@ -1567,6 +1564,35 @@
             <button id="notaEntradaAddItemBtn" class="btn btn-ghost" type="button">+ Item</button>
           </div>
           <div id="notaEntradaItensGrid" class="nota-itens-grid"></div>
+
+          <section class="documento-payment-panel" style="margin-top: 1rem">
+            <div class="documento-items-panel-head">
+              <div>
+                <h4>Títulos a pagar</h4>
+                <span class="documento-items-hint">Gere e ajuste várias parcelas (vencimento e valor), como no pedido.</span>
+              </div>
+            </div>
+            <div class="nota-entrada-grid" id="notaEntradaParcelasParams">
+              <label>Qtd. parcelas<input id="notaEntradaParcelas" type="number" min="1" step="1" value="1" /></label>
+              <label>1º vencimento<input id="notaEntradaVenc" type="date" /></label>
+              <label>Intervalo (dias)<input id="notaEntradaIntervalo" type="number" min="1" step="1" value="30" /></label>
+            </div>
+            <div class="documento-payment-parcelas-actions">
+              <button id="notaEntradaGerarParcelasBtn" type="button" class="btn btn-ghost">Gerar / repor parcelas</button>
+              <button id="notaEntradaAddParcelaBtn" type="button" class="btn btn-ghost">+ Parcela</button>
+              <button id="notaEntradaRatearBtn" type="button" class="btn btn-ghost">Ratear total nas parcelas</button>
+            </div>
+            <div id="notaEntradaParcelasEditor" class="documento-payment-parcelas">
+              <div class="documento-payment-parcelas-head">
+                <strong>Parcelas editáveis</strong>
+                <span class="documento-items-hint">Altere vencimentos e valores livremente antes de lançar a NF.</span>
+              </div>
+              <div id="notaEntradaParcelasList" class="documento-payment-parcelas-list"></div>
+              <div class="documento-payment-parcelas-footer">
+                <span id="notaEntradaParcelasTotals" class="documento-items-hint"></span>
+              </div>
+            </div>
+          </section>
 
           <div class="documento-modal-footer" style="margin-top: 1rem">
             <div>
@@ -1659,6 +1685,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260712p"></script>
+    <script type="module" src="app.js?v=20260712q"></script>
   </body>
 </html>

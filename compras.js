@@ -200,8 +200,178 @@ export function installComprasModule(ctx) {
       vencimentoPrimeira: formatDateInput(new Date()),
       intervaloDias: 30,
       formaPagamentoId: "",
-      itens: [createNotaItem()]
+      itens: [createNotaItem()],
+      // Parcelas editáveis (como no pedido a receber)
+      parcelasEditadas: []
     };
+  }
+
+  function addDaysYmd(ymd, days) {
+    const base = ymd ? new Date(`${ymd}T12:00:00`) : new Date();
+    if (Number.isNaN(base.getTime())) {
+      const d = new Date();
+      d.setDate(d.getDate() + Number(days || 0));
+      return formatDateInput(d);
+    }
+    base.setDate(base.getDate() + Number(days || 0));
+    return formatDateInput(base);
+  }
+
+  function splitAmountParts(total, n) {
+    const count = Math.max(1, Math.trunc(Number(n) || 1));
+    const cents = Math.round(Number(total || 0) * 100);
+    const base = Math.floor(cents / count);
+    const resto = cents - base * count;
+    return Array.from({ length: count }, (_, i) => Number(((base + (i < resto ? 1 : 0)) / 100).toFixed(2)));
+  }
+
+  function buildNotaParcelasFromParams(draft = state().notaEntradaModal) {
+    const total = getNotaTotal(draft);
+    const n = Math.max(1, Math.trunc(Number(draft.parcelas || 1)));
+    const intervalo = Math.max(1, Math.trunc(Number(draft.intervaloDias || 30)));
+    const first = draft.vencimentoPrimeira || formatDateInput(new Date());
+    const forma = draft.formaPagamentoId || "";
+    const parts = splitAmountParts(total, n);
+    return parts.map((valor, i) => ({
+      numero: i + 1,
+      vencimento: addDaysYmd(first, intervalo * i),
+      valor,
+      formaPagamentoId: forma,
+      status: "pendente"
+    }));
+  }
+
+  function ensureNotaParcelasEditadas(forceRebuild = false) {
+    const draft = state().notaEntradaModal;
+    if (forceRebuild || !Array.isArray(draft.parcelasEditadas) || !draft.parcelasEditadas.length) {
+      draft.parcelasEditadas = buildNotaParcelasFromParams(draft);
+    }
+    return draft.parcelasEditadas;
+  }
+
+  function ratearTotalNasParcelasNota() {
+    const draft = state().notaEntradaModal;
+    const parcelas = ensureNotaParcelasEditadas();
+    if (!parcelas.length) return;
+    const parts = splitAmountParts(getNotaTotal(draft), parcelas.length);
+    parcelas.forEach((p, i) => {
+      p.valor = parts[i];
+      p.numero = i + 1;
+    });
+    renderNotaParcelasEditor();
+  }
+
+  function addNotaParcelaEditavel() {
+    const draft = state().notaEntradaModal;
+    const parcelas = ensureNotaParcelasEditadas();
+    const last = parcelas[parcelas.length - 1];
+    const intervalo = Math.max(1, Math.trunc(Number(draft.intervaloDias || 30)));
+    parcelas.push({
+      numero: parcelas.length + 1,
+      vencimento: addDaysYmd(last?.vencimento || draft.vencimentoPrimeira || formatDateInput(new Date()), intervalo),
+      valor: 0,
+      formaPagamentoId: last?.formaPagamentoId || draft.formaPagamentoId || "",
+      status: "pendente"
+    });
+    draft.parcelas = parcelas.length;
+    renderNotaParcelasEditor();
+  }
+
+  function removeNotaParcelaEditavel(index) {
+    const draft = state().notaEntradaModal;
+    if (!Array.isArray(draft.parcelasEditadas)) return;
+    draft.parcelasEditadas.splice(index, 1);
+    draft.parcelasEditadas.forEach((p, i) => {
+      p.numero = i + 1;
+    });
+    if (!draft.parcelasEditadas.length) {
+      draft.parcelasEditadas = buildNotaParcelasFromParams(draft);
+    }
+    draft.parcelas = draft.parcelasEditadas.length;
+    renderNotaParcelasEditor();
+  }
+
+  function renderNotaParcelasTotals() {
+    const e = els();
+    if (!e.notaEntradaParcelasTotals) return;
+    const draft = state().notaEntradaModal;
+    const parcelas = draft.parcelasEditadas || [];
+    const totalParcelas = parcelas.reduce((s, p) => s + Number(p.valor || 0), 0);
+    const totalNota = getNotaTotal(draft);
+    const diff = totalNota - totalParcelas;
+    const partes = [
+      `${parcelas.length} parcela${parcelas.length === 1 ? "" : "s"}`,
+      `títulos ${moeda.format(totalParcelas)}`,
+      `nota ${moeda.format(totalNota)}`
+    ];
+    if (Math.abs(diff) > 0.005) {
+      partes.push(diff > 0 ? `faltam ${moeda.format(diff)}` : `excedente ${moeda.format(-diff)}`);
+    }
+    e.notaEntradaParcelasTotals.textContent = partes.join(" • ");
+  }
+
+  function renderNotaParcelasEditor() {
+    const e = els();
+    if (!e.notaEntradaParcelasList) return;
+    const draft = state().notaEntradaModal;
+    const readonly = draft.status === "lancada" || draft.status === "cancelada";
+    ensureNotaParcelasEditadas();
+    const parcelas = draft.parcelasEditadas || [];
+
+    if (e.notaEntradaGerarParcelasBtn) e.notaEntradaGerarParcelasBtn.disabled = readonly;
+    if (e.notaEntradaAddParcelaBtn) e.notaEntradaAddParcelaBtn.disabled = readonly;
+    if (e.notaEntradaRatearBtn) e.notaEntradaRatearBtn.disabled = readonly;
+    if (e.notaEntradaParcelas) e.notaEntradaParcelas.disabled = readonly;
+    if (e.notaEntradaVenc) e.notaEntradaVenc.disabled = readonly;
+    if (e.notaEntradaIntervalo) e.notaEntradaIntervalo.disabled = readonly;
+
+    const formasHtml = ['<option value="">Selecione</option>'];
+    for (const forma of state().formasPagamento || []) {
+      formasHtml.push(`<option value="${forma.id}">${escapeHtml(forma.nome)}</option>`);
+    }
+
+    e.notaEntradaParcelasList.innerHTML = parcelas
+      .map(
+        (parcela, index) => `
+      <div class="documento-payment-parcela-row" data-nota-parcela-index="${index}">
+        <div class="parcela-numero">#${parcela.numero || index + 1}</div>
+        <label>Vencimento
+          <input type="date" data-nota-parcela-field="vencimento" value="${escapeHtml(parcela.vencimento || "")}" ${readonly ? "readonly" : ""} />
+        </label>
+        <label>Valor
+          <input type="number" min="0" step="0.01" data-nota-parcela-field="valor" value="${Number(parcela.valor || 0).toFixed(2)}" ${readonly ? "readonly" : ""} />
+        </label>
+        <label>Forma
+          <select data-nota-parcela-field="formaPagamentoId" ${readonly ? "disabled" : ""}>
+            ${formasHtml.join("")}
+          </select>
+        </label>
+        <label>Status
+          <select data-nota-parcela-field="status" ${readonly ? "disabled" : ""}>
+            <option value="pendente">Pendente</option>
+            <option value="pago">Já pago</option>
+          </select>
+        </label>
+        ${
+          readonly
+            ? ""
+            : `<button type="button" class="btn btn-ghost" data-remove-nota-parcela="${index}" ${parcelas.length <= 1 ? "disabled" : ""}>Remover</button>`
+        }
+      </div>`
+      )
+      .join("");
+
+    e.notaEntradaParcelasList.querySelectorAll("[data-nota-parcela-index]").forEach((row) => {
+      const idx = Number(row.getAttribute("data-nota-parcela-index"));
+      const p = parcelas[idx];
+      if (!p) return;
+      const formaSel = row.querySelector('[data-nota-parcela-field="formaPagamentoId"]');
+      if (formaSel) formaSel.value = p.formaPagamentoId || "";
+      const statusSel = row.querySelector('[data-nota-parcela-field="status"]');
+      if (statusSel) statusSel.value = p.status === "pago" ? "pago" : "pendente";
+    });
+
+    renderNotaParcelasTotals();
   }
 
   function getNotaItemTotal(item) {
@@ -765,6 +935,7 @@ export function installComprasModule(ctx) {
     const total = getNotaTotal(draft);
     if (e.notaEntradaSubtotal) e.notaEntradaSubtotal.textContent = moeda.format(sub);
     if (e.notaEntradaTotal) e.notaEntradaTotal.textContent = moeda.format(total);
+    renderNotaParcelasTotals();
   }
 
   function openNotaModal(options = {}) {
@@ -786,7 +957,7 @@ export function installComprasModule(ctx) {
     if (e.notaEntradaOutras) e.notaEntradaOutras.value = String(draft.valorOutras || 0);
     if (e.notaEntradaObs) e.notaEntradaObs.value = draft.observacoes || "";
     if (e.notaEntradaParcelas) e.notaEntradaParcelas.value = String(draft.parcelas || 1);
-    if (e.notaEntradaVenc) e.notaEntradaVenc.value = draft.vencimentoPrimeira || "";
+    if (e.notaEntradaVenc) e.notaEntradaVenc.value = draft.vencimentoPrimeira || formatDateInput(new Date());
     if (e.notaEntradaIntervalo) e.notaEntradaIntervalo.value = String(draft.intervaloDias || 30);
     if (e.notaEntradaModalTitle) {
       e.notaEntradaModalTitle.textContent = draft.notaId
@@ -799,7 +970,11 @@ export function installComprasModule(ctx) {
     if (e.notaEntradaSaveBtn) e.notaEntradaSaveBtn.classList.toggle("hidden", readonly);
     if (e.notaEntradaLancarBtn) e.notaEntradaLancarBtn.classList.toggle("hidden", readonly);
     if (e.notaEntradaAddItemBtn) e.notaEntradaAddItemBtn.classList.toggle("hidden", readonly);
+    if (!Array.isArray(draft.parcelasEditadas) || !draft.parcelasEditadas.length) {
+      ensureNotaParcelasEditadas(true);
+    }
     renderNotaItensGrid();
+    renderNotaParcelasEditor();
     if (e.notaEntradaModal) e.notaEntradaModal.classList.remove("hidden");
   }
 
@@ -825,6 +1000,7 @@ export function installComprasModule(ctx) {
     draft.vencimentoPrimeira = e.notaEntradaVenc?.value || "";
     draft.intervaloDias = Math.max(1, Math.trunc(Number(e.notaEntradaIntervalo?.value || 30)));
     draft.formaPagamentoId = e.notaEntradaFormaPagamento?.value || "";
+    ensureNotaParcelasEditadas();
   }
 
   function getFilledNotaItens(draft = state().notaEntradaModal) {
@@ -843,6 +1019,16 @@ export function installComprasModule(ctx) {
     const valorProdutos = getNotaSubtotal(draft);
     const valorTotal = getNotaTotal(draft);
 
+    const parcelasEditadas = ensureNotaParcelasEditadas();
+    if (lancar) {
+      const somaParc = parcelasEditadas.reduce((s, p) => s + Number(p.valor || 0), 0);
+      if (Math.abs(somaParc - valorTotal) > 0.05) {
+        throw new Error(
+          `Total das parcelas (${moeda.format(somaParc)}) difere do total da nota (${moeda.format(valorTotal)}). Ajuste ou use "Ratear total".`
+        );
+      }
+    }
+
     const payload = {
       empresa_id: state().empresaId,
       fornecedor_id: Number(draft.fornecedorId),
@@ -858,10 +1044,13 @@ export function installComprasModule(ctx) {
       valor_outras: Number(Number(draft.valorOutras || 0).toFixed(2)),
       valor_total: Number(valorTotal.toFixed(2)),
       observacoes: draft.observacoes || null,
-      parcelas: draft.parcelas || 1,
-      vencimento_primeira: draft.vencimentoPrimeira || null,
+      parcelas: Math.max(1, parcelasEditadas.length || draft.parcelas || 1),
+      vencimento_primeira: parcelasEditadas[0]?.vencimento || draft.vencimentoPrimeira || null,
       intervalo_dias: draft.intervaloDias || 30,
       forma_pagamento_id: draft.formaPagamentoId ? Number(draft.formaPagamentoId) : null,
+      raw_payload: {
+        parcelas_editadas: parcelasEditadas
+      },
       updated_at: new Date().toISOString()
     };
 
@@ -935,6 +1124,17 @@ export function installComprasModule(ctx) {
       .order("id");
     if (itensErr) throw itensErr;
 
+    const raw = nota.raw_payload && typeof nota.raw_payload === "object" ? nota.raw_payload : {};
+    const parcelasFromRaw = Array.isArray(raw.parcelas_editadas)
+      ? raw.parcelas_editadas.map((p, idx) => ({
+          numero: p.numero || idx + 1,
+          vencimento: p.vencimento || "",
+          valor: Number(p.valor || 0),
+          formaPagamentoId: p.formaPagamentoId ? String(p.formaPagamentoId) : "",
+          status: p.status === "pago" ? "pago" : "pendente"
+        }))
+      : null;
+
     state().notaEntradaModal = {
       notaId: nota.id,
       fornecedorId: nota.fornecedor_id ? String(nota.fornecedor_id) : "",
@@ -943,7 +1143,7 @@ export function installComprasModule(ctx) {
       chaveAcesso: nota.chave_acesso || "",
       dataEmissao: nota.data_emissao || "",
       dataEntrada: nota.data_entrada || "",
-      status: readonly ? nota.status : nota.status,
+      status: nota.status,
       valorDesconto: Number(nota.valor_desconto || 0),
       valorFrete: Number(nota.valor_frete || 0),
       valorOutras: Number(nota.valor_outras || 0),
@@ -962,8 +1162,13 @@ export function installComprasModule(ctx) {
             atualizaCusto: item.atualiza_custo !== false,
             atualizaEstoque: item.atualiza_estoque !== false
           }))
-        : [createNotaItem()]
+        : [createNotaItem()],
+      parcelasEditadas: parcelasFromRaw
     };
+
+    if (!parcelasFromRaw?.length) {
+      ensureNotaParcelasEditadas(true);
+    }
   }
 
   async function aplicarEstoqueNota(nota, itens) {
@@ -1002,15 +1207,40 @@ export function installComprasModule(ctx) {
     const total = Number(nota.valor_total || 0);
     if (total <= 0) return;
 
-    const nParcelas = Math.max(1, Number(nota.parcelas || 1));
-    const intervalo = Math.max(1, Number(nota.intervalo_dias || 30));
-    const baseVenc = nota.vencimento_primeira
-      ? new Date(`${nota.vencimento_primeira}T12:00:00`)
-      : new Date(`${nota.data_entrada || formatDateInput(new Date())}T12:00:00`);
+    const raw = nota.raw_payload && typeof nota.raw_payload === "object" ? nota.raw_payload : {};
+    let parcelasEditadas = Array.isArray(raw.parcelas_editadas) ? raw.parcelas_editadas : null;
 
-    const cents = Math.round(total * 100);
-    const base = Math.floor(cents / nParcelas);
-    const resto = cents - base * nParcelas;
+    // Prefer parcelas do draft em memória (mesmo lançamento).
+    const draftParc = state().notaEntradaModal?.notaId === nota.id
+      ? state().notaEntradaModal.parcelasEditadas
+      : null;
+    if (Array.isArray(draftParc) && draftParc.length) {
+      parcelasEditadas = draftParc;
+    }
+
+    if (!parcelasEditadas?.length) {
+      // Fallback: gera pelo template antigo da nota
+      const nParcelas = Math.max(1, Number(nota.parcelas || 1));
+      const intervalo = Math.max(1, Number(nota.intervalo_dias || 30));
+      const first = nota.vencimento_primeira || nota.data_entrada || formatDateInput(new Date());
+      const parts = splitAmountParts(total, nParcelas);
+      parcelasEditadas = parts.map((valor, i) => ({
+        numero: i + 1,
+        vencimento: addDaysYmd(first, intervalo * i),
+        valor,
+        formaPagamentoId: nota.forma_pagamento_id ? String(nota.forma_pagamento_id) : "",
+        status: "pendente"
+      }));
+    }
+
+    const totalParcelas = parcelasEditadas.reduce((s, p) => s + Number(p.valor || 0), 0);
+    const totalPago = parcelasEditadas
+      .filter((p) => p.status === "pago")
+      .reduce((s, p) => s + Number(p.valor || 0), 0);
+    const valorAberto = Math.max(0, totalParcelas - totalPago);
+    let statusConta = "aberto";
+    if (valorAberto <= 0.009) statusConta = "pago";
+    else if (totalPago > 0) statusConta = "parcial";
 
     const { data: conta, error: contaErr } = await sb()
       .from("contas_pagar")
@@ -1021,34 +1251,52 @@ export function installComprasModule(ctx) {
         origem: "nota_entrada",
         numero_titulo: `NF-${nota.id}${nota.numero_nf ? `-${nota.numero_nf}` : ""}`,
         emissao: new Date().toISOString(),
-        valor_original: Number(total.toFixed(2)),
-        valor_aberto: Number(total.toFixed(2)),
-        status: "aberto",
+        valor_original: Number(totalParcelas.toFixed(2)),
+        valor_aberto: Number(valorAberto.toFixed(2)),
+        status: statusConta,
         observacoes: nota.observacoes || null
       })
       .select("id")
       .single();
     if (contaErr) throw contaErr;
 
-    const parcelasPayload = [];
-    for (let i = 0; i < nParcelas; i += 1) {
-      const valorCents = base + (i < resto ? 1 : 0);
-      const venc = new Date(baseVenc);
-      venc.setDate(venc.getDate() + i * intervalo);
-      parcelasPayload.push({
+    const parcelasPayload = parcelasEditadas.map((parcela, index) => {
+      const valor = Number(parcela.valor || 0);
+      const pago = parcela.status === "pago";
+      return {
         empresa_id: state().empresaId,
         conta_pagar_id: conta.id,
-        numero_parcela: i + 1,
-        vencimento: formatDateInput(venc),
-        valor_parcela: Number((valorCents / 100).toFixed(2)),
-        valor_pago: 0,
-        status: "pendente",
-        forma_pagamento_id: nota.forma_pagamento_id || null
-      });
-    }
+        numero_parcela: parcela.numero || index + 1,
+        vencimento: parcela.vencimento || null,
+        valor_parcela: Number(valor.toFixed(2)),
+        valor_pago: pago ? Number(valor.toFixed(2)) : 0,
+        status: pago ? "pago" : "pendente",
+        forma_pagamento_id: parcela.formaPagamentoId
+          ? Number(parcela.formaPagamentoId)
+          : nota.forma_pagamento_id || null
+      };
+    });
 
-    const { error: pErr } = await sb().from("contas_pagar_parcelas").insert(parcelasPayload);
+    const { data: parcelasCriadas, error: pErr } = await sb()
+      .from("contas_pagar_parcelas")
+      .insert(parcelasPayload)
+      .select("id, numero_parcela, valor_parcela, status");
     if (pErr) throw pErr;
+
+    const pags = (parcelasCriadas || [])
+      .filter((p) => p.status === "pago")
+      .map((p) => ({
+        empresa_id: state().empresaId,
+        parcela_id: p.id,
+        data_pagamento: formatDateInput(new Date()),
+        valor: Number(p.valor_parcela || 0),
+        forma_pagamento_id: nota.forma_pagamento_id || null,
+        observacoes: "Marcado como pago na NF de entrada"
+      }));
+    if (pags.length) {
+      const { error: payErr } = await sb().from("pagamentos").insert(pags);
+      if (payErr) throw payErr;
+    }
   }
 
   async function lancarNota(notaId) {
@@ -1327,6 +1575,65 @@ export function installComprasModule(ctx) {
         } catch (err) {
           showToast(`Erro ao lançar nota: ${err.message}`, "error");
         }
+      });
+    }
+
+    if (e.notaEntradaGerarParcelasBtn) {
+      e.notaEntradaGerarParcelasBtn.addEventListener("click", () => {
+        syncNotaDraftFromForm();
+        ensureNotaParcelasEditadas(true);
+        renderNotaParcelasEditor();
+        showToast("Parcelas geradas — ajuste vencimentos e valores se precisar");
+      });
+    }
+    if (e.notaEntradaAddParcelaBtn) {
+      e.notaEntradaAddParcelaBtn.addEventListener("click", () => {
+        syncNotaDraftFromForm();
+        addNotaParcelaEditavel();
+      });
+    }
+    if (e.notaEntradaRatearBtn) {
+      e.notaEntradaRatearBtn.addEventListener("click", () => {
+        syncNotaDraftFromForm();
+        ratearTotalNasParcelasNota();
+        showToast("Total rateado nas parcelas");
+      });
+    }
+    if (e.notaEntradaParcelasList) {
+      e.notaEntradaParcelasList.addEventListener("input", (ev) => {
+        const t = ev.target;
+        if (!(t instanceof HTMLElement)) return;
+        const row = t.closest("[data-nota-parcela-index]");
+        const field = t.getAttribute("data-nota-parcela-field");
+        if (!row || !field) return;
+        const idx = Number(row.getAttribute("data-nota-parcela-index"));
+        const parcela = state().notaEntradaModal.parcelasEditadas?.[idx];
+        if (!parcela) return;
+        if (field === "valor") parcela.valor = Math.max(0, Number(t.value || 0));
+        else if (field === "status") parcela.status = t.value === "pago" ? "pago" : "pendente";
+        else parcela[field] = t.value;
+        renderNotaParcelasTotals();
+      });
+      e.notaEntradaParcelasList.addEventListener("change", (ev) => {
+        const t = ev.target;
+        if (!(t instanceof HTMLElement)) return;
+        const row = t.closest("[data-nota-parcela-index]");
+        const field = t.getAttribute("data-nota-parcela-field");
+        if (!row || !field) return;
+        const idx = Number(row.getAttribute("data-nota-parcela-index"));
+        const parcela = state().notaEntradaModal.parcelasEditadas?.[idx];
+        if (!parcela) return;
+        if (field === "status") parcela.status = t.value === "pago" ? "pago" : "pendente";
+        else if (field === "formaPagamentoId") parcela.formaPagamentoId = t.value || "";
+        else if (field === "vencimento") parcela.vencimento = t.value || "";
+        renderNotaParcelasTotals();
+      });
+      e.notaEntradaParcelasList.addEventListener("click", (ev) => {
+        const btn = ev.target?.closest?.("[data-remove-nota-parcela]");
+        if (!btn) return;
+        const idx = Number(btn.getAttribute("data-remove-nota-parcela"));
+        if (!Number.isFinite(idx)) return;
+        removeNotaParcelaEditavel(idx);
       });
     }
 
