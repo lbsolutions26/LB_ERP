@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712l" />
+    <link rel="stylesheet" href="styles.css?v=20260712m" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -54,6 +54,7 @@
         <button class="tab" data-section="orcamentos">Orcamentos</button>
         <button class="tab" data-section="despesas">Despesas</button>
         <button class="tab" data-section="produtos">Produtos</button>
+        <button class="tab" data-section="estoque">Estoque</button>
         <button id="ownerUsersTab" class="tab hidden" data-section="usuarios">Usuarios</button>
         <button class="tab" data-section="relatorios">Relatorios</button>
         <button id="adminTab" class="tab hidden" data-section="admin">Admin SaaS</button>
@@ -397,6 +398,258 @@
           </div>
         </section>
 
+        <section id="section-estoque" class="card app-section hidden">
+          <div class="section-head">
+            <div>
+              <h2>Estoque</h2>
+              <p id="estoqueSectionSubtitle" class="section-subtitle">
+                Saldos, movimentos, reposição, curva ABC e inventário.
+              </p>
+            </div>
+            <div class="pedidos-toolbar">
+              <div class="pedidos-view-toggle" role="tablist" aria-label="Visões de estoque">
+                <button type="button" class="pedidos-view-toggle-btn active" data-estoque-view="painel">Painel</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-estoque-view="saldos">Saldos</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-estoque-view="movimentos">Movimentos</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-estoque-view="reposicao">Reposição</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-estoque-view="abc">ABC</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-estoque-view="inventario">Inventário</button>
+              </div>
+              <button id="openEstoqueMovimentoBtn" class="btn" type="button">Novo movimento</button>
+            </div>
+          </div>
+
+          <div id="estoquePainelView" class="estoque-view">
+            <div class="metric-grid relatorio-grid estoque-kpi-grid">
+              <article>
+                <span>Itens que controlam estoque</span>
+                <strong id="estoqueKpiItens">0</strong>
+              </article>
+              <article>
+                <span>Valor em estoque (custo)</span>
+                <strong id="estoqueKpiValor">R$ 0,00</strong>
+              </article>
+              <article>
+                <span>Abaixo do ponto</span>
+                <strong id="estoqueKpiPonto">0</strong>
+              </article>
+              <article>
+                <span>Zerados / negativos</span>
+                <strong id="estoqueKpiZerados">0</strong>
+              </article>
+              <article>
+                <span>Reservado (pedidos abertos)</span>
+                <strong id="estoqueKpiReservado">0 un.</strong>
+              </article>
+              <article>
+                <span>Classe A (itens)</span>
+                <strong id="estoqueKpiClasseA">0</strong>
+              </article>
+            </div>
+            <div class="estoque-painel-hints">
+              <p class="section-subtitle">
+                Pedidos com status <strong>Fechado</strong> baixam estoque automaticamente. Pedidos
+                <strong>Abertos</strong> aparecem como reservados. Use movimentos manuais para compra, perda e inventário.
+              </p>
+            </div>
+          </div>
+
+          <div id="estoqueSaldosView" class="estoque-view hidden">
+            <div class="estoque-filters">
+              <label>
+                Buscar
+                <input id="estoqueSaldoBusca" type="search" placeholder="Nome ou categoria" />
+              </label>
+              <label>
+                Status
+                <select id="estoqueSaldoStatus">
+                  <option value="">Todos</option>
+                  <option value="ok">OK</option>
+                  <option value="reposicao">Reposição</option>
+                  <option value="zerado">Zerado</option>
+                  <option value="negativo">Negativo</option>
+                </select>
+              </label>
+              <label>
+                Classe ABC
+                <select id="estoqueSaldoAbc">
+                  <option value="">Todas</option>
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                  <option value="-">Sem classe</option>
+                </select>
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Categoria</th>
+                    <th>ABC</th>
+                    <th>Saldo</th>
+                    <th>Reservado</th>
+                    <th>Disponível</th>
+                    <th>Ponto</th>
+                    <th>Máx.</th>
+                    <th>Status</th>
+                    <th>Valor</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="estoqueSaldosTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="estoqueMovimentosView" class="estoque-view hidden">
+            <div class="estoque-filters">
+              <label>
+                Buscar produto
+                <input id="estoqueMovBusca" type="search" placeholder="Nome do produto" />
+              </label>
+              <label>
+                Tipo
+                <select id="estoqueMovTipo">
+                  <option value="">Todos</option>
+                  <option value="entrada">Entrada</option>
+                  <option value="saida">Saída</option>
+                  <option value="ajuste">Ajuste</option>
+                  <option value="venda">Venda</option>
+                  <option value="estorno_venda">Estorno venda</option>
+                  <option value="inventario">Inventário</option>
+                </select>
+              </label>
+              <label>
+                De
+                <input id="estoqueMovStart" type="date" />
+              </label>
+              <label>
+                Até
+                <input id="estoqueMovEnd" type="date" />
+              </label>
+              <button id="estoqueMovRefreshBtn" type="button" class="btn btn-ghost">Atualizar</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Produto</th>
+                    <th>Tipo</th>
+                    <th>Qtd</th>
+                    <th>Saldo ant.</th>
+                    <th>Saldo pós.</th>
+                    <th>Motivo</th>
+                    <th>Pedido</th>
+                  </tr>
+                </thead>
+                <tbody id="estoqueMovimentosTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="estoqueReposicaoView" class="estoque-view hidden">
+            <div class="section-subtitle estoque-view-hint">
+              Itens no ponto de pedido ou abaixo. Sugestão = máximo − saldo (ou ponto × 2 se sem máximo).
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>ABC</th>
+                    <th>Saldo</th>
+                    <th>Reservado</th>
+                    <th>Disponível</th>
+                    <th>Ponto</th>
+                    <th>Máx.</th>
+                    <th>Sugerido</th>
+                    <th>Custo est.</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="estoqueReposicaoTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="estoqueAbcView" class="estoque-view hidden">
+            <div class="estoque-filters">
+              <label>
+                Período (dias)
+                <select id="estoqueAbcDias">
+                  <option value="30">30</option>
+                  <option value="60">60</option>
+                  <option value="90" selected>90</option>
+                  <option value="180">180</option>
+                </select>
+              </label>
+              <button id="estoqueAbcRecalcularBtn" type="button" class="btn">Recalcular ABC</button>
+            </div>
+            <div class="metric-grid relatorio-grid">
+              <article>
+                <span>Itens A (~80% valor)</span>
+                <strong id="estoqueAbcCountA">0</strong>
+              </article>
+              <article>
+                <span>Itens B (~15% valor)</span>
+                <strong id="estoqueAbcCountB">0</strong>
+              </article>
+              <article>
+                <span>Itens C (~5% valor)</span>
+                <strong id="estoqueAbcCountC">0</strong>
+              </article>
+              <article>
+                <span>Sem venda no período</span>
+                <strong id="estoqueAbcCountSem">0</strong>
+              </article>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Classe</th>
+                    <th>Produto</th>
+                    <th>Qtd vendida</th>
+                    <th>Valor vendido</th>
+                    <th>% acum.</th>
+                    <th>Saldo</th>
+                  </tr>
+                </thead>
+                <tbody id="estoqueAbcTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="estoqueInventarioView" class="estoque-view hidden">
+            <div class="section-subtitle estoque-view-hint">
+              Informe a quantidade contada. O sistema gera movimento de inventário com a diferença.
+            </div>
+            <div class="estoque-filters">
+              <label>
+                Buscar
+                <input id="estoqueInvBusca" type="search" placeholder="Nome do produto" />
+              </label>
+              <button id="estoqueInvAplicarBtn" type="button" class="btn">Aplicar contagens preenchidas</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Saldo sistema</th>
+                    <th>Contagem</th>
+                    <th>Diferença</th>
+                  </tr>
+                </thead>
+                <tbody id="estoqueInventarioTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section id="section-relatorios" class="card app-section hidden">
           <h2>Relatorios</h2>
           <div class="metric-grid relatorio-grid">
@@ -417,6 +670,9 @@
               <strong id="orcamentoAbertoValue">R$ 0,00</strong>
             </article>
           </div>
+          <p class="section-subtitle" style="margin-top: 0.75rem">
+            Para gestão completa de estoque, use a aba <strong>Estoque</strong>.
+          </p>
         </section>
 
         <section id="section-usuarios" class="card app-section hidden">
@@ -573,12 +829,21 @@
                 <input name="margem" placeholder="0" type="number" step="0.01" />
               </label>
               <label class="produto-form-field">
-                Estoque
-                <input name="estoque" placeholder="0" type="number" min="0" step="1" value="0" />
+                Estoque atual
+                <input name="estoque" id="produtoEstoqueInput" placeholder="0" type="number" min="0" step="1" value="0" />
+                <span id="produtoEstoqueHint" class="field-hint">No cadastro novo, vira saldo inicial. Na edição, use a aba Estoque.</span>
               </label>
               <label class="produto-form-field">
                 Ponto de pedido
                 <input name="ponto_pedido" placeholder="0" type="number" min="0" step="1" value="0" />
+              </label>
+              <label class="produto-form-field">
+                Estoque máximo
+                <input name="estoque_maximo" placeholder="0" type="number" min="0" step="1" />
+              </label>
+              <label class="produto-form-field">
+                Lead time (dias)
+                <input name="lead_time_dias" placeholder="7" type="number" min="0" step="1" value="7" />
               </label>
               <label class="produto-form-field">
                 Controla estoque
@@ -1045,6 +1310,53 @@
       </div>
     </div>
 
+    <div id="estoqueMovimentoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="estoqueMovimentoModalTitle">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="estoqueMovimentoModalTitle">Movimento de estoque</h3>
+            <p id="estoqueMovimentoModalSubtitle" class="modal-subtitle">Registre entrada, saída ou ajuste com histórico auditável.</p>
+          </div>
+          <button id="closeEstoqueMovimentoModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+        <form id="estoqueMovimentoForm" class="estoque-movimento-form">
+          <label>
+            Produto
+            <select name="produto_id" id="estoqueMovimentoProduto" required></select>
+          </label>
+          <label>
+            Tipo
+            <select name="tipo" id="estoqueMovimentoTipo" required>
+              <option value="entrada">Entrada (compra / produção)</option>
+              <option value="saida">Saída (consumo / perda)</option>
+              <option value="ajuste">Ajuste (definir saldo)</option>
+              <option value="inventario">Inventário (definir saldo contado)</option>
+            </select>
+          </label>
+          <label id="estoqueMovimentoQtdLabel">
+            Quantidade
+            <input name="quantidade" id="estoqueMovimentoQtd" type="number" min="0.001" step="0.001" required />
+          </label>
+          <label>
+            Motivo
+            <input name="motivo" id="estoqueMovimentoMotivo" placeholder="Ex.: compra fornecedor X" />
+          </label>
+          <label>
+            Observações
+            <textarea name="observacoes" id="estoqueMovimentoObs" rows="2" placeholder="Opcional"></textarea>
+          </label>
+          <label class="checkbox-inline">
+            <input type="checkbox" name="permitir_negativo" id="estoqueMovimentoNegativo" />
+            Permitir saldo negativo
+          </label>
+          <p id="estoqueMovimentoSaldoInfo" class="section-subtitle"></p>
+          <div class="documento-modal-footer">
+            <button type="submit" class="btn">Confirmar movimento</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div id="changePasswordModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="changePasswordModalTitle">
       <div class="modal-card">
         <div class="modal-head">
@@ -1073,6 +1385,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260712l"></script>
+    <script type="module" src="app.js?v=20260712m"></script>
   </body>
 </html>

@@ -2648,3 +2648,102 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Estoque ===== */
+.estoque-kpi-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.estoque-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin: 0.75rem 0 1rem;
+}
+.estoque-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  min-width: 9rem;
+}
+.estoque-filters input,
+.estoque-filters select {
+  min-width: 10rem;
+}
+.estoque-view-hint {
+  margin: 0.5rem 0 0.75rem;
+}
+.estoque-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.estoque-status--ok {
+  background: #e8f7ee;
+  color: #176b3a;
+  border-color: #b7e4c7;
+}
+.estoque-status--reposicao {
+  background: #fff6e5;
+  color: #9a6700;
+  border-color: #f0d59a;
+}
+.estoque-status--zerado,
+.estoque-status--negativo {
+  background: #fdecee;
+  color: #a11b2f;
+  border-color: #f3b5be;
+}
+.estoque-abc {
+  display: inline-flex;
+  width: 1.6rem;
+  height: 1.6rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.estoque-abc--A { background: #dbeafe; color: #1d4ed8; }
+.estoque-abc--B { background: #fef3c7; color: #b45309; }
+.estoque-abc--C { background: #e5e7eb; color: #374151; }
+.estoque-abc--none { background: #f3f4f6; color: #9ca3af; }
+.estoque-movimento-form {
+  display: grid;
+  gap: 0.75rem;
+}
+.estoque-movimento-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+.checkbox-inline {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+}
+.field-hint {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.estoque-qtd-pos { color: #176b3a; font-weight: 600; }
+.estoque-qtd-neg { color: #a11b2f; font-weight: 600; }
+.estoque-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+@media (max-width: 900px) {
+  .estoque-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

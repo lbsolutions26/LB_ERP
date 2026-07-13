@@ -183,7 +183,25 @@ const state = {
   adminEmpresas: [],
   adminVinculos: [],
   produtoPrecoVendaCalc: null,
-  produtoPrecoFormacaoPending: null
+  produtoPrecoFormacaoPending: null,
+  estoqueView: "painel",
+  estoqueMovimentos: [],
+  estoqueMovimentosLoaded: false,
+  estoqueReservas: {},
+  estoqueReservasLoaded: false,
+  estoqueAbcRows: [],
+  estoqueAbcDias: 90,
+  estoqueInventarioDraft: {},
+  estoqueFilters: {
+    saldoBusca: "",
+    saldoStatus: "",
+    saldoAbc: "",
+    movBusca: "",
+    movTipo: "",
+    movStart: "",
+    movEnd: "",
+    invBusca: ""
+  }
 };
 
 const els = {
@@ -369,6 +387,55 @@ const els = {
   estoqueTotalCount: document.getElementById("estoqueTotalCount"),
   estoqueComSaldoCount: document.getElementById("estoqueComSaldoCount"),
   estoquePontoPedidoCount: document.getElementById("estoquePontoPedidoCount"),
+  estoqueSectionSubtitle: document.getElementById("estoqueSectionSubtitle"),
+  estoqueViewButtons: Array.from(document.querySelectorAll("[data-estoque-view]")),
+  estoquePainelView: document.getElementById("estoquePainelView"),
+  estoqueSaldosView: document.getElementById("estoqueSaldosView"),
+  estoqueMovimentosView: document.getElementById("estoqueMovimentosView"),
+  estoqueReposicaoView: document.getElementById("estoqueReposicaoView"),
+  estoqueAbcView: document.getElementById("estoqueAbcView"),
+  estoqueInventarioView: document.getElementById("estoqueInventarioView"),
+  estoqueKpiItens: document.getElementById("estoqueKpiItens"),
+  estoqueKpiValor: document.getElementById("estoqueKpiValor"),
+  estoqueKpiPonto: document.getElementById("estoqueKpiPonto"),
+  estoqueKpiZerados: document.getElementById("estoqueKpiZerados"),
+  estoqueKpiReservado: document.getElementById("estoqueKpiReservado"),
+  estoqueKpiClasseA: document.getElementById("estoqueKpiClasseA"),
+  estoqueSaldosTable: document.getElementById("estoqueSaldosTable"),
+  estoqueMovimentosTable: document.getElementById("estoqueMovimentosTable"),
+  estoqueReposicaoTable: document.getElementById("estoqueReposicaoTable"),
+  estoqueAbcTable: document.getElementById("estoqueAbcTable"),
+  estoqueInventarioTable: document.getElementById("estoqueInventarioTable"),
+  estoqueSaldoBusca: document.getElementById("estoqueSaldoBusca"),
+  estoqueSaldoStatus: document.getElementById("estoqueSaldoStatus"),
+  estoqueSaldoAbc: document.getElementById("estoqueSaldoAbc"),
+  estoqueMovBusca: document.getElementById("estoqueMovBusca"),
+  estoqueMovTipo: document.getElementById("estoqueMovTipo"),
+  estoqueMovStart: document.getElementById("estoqueMovStart"),
+  estoqueMovEnd: document.getElementById("estoqueMovEnd"),
+  estoqueMovRefreshBtn: document.getElementById("estoqueMovRefreshBtn"),
+  estoqueAbcDias: document.getElementById("estoqueAbcDias"),
+  estoqueAbcRecalcularBtn: document.getElementById("estoqueAbcRecalcularBtn"),
+  estoqueAbcCountA: document.getElementById("estoqueAbcCountA"),
+  estoqueAbcCountB: document.getElementById("estoqueAbcCountB"),
+  estoqueAbcCountC: document.getElementById("estoqueAbcCountC"),
+  estoqueAbcCountSem: document.getElementById("estoqueAbcCountSem"),
+  estoqueInvBusca: document.getElementById("estoqueInvBusca"),
+  estoqueInvAplicarBtn: document.getElementById("estoqueInvAplicarBtn"),
+  openEstoqueMovimentoBtn: document.getElementById("openEstoqueMovimentoBtn"),
+  estoqueMovimentoModal: document.getElementById("estoqueMovimentoModal"),
+  closeEstoqueMovimentoModalBtn: document.getElementById("closeEstoqueMovimentoModalBtn"),
+  estoqueMovimentoForm: document.getElementById("estoqueMovimentoForm"),
+  estoqueMovimentoProduto: document.getElementById("estoqueMovimentoProduto"),
+  estoqueMovimentoTipo: document.getElementById("estoqueMovimentoTipo"),
+  estoqueMovimentoQtd: document.getElementById("estoqueMovimentoQtd"),
+  estoqueMovimentoQtdLabel: document.getElementById("estoqueMovimentoQtdLabel"),
+  estoqueMovimentoMotivo: document.getElementById("estoqueMovimentoMotivo"),
+  estoqueMovimentoObs: document.getElementById("estoqueMovimentoObs"),
+  estoqueMovimentoNegativo: document.getElementById("estoqueMovimentoNegativo"),
+  estoqueMovimentoSaldoInfo: document.getElementById("estoqueMovimentoSaldoInfo"),
+  produtoEstoqueInput: document.getElementById("produtoEstoqueInput"),
+  produtoEstoqueHint: document.getElementById("produtoEstoqueHint"),
   orcamentoAbertoValue: document.getElementById("orcamentoAbertoValue"),
   refreshBtn: document.getElementById("refreshBtn"),
   changePasswordBtn: document.getElementById("changePasswordBtn"),
@@ -758,7 +825,7 @@ function getDocumentoModalConfig(tipo = "pedido") {
     titulo: isOrcamento ? "Novo Orçamento" : "Novo Pedido",
     subtitulo: isOrcamento
       ? "Monte um orçamento com itens em grade e total calculado automaticamente."
-      : "Monte um pedido com itens em grade e total calculado automaticamente.",
+      : "Monte um pedido com itens em grade. Status Fechado baixa o estoque automaticamente.",
     submitLabel: isOrcamento ? "Salvar Orçamento" : "Salvar Pedido",
     defaultStatus: "aberto",
     statuses: isOrcamento
@@ -3711,6 +3778,16 @@ async function saveNovoDocumento(event) {
     }
   }
 
+  // Baixa/estorno de estoque para pedidos (status fechado/cancelado/reaberto).
+  if (draft.tipo === "pedido") {
+    try {
+      await syncEstoquePedido(documentoId, status, itens);
+    } catch (estoqueError) {
+      console.error("Falha ao sincronizar estoque do pedido", estoqueError);
+      showToast(`Pedido salvo, mas estoque falhou: ${estoqueError.message}`, "error");
+    }
+  }
+
   closeNovoDocumentoModal();
   state.novoDocumentoModal = createDocumentoDraft("pedido");
   if (els.novoDocumentoClienteSearch) {
@@ -3965,6 +4042,15 @@ function setProdutoFormMode({ editing = false, produto = null } = {}) {
     if (els.produtoSubmitBtn) {
       els.produtoSubmitBtn.textContent = "Salvar Produto";
     }
+    if (els.produtoEstoqueInput) {
+      els.produtoEstoqueInput.readOnly = false;
+      els.produtoEstoqueInput.title = "";
+    }
+    if (els.produtoEstoqueHint) {
+      els.produtoEstoqueHint.textContent = "No cadastro novo, vira saldo inicial. Na edição, use a aba Estoque.";
+    }
+    const leadField = els.produtoForm.elements.namedItem("lead_time_dias");
+    if (leadField && "value" in leadField) leadField.value = "7";
     updateProdutoFormImagePreview();
     return;
   }
@@ -3999,10 +4085,20 @@ function setProdutoFormMode({ editing = false, produto = null } = {}) {
   setValue("margem", produto.margem ?? "");
   setValue("estoque", produto.estoque ?? 0);
   setValue("ponto_pedido", produto.ponto_pedido ?? 0);
+  setValue("estoque_maximo", produto.estoque_maximo ?? "");
+  setValue("lead_time_dias", produto.lead_time_dias ?? 7);
   setValue("descricao", produto.descricao || "");
   setValue("imagem_path", produto.imagem_path || "");
   setValue("ativo", produto.ativo ? "sim" : "nao");
   setValue("controla_estoque", produto.controla_estoque === false ? "nao" : "sim");
+
+  if (els.produtoEstoqueInput) {
+    els.produtoEstoqueInput.readOnly = true;
+    els.produtoEstoqueInput.title = "Saldo controlado pela aba Estoque";
+  }
+  if (els.produtoEstoqueHint) {
+    els.produtoEstoqueHint.textContent = "Somente leitura. Ajuste pela aba Estoque (movimento/inventário).";
+  }
 
   // Restaura a ultima formacao de preco salva (se existir).
   state.produtoPrecoVendaCalc = hydrateProdutoPrecoVendaCalcFromSnapshot(produto.preco_formacao, {
@@ -4221,7 +4317,7 @@ async function loadProdutos() {
   const { data: catalogData, error: catalogError } = await supabaseClient
     .from("produto_catalogo")
     .select(
-      "id, nome, descricao, imagem_path, preco_venda, custo, margem_percentual, preco_formacao, estoque_atual, estoque_minimo, ativo, controla_estoque, categoria:produto_categorias(nome)"
+      "id, nome, descricao, imagem_path, preco_venda, custo, margem_percentual, preco_formacao, estoque_atual, estoque_minimo, estoque_maximo, lead_time_dias, classe_abc, classe_abc_atualizado_em, ativo, controla_estoque, categoria:produto_categorias(nome)"
     )
     .eq("empresa_id", state.empresaId)
     .order("nome");
@@ -4241,6 +4337,10 @@ async function loadProdutos() {
     preco_formacao: item.preco_formacao || null,
     estoque: Number(item.estoque_atual || 0),
     ponto_pedido: Number(item.estoque_minimo || 0),
+    estoque_maximo: item.estoque_maximo == null ? null : Number(item.estoque_maximo),
+    lead_time_dias: item.lead_time_dias == null ? 7 : Number(item.lead_time_dias),
+    classe_abc: item.classe_abc || null,
+    classe_abc_atualizado_em: item.classe_abc_atualizado_em || null,
     ativo: Boolean(item.ativo),
     controla_estoque: Boolean(item.controla_estoque)
   }));
@@ -4342,6 +4442,793 @@ async function ensureProdutosLoaded(options = {}) {
   if (state.produtosLoaded && !options.force) return;
   await loadProdutos();
   state.produtosLoaded = true;
+}
+
+/* =========================
+   ESTOQUE (modulo completo)
+   ========================= */
+
+const ESTOQUE_TIPO_LABEL = {
+  entrada: "Entrada",
+  saida: "Saída",
+  ajuste: "Ajuste",
+  venda: "Venda",
+  estorno_venda: "Estorno venda",
+  inventario: "Inventário"
+};
+
+function getProdutosControlamEstoque() {
+  return (state.produtos || []).filter((p) => p.controla_estoque !== false);
+}
+
+function getEstoqueReservado(produtoId) {
+  return Number(state.estoqueReservas?.[String(produtoId)] || 0);
+}
+
+function getEstoqueStatus(produto) {
+  const saldo = Number(produto.estoque || 0);
+  const ponto = Number(produto.ponto_pedido || 0);
+  if (saldo < 0) return "negativo";
+  if (saldo <= 0) return "zerado";
+  if (saldo <= ponto) return "reposicao";
+  return "ok";
+}
+
+function formatEstoqueStatusBadge(status) {
+  const labels = {
+    ok: "OK",
+    reposicao: "Reposição",
+    zerado: "Zerado",
+    negativo: "Negativo"
+  };
+  return `<span class="estoque-status estoque-status--${escapeHtml(status)}">${escapeHtml(labels[status] || status)}</span>`;
+}
+
+function formatAbcBadge(classe) {
+  const c = String(classe || "").toUpperCase();
+  if (c === "A" || c === "B" || c === "C") {
+    return `<span class="estoque-abc estoque-abc--${c}" title="Classe ${c}">${c}</span>`;
+  }
+  return `<span class="estoque-abc estoque-abc--none" title="Sem classe">–</span>`;
+}
+
+function getQtdReposicaoSugerida(produto) {
+  const saldo = Number(produto.estoque || 0);
+  const max = produto.estoque_maximo != null ? Number(produto.estoque_maximo) : null;
+  const ponto = Number(produto.ponto_pedido || 0);
+  if (max != null && max > saldo) return Math.ceil(max - saldo);
+  if (ponto > 0) return Math.max(ponto * 2 - saldo, ponto);
+  return Math.max(1, Math.ceil(Math.abs(Math.min(saldo, 0)) || 1));
+}
+
+async function registrarEstoqueMovimento({
+  produtoId,
+  tipo,
+  quantidade,
+  motivo = null,
+  observacoes = null,
+  documentoId = null,
+  documentoItemId = null,
+  custoUnitario = null,
+  permitirNegativo = false,
+  metadata = {}
+}) {
+  const { data, error } = await supabaseClient.rpc("registrar_estoque_movimento", {
+    p_empresa_id: state.empresaId,
+    p_produto_id: Number(produtoId),
+    p_tipo: tipo,
+    p_quantidade: Number(quantidade),
+    p_motivo: motivo,
+    p_observacoes: observacoes,
+    p_documento_id: documentoId ? Number(documentoId) : null,
+    p_documento_item_id: documentoItemId ? Number(documentoItemId) : null,
+    p_custo_unitario: custoUnitario,
+    p_permitir_negativo: Boolean(permitirNegativo),
+    p_metadata: metadata || {}
+  });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Sincroniza baixas de estoque de um pedido.
+ * Status fechado => aplica quantidades dos itens (tipo venda).
+ * Outros status => zera aplicacao (estorno).
+ * Diff com raw_payload.estoque_aplicado evita duplicar.
+ */
+async function syncEstoquePedido(documentoId, status, itens) {
+  if (!documentoId) return;
+
+  const { data: doc, error: docErr } = await supabaseClient
+    .from("documentos_venda")
+    .select("id, status, raw_payload, tipo_documento")
+    .eq("empresa_id", state.empresaId)
+    .eq("id", documentoId)
+    .maybeSingle();
+
+  if (docErr) throw docErr;
+  if (!doc || doc.tipo_documento !== "pedido") return;
+
+  const raw = doc.raw_payload && typeof doc.raw_payload === "object" ? { ...doc.raw_payload } : {};
+  const applied = raw.estoque_aplicado && typeof raw.estoque_aplicado === "object" ? { ...raw.estoque_aplicado } : {};
+  const statusAtual = String(status || doc.status || "aberto").toLowerCase();
+  const shouldApply = statusAtual === "fechado";
+
+  const desired = {};
+  if (shouldApply) {
+    for (const item of itens || []) {
+      const pid = item.produtoId || item.produto_id;
+      if (!pid) continue;
+      const prod = state.produtos.find((p) => Number(p.id) === Number(pid));
+      if (prod && prod.controla_estoque === false) continue;
+      const qtd = Number(item.quantidade || 0);
+      if (qtd <= 0) continue;
+      const key = String(pid);
+      desired[key] = Number(((desired[key] || 0) + qtd).toFixed(3));
+    }
+  }
+
+  const allKeys = new Set([...Object.keys(applied), ...Object.keys(desired)]);
+  const errors = [];
+
+  for (const key of allKeys) {
+    const before = Number(applied[key] || 0);
+    const after = Number(desired[key] || 0);
+    const delta = Number((after - before).toFixed(3));
+    if (Math.abs(delta) < 0.0005) continue;
+
+    try {
+      if (delta > 0) {
+        await registrarEstoqueMovimento({
+          produtoId: Number(key),
+          tipo: "venda",
+          quantidade: delta,
+          motivo: `Baixa pedido #${documentoId}`,
+          documentoId,
+          permitirNegativo: false,
+          metadata: { origem: "sync_pedido", documento_id: documentoId }
+        });
+      } else {
+        await registrarEstoqueMovimento({
+          produtoId: Number(key),
+          tipo: "estorno_venda",
+          quantidade: Math.abs(delta),
+          motivo: `Estorno pedido #${documentoId}`,
+          documentoId,
+          permitirNegativo: true,
+          metadata: { origem: "sync_pedido", documento_id: documentoId }
+        });
+      }
+    } catch (err) {
+      errors.push(err.message || String(err));
+    }
+  }
+
+  raw.estoque_aplicado = desired;
+  raw.estoque_sincronizado_em = new Date().toISOString();
+  raw.estoque_status_ref = statusAtual;
+
+  const { error: updErr } = await supabaseClient
+    .from("documentos_venda")
+    .update({ raw_payload: raw })
+    .eq("empresa_id", state.empresaId)
+    .eq("id", documentoId);
+
+  if (updErr) throw updErr;
+
+  state.produtosLoaded = false;
+  state.estoqueMovimentosLoaded = false;
+  state.estoqueReservasLoaded = false;
+
+  if (errors.length) {
+    throw new Error(errors.join(" | "));
+  }
+}
+
+async function loadEstoqueReservas(options = {}) {
+  if (state.estoqueReservasLoaded && !options.force) return;
+
+  const reservas = {};
+  try {
+    const { data: docs, error: docsErr } = await supabaseClient
+      .from("documentos_venda")
+      .select("id")
+      .eq("empresa_id", state.empresaId)
+      .eq("tipo_documento", "pedido")
+      .eq("status", "aberto");
+
+    if (docsErr) throw docsErr;
+    const ids = (docs || []).map((d) => d.id);
+    if (ids.length) {
+      // Carrega em lotes para evitar URL muito longa
+      const chunkSize = 80;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const { data: itens, error: itensErr } = await supabaseClient
+          .from("documento_venda_itens")
+          .select("produto_id, quantidade")
+          .eq("empresa_id", state.empresaId)
+          .in("documento_id", chunk);
+
+        if (itensErr) throw itensErr;
+        for (const item of itens || []) {
+          if (!item.produto_id) continue;
+          const key = String(item.produto_id);
+          reservas[key] = Number(((reservas[key] || 0) + Number(item.quantidade || 0)).toFixed(3));
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Falha ao carregar reservas de estoque", err);
+  }
+
+  state.estoqueReservas = reservas;
+  state.estoqueReservasLoaded = true;
+}
+
+async function loadEstoqueMovimentos(options = {}) {
+  if (state.estoqueMovimentosLoaded && !options.force) return;
+
+  let query = supabaseClient
+    .from("estoque_movimentos")
+    .select(
+      "id, produto_id, tipo, quantidade, saldo_anterior, saldo_posterior, motivo, observacoes, documento_id, created_at, produto:produto_catalogo(id, nome)"
+    )
+    .eq("empresa_id", state.empresaId)
+    .order("created_at", { ascending: false })
+    .limit(400);
+
+  const start = state.estoqueFilters.movStart;
+  const end = state.estoqueFilters.movEnd;
+  if (start) query = query.gte("created_at", `${start}T00:00:00`);
+  if (end) query = query.lte("created_at", `${end}T23:59:59`);
+  if (state.estoqueFilters.movTipo) query = query.eq("tipo", state.estoqueFilters.movTipo);
+
+  const { data, error } = await query;
+  if (error) {
+    if (isMissingRelationError(error)) {
+      state.estoqueMovimentos = [];
+      state.estoqueMovimentosLoaded = true;
+      showToast("Tabela de movimentos ainda nao disponivel. Rode a migration de estoque.", "error");
+      return;
+    }
+    throw error;
+  }
+
+  state.estoqueMovimentos = data || [];
+  state.estoqueMovimentosLoaded = true;
+}
+
+function setEstoqueView(view) {
+  const allowed = ["painel", "saldos", "movimentos", "reposicao", "abc", "inventario"];
+  state.estoqueView = allowed.includes(view) ? view : "painel";
+
+  for (const btn of els.estoqueViewButtons || []) {
+    btn.classList.toggle("active", btn.getAttribute("data-estoque-view") === state.estoqueView);
+  }
+
+  const map = {
+    painel: els.estoquePainelView,
+    saldos: els.estoqueSaldosView,
+    movimentos: els.estoqueMovimentosView,
+    reposicao: els.estoqueReposicaoView,
+    abc: els.estoqueAbcView,
+    inventario: els.estoqueInventarioView
+  };
+  for (const [key, el] of Object.entries(map)) {
+    if (el) el.classList.toggle("hidden", key !== state.estoqueView);
+  }
+
+  if (els.estoqueSectionSubtitle) {
+    const labels = {
+      painel: "Visão geral de saldos, alertas e valor parado.",
+      saldos: "Saldo, reservado, disponível e ponto de pedido por item.",
+      movimentos: "Histórico de entradas, saídas, vendas e ajustes.",
+      reposicao: "Itens no ponto de pedido com quantidade sugerida.",
+      abc: "Curva ABC por valor vendido no período.",
+      inventario: "Conte e ajuste o saldo com um clique."
+    };
+    els.estoqueSectionSubtitle.textContent = labels[state.estoqueView] || labels.painel;
+  }
+}
+
+function getEstoqueSaldosRows() {
+  const busca = String(state.estoqueFilters.saldoBusca || "").trim().toLowerCase();
+  const statusFilter = state.estoqueFilters.saldoStatus || "";
+  const abcFilter = state.estoqueFilters.saldoAbc || "";
+
+  return getProdutosControlamEstoque()
+    .map((produto) => {
+      const reservado = getEstoqueReservado(produto.id);
+      const saldo = Number(produto.estoque || 0);
+      const disponivel = saldo - reservado;
+      const status = getEstoqueStatus(produto);
+      const valor = saldo * Number(produto.custo || 0);
+      return { produto, reservado, saldo, disponivel, status, valor };
+    })
+    .filter((row) => {
+      if (busca) {
+        const hay = `${row.produto.nome} ${row.produto.categoria || ""}`.toLowerCase();
+        if (!hay.includes(busca)) return false;
+      }
+      if (statusFilter && row.status !== statusFilter) return false;
+      if (abcFilter) {
+        const abc = String(row.produto.classe_abc || "-").toUpperCase();
+        if (abcFilter === "-" && abc !== "-" && abc !== "") return false;
+        if (abcFilter !== "-" && abc !== abcFilter) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => String(a.produto.nome).localeCompare(String(b.produto.nome), "pt-BR"));
+}
+
+function renderEstoquePainel() {
+  const rows = getProdutosControlamEstoque();
+  let valor = 0;
+  let ponto = 0;
+  let zerados = 0;
+  let reservadoUn = 0;
+  let classeA = 0;
+
+  for (const p of rows) {
+    const saldo = Number(p.estoque || 0);
+    valor += saldo * Number(p.custo || 0);
+    if (getEstoqueStatus(p) === "reposicao") ponto += 1;
+    if (saldo <= 0) zerados += 1;
+    reservadoUn += getEstoqueReservado(p.id);
+    if (String(p.classe_abc || "").toUpperCase() === "A") classeA += 1;
+  }
+
+  if (els.estoqueKpiItens) els.estoqueKpiItens.textContent = String(rows.length);
+  if (els.estoqueKpiValor) els.estoqueKpiValor.textContent = moeda.format(valor);
+  if (els.estoqueKpiPonto) els.estoqueKpiPonto.textContent = String(ponto);
+  if (els.estoqueKpiZerados) els.estoqueKpiZerados.textContent = String(zerados);
+  if (els.estoqueKpiReservado) els.estoqueKpiReservado.textContent = `${Number(reservadoUn.toFixed(2))} un.`;
+  if (els.estoqueKpiClasseA) els.estoqueKpiClasseA.textContent = String(classeA);
+}
+
+function renderEstoqueSaldosTable() {
+  if (!els.estoqueSaldosTable) return;
+  const rows = getEstoqueSaldosRows();
+  if (!rows.length) {
+    els.estoqueSaldosTable.innerHTML = `<tr><td colspan="11">Nenhum item encontrado.</td></tr>`;
+    return;
+  }
+
+  els.estoqueSaldosTable.innerHTML = rows
+    .map(({ produto, reservado, saldo, disponivel, status, valor }) => `
+      <tr>
+        <td>${escapeHtml(produto.nome)}</td>
+        <td>${escapeHtml(produto.categoria || "-")}</td>
+        <td>${formatAbcBadge(produto.classe_abc)}</td>
+        <td>${escapeHtml(saldo)}</td>
+        <td>${escapeHtml(reservado)}</td>
+        <td>${escapeHtml(Number(disponivel.toFixed(2)))}</td>
+        <td>${escapeHtml(produto.ponto_pedido ?? 0)}</td>
+        <td>${produto.estoque_maximo == null ? "–" : escapeHtml(produto.estoque_maximo)}</td>
+        <td>${formatEstoqueStatusBadge(status)}</td>
+        <td>${moeda.format(valor)}</td>
+        <td class="estoque-actions">
+          <button type="button" class="btn btn-ghost" data-estoque-mov="entrada" data-produto-id="${produto.id}">Entrada</button>
+          <button type="button" class="btn btn-ghost" data-estoque-mov="saida" data-produto-id="${produto.id}">Saída</button>
+          <button type="button" class="btn btn-ghost" data-estoque-mov="ajuste" data-produto-id="${produto.id}">Ajuste</button>
+        </td>
+      </tr>
+    `)
+    .join("");
+}
+
+function renderEstoqueMovimentosTable() {
+  if (!els.estoqueMovimentosTable) return;
+  const busca = String(state.estoqueFilters.movBusca || "").trim().toLowerCase();
+  let rows = state.estoqueMovimentos || [];
+  if (busca) {
+    rows = rows.filter((m) => String(m.produto?.nome || "").toLowerCase().includes(busca));
+  }
+
+  if (!rows.length) {
+    els.estoqueMovimentosTable.innerHTML = `<tr><td colspan="8">Nenhum movimento no filtro atual.</td></tr>`;
+    return;
+  }
+
+  els.estoqueMovimentosTable.innerHTML = rows
+    .map((m) => {
+      const qtd = Number(m.quantidade || 0);
+      const qtdClass = qtd >= 0 ? "estoque-qtd-pos" : "estoque-qtd-neg";
+      const qtdTxt = qtd > 0 ? `+${qtd}` : String(qtd);
+      const data = m.created_at ? new Date(m.created_at).toLocaleString("pt-BR") : "–";
+      return `
+        <tr>
+          <td>${escapeHtml(data)}</td>
+          <td>${escapeHtml(m.produto?.nome || `#${m.produto_id}`)}</td>
+          <td>${escapeHtml(ESTOQUE_TIPO_LABEL[m.tipo] || m.tipo)}</td>
+          <td class="${qtdClass}">${escapeHtml(qtdTxt)}</td>
+          <td>${escapeHtml(m.saldo_anterior)}</td>
+          <td>${escapeHtml(m.saldo_posterior)}</td>
+          <td>${escapeHtml(m.motivo || m.observacoes || "–")}</td>
+          <td>${m.documento_id ? `#${escapeHtml(m.documento_id)}` : "–"}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderEstoqueReposicaoTable() {
+  if (!els.estoqueReposicaoTable) return;
+  const rows = getProdutosControlamEstoque()
+    .filter((p) => {
+      const st = getEstoqueStatus(p);
+      return st === "reposicao" || st === "zerado" || st === "negativo";
+    })
+    .map((produto) => {
+      const sugerido = getQtdReposicaoSugerida(produto);
+      const reservado = getEstoqueReservado(produto.id);
+      const disponivel = Number(produto.estoque || 0) - reservado;
+      const custoEst = sugerido * Number(produto.custo || 0);
+      return { produto, sugerido, reservado, disponivel, custoEst };
+    })
+    .sort((a, b) => b.sugerido - a.sugerido);
+
+  if (!rows.length) {
+    els.estoqueReposicaoTable.innerHTML = `<tr><td colspan="10">Nenhum item no ponto de pedido. Estoque saudável.</td></tr>`;
+    return;
+  }
+
+  els.estoqueReposicaoTable.innerHTML = rows
+    .map(({ produto, sugerido, reservado, disponivel, custoEst }) => `
+      <tr>
+        <td>${escapeHtml(produto.nome)}</td>
+        <td>${formatAbcBadge(produto.classe_abc)}</td>
+        <td>${escapeHtml(produto.estoque ?? 0)}</td>
+        <td>${escapeHtml(reservado)}</td>
+        <td>${escapeHtml(Number(disponivel.toFixed(2)))}</td>
+        <td>${escapeHtml(produto.ponto_pedido ?? 0)}</td>
+        <td>${produto.estoque_maximo == null ? "–" : escapeHtml(produto.estoque_maximo)}</td>
+        <td><strong>${escapeHtml(sugerido)}</strong></td>
+        <td>${moeda.format(custoEst)}</td>
+        <td>
+          <button type="button" class="btn btn-ghost" data-estoque-mov="entrada" data-produto-id="${produto.id}" data-qtd-sugerida="${sugerido}">Entrada</button>
+        </td>
+      </tr>
+    `)
+    .join("");
+}
+
+function computeAbcFromSales(salesByProduto, dias) {
+  const rows = [];
+  let totalValor = 0;
+
+  for (const produto of getProdutosControlamEstoque()) {
+    const sale = salesByProduto[String(produto.id)] || { qty: 0, valor: 0 };
+    rows.push({
+      produto,
+      qty: sale.qty,
+      valor: sale.valor
+    });
+    totalValor += sale.valor;
+  }
+
+  rows.sort((a, b) => b.valor - a.valor || b.qty - a.qty);
+
+  let acum = 0;
+  for (const row of rows) {
+    if (totalValor <= 0 || row.valor <= 0) {
+      row.classe = row.valor > 0 ? "C" : null;
+      row.pctAcum = 100;
+      continue;
+    }
+    acum += row.valor;
+    const pct = (acum / totalValor) * 100;
+    row.pctAcum = pct;
+    if (pct <= 80) row.classe = "A";
+    else if (pct <= 95) row.classe = "B";
+    else row.classe = "C";
+  }
+
+  return { rows, totalValor, dias };
+}
+
+async function loadAndComputeAbc(options = {}) {
+  const dias = Number(options.dias || state.estoqueAbcDias || 90);
+  state.estoqueAbcDias = dias;
+
+  const start = new Date();
+  start.setDate(start.getDate() - dias);
+  const startIso = start.toISOString();
+
+  const { data: docs, error: docsErr } = await supabaseClient
+    .from("documentos_venda")
+    .select("id")
+    .eq("empresa_id", state.empresaId)
+    .eq("tipo_documento", "pedido")
+    .neq("status", "cancelado")
+    .gte("data_emissao", startIso);
+
+  if (docsErr) throw docsErr;
+
+  const salesByProduto = {};
+  const ids = (docs || []).map((d) => d.id);
+  const chunkSize = 80;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    if (!chunk.length) continue;
+    const { data: itens, error: itensErr } = await supabaseClient
+      .from("documento_venda_itens")
+      .select("produto_id, quantidade, valor_unitario, valor_total")
+      .eq("empresa_id", state.empresaId)
+      .in("documento_id", chunk);
+    if (itensErr) throw itensErr;
+    for (const item of itens || []) {
+      if (!item.produto_id) continue;
+      const key = String(item.produto_id);
+      if (!salesByProduto[key]) salesByProduto[key] = { qty: 0, valor: 0 };
+      const qtd = Number(item.quantidade || 0);
+      const valor = item.valor_total != null
+        ? Number(item.valor_total)
+        : qtd * Number(item.valor_unitario || 0);
+      salesByProduto[key].qty += qtd;
+      salesByProduto[key].valor += valor;
+    }
+  }
+
+  const result = computeAbcFromSales(salesByProduto, dias);
+  state.estoqueAbcRows = result.rows;
+  return result;
+}
+
+async function persistAbcClasses() {
+  const now = new Date().toISOString();
+  const updates = (state.estoqueAbcRows || []).filter((r) => r.produto?.id);
+  // Atualiza em lotes sequenciais (simples e seguro)
+  for (const row of updates) {
+    const classe = row.classe || null;
+    const { error } = await supabaseClient
+      .from("produto_catalogo")
+      .update({
+        classe_abc: classe,
+        classe_abc_atualizado_em: now
+      })
+      .eq("empresa_id", state.empresaId)
+      .eq("id", row.produto.id);
+    if (error) throw error;
+    const local = state.produtos.find((p) => Number(p.id) === Number(row.produto.id));
+    if (local) {
+      local.classe_abc = classe;
+      local.classe_abc_atualizado_em = now;
+    }
+  }
+}
+
+function renderEstoqueAbc() {
+  const rows = state.estoqueAbcRows || [];
+  let a = 0;
+  let b = 0;
+  let c = 0;
+  let sem = 0;
+  for (const row of rows) {
+    if (row.classe === "A") a += 1;
+    else if (row.classe === "B") b += 1;
+    else if (row.classe === "C") c += 1;
+    else sem += 1;
+  }
+  if (els.estoqueAbcCountA) els.estoqueAbcCountA.textContent = String(a);
+  if (els.estoqueAbcCountB) els.estoqueAbcCountB.textContent = String(b);
+  if (els.estoqueAbcCountC) els.estoqueAbcCountC.textContent = String(c);
+  if (els.estoqueAbcCountSem) els.estoqueAbcCountSem.textContent = String(sem);
+
+  if (!els.estoqueAbcTable) return;
+  if (!rows.length) {
+    els.estoqueAbcTable.innerHTML = `<tr><td colspan="6">Sem dados. Clique em Recalcular ABC.</td></tr>`;
+    return;
+  }
+
+  els.estoqueAbcTable.innerHTML = rows
+    .map((row) => `
+      <tr>
+        <td>${formatAbcBadge(row.classe)}</td>
+        <td>${escapeHtml(row.produto.nome)}</td>
+        <td>${escapeHtml(Number(row.qty.toFixed(2)))}</td>
+        <td>${moeda.format(row.valor)}</td>
+        <td>${row.valor > 0 ? `${escapeHtml(row.pctAcum.toFixed(1))}%` : "–"}</td>
+        <td>${escapeHtml(row.produto.estoque ?? 0)}</td>
+      </tr>
+    `)
+    .join("");
+}
+
+function renderEstoqueInventarioTable() {
+  if (!els.estoqueInventarioTable) return;
+  const busca = String(state.estoqueFilters.invBusca || "").trim().toLowerCase();
+  const rows = getProdutosControlamEstoque()
+    .filter((p) => !busca || String(p.nome).toLowerCase().includes(busca))
+    .sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
+
+  if (!rows.length) {
+    els.estoqueInventarioTable.innerHTML = `<tr><td colspan="4">Nenhum produto.</td></tr>`;
+    return;
+  }
+
+  els.estoqueInventarioTable.innerHTML = rows
+    .map((p) => {
+      const contagem = state.estoqueInventarioDraft[String(p.id)];
+      const contagemVal = contagem === undefined || contagem === "" ? "" : contagem;
+      const diff = contagemVal === "" ? "" : Number(contagemVal) - Number(p.estoque || 0);
+      const diffTxt = contagemVal === "" ? "–" : (diff > 0 ? `+${diff}` : String(diff));
+      return `
+        <tr>
+          <td>${escapeHtml(p.nome)}</td>
+          <td>${escapeHtml(p.estoque ?? 0)}</td>
+          <td>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              data-inv-produto="${p.id}"
+              value="${escapeHtml(contagemVal)}"
+              placeholder="Contado"
+              style="width: 6.5rem"
+            />
+          </td>
+          <td class="${diff > 0 ? "estoque-qtd-pos" : diff < 0 ? "estoque-qtd-neg" : ""}">${escapeHtml(diffTxt)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderEstoqueSection() {
+  setEstoqueView(state.estoqueView);
+  renderEstoquePainel();
+  renderEstoqueSaldosTable();
+  renderEstoqueMovimentosTable();
+  renderEstoqueReposicaoTable();
+  renderEstoqueAbc();
+  renderEstoqueInventarioTable();
+}
+
+async function ensureEstoqueLoaded(options = {}) {
+  await ensureProdutosLoaded(options);
+  await Promise.all([
+    loadEstoqueReservas(options),
+    loadEstoqueMovimentos(options)
+  ]);
+
+  // ABC em cache local se vazio
+  if (!state.estoqueAbcRows.length || options.forceAbc) {
+    try {
+      await loadAndComputeAbc({ dias: state.estoqueAbcDias });
+    } catch (err) {
+      console.warn("ABC nao calculado", err);
+    }
+  }
+  renderEstoqueSection();
+}
+
+function fillEstoqueMovimentoProdutoSelect(selectedId = "") {
+  if (!els.estoqueMovimentoProduto) return;
+  const options = getProdutosControlamEstoque()
+    .map((p) => {
+      const sel = String(p.id) === String(selectedId) ? " selected" : "";
+      return `<option value="${escapeHtml(p.id)}"${sel}>${escapeHtml(p.nome)} (saldo ${escapeHtml(p.estoque ?? 0)})</option>`;
+    })
+    .join("");
+  els.estoqueMovimentoProduto.innerHTML = options || `<option value="">Nenhum produto</option>`;
+  updateEstoqueMovimentoSaldoInfo();
+}
+
+function updateEstoqueMovimentoSaldoInfo() {
+  if (!els.estoqueMovimentoSaldoInfo) return;
+  const pid = els.estoqueMovimentoProduto?.value;
+  const tipo = els.estoqueMovimentoTipo?.value || "entrada";
+  const prod = state.produtos.find((p) => String(p.id) === String(pid));
+  if (!prod) {
+    els.estoqueMovimentoSaldoInfo.textContent = "";
+    return;
+  }
+  const isAbs = tipo === "ajuste" || tipo === "inventario";
+  if (els.estoqueMovimentoQtdLabel) {
+    els.estoqueMovimentoQtdLabel.childNodes[0].textContent = isAbs ? "Novo saldo " : "Quantidade ";
+  }
+  els.estoqueMovimentoSaldoInfo.textContent = isAbs
+    ? `Saldo atual: ${prod.estoque ?? 0}. Informe o novo saldo absoluto.`
+    : `Saldo atual: ${prod.estoque ?? 0}. Reservado em pedidos abertos: ${getEstoqueReservado(prod.id)}.`;
+}
+
+function openEstoqueMovimentoModal({ produtoId = "", tipo = "entrada", quantidade = "" } = {}) {
+  if (!els.estoqueMovimentoModal) return;
+  fillEstoqueMovimentoProdutoSelect(produtoId);
+  if (els.estoqueMovimentoTipo) els.estoqueMovimentoTipo.value = tipo || "entrada";
+  if (els.estoqueMovimentoQtd) els.estoqueMovimentoQtd.value = quantidade === "" || quantidade == null ? "" : String(quantidade);
+  if (els.estoqueMovimentoMotivo) els.estoqueMovimentoMotivo.value = "";
+  if (els.estoqueMovimentoObs) els.estoqueMovimentoObs.value = "";
+  if (els.estoqueMovimentoNegativo) els.estoqueMovimentoNegativo.checked = false;
+  updateEstoqueMovimentoSaldoInfo();
+  els.estoqueMovimentoModal.classList.remove("hidden");
+}
+
+function closeEstoqueMovimentoModal() {
+  if (els.estoqueMovimentoModal) els.estoqueMovimentoModal.classList.add("hidden");
+}
+
+async function submitEstoqueMovimento(event) {
+  event.preventDefault();
+  const form = els.estoqueMovimentoForm;
+  if (!form) return;
+  const formData = new FormData(form);
+  const produtoId = Number(formData.get("produto_id"));
+  const tipo = String(formData.get("tipo") || "entrada");
+  const quantidade = Number(formData.get("quantidade"));
+  const motivo = String(formData.get("motivo") || "").trim() || null;
+  const observacoes = String(formData.get("observacoes") || "").trim() || null;
+  const permitirNegativo = Boolean(formData.get("permitir_negativo"));
+
+  if (!produtoId || !Number.isFinite(quantidade)) {
+    throw new Error("Informe produto e quantidade.");
+  }
+
+  await registrarEstoqueMovimento({
+    produtoId,
+    tipo,
+    quantidade,
+    motivo,
+    observacoes,
+    permitirNegativo
+  });
+
+  closeEstoqueMovimentoModal();
+  state.produtosLoaded = false;
+  state.estoqueMovimentosLoaded = false;
+  showToast("Movimento de estoque registrado");
+  await ensureEstoqueLoaded({ force: true });
+  renderMetrics();
+}
+
+async function aplicarInventarioContagens() {
+  const entries = Object.entries(state.estoqueInventarioDraft || {})
+    .map(([id, val]) => ({ id: Number(id), contagem: val === "" || val == null ? null : Number(val) }))
+    .filter((e) => e.contagem != null && Number.isFinite(e.contagem));
+
+  if (!entries.length) {
+    showToast("Preencha ao menos uma contagem.", "error");
+    return;
+  }
+
+  let ok = 0;
+  let skip = 0;
+  const errors = [];
+
+  for (const entry of entries) {
+    const prod = state.produtos.find((p) => Number(p.id) === entry.id);
+    if (!prod) continue;
+    if (Number(prod.estoque || 0) === Number(entry.contagem)) {
+      skip += 1;
+      continue;
+    }
+    try {
+      await registrarEstoqueMovimento({
+        produtoId: entry.id,
+        tipo: "inventario",
+        quantidade: entry.contagem,
+        motivo: "Inventário físico",
+        permitirNegativo: entry.contagem < 0
+      });
+      ok += 1;
+    } catch (err) {
+      errors.push(`${prod.nome}: ${err.message}`);
+    }
+  }
+
+  state.estoqueInventarioDraft = {};
+  state.produtosLoaded = false;
+  state.estoqueMovimentosLoaded = false;
+  await ensureEstoqueLoaded({ force: true });
+  renderMetrics();
+
+  if (errors.length) {
+    showToast(`Inventário: ${ok} ok, ${skip} iguais, erros: ${errors[0]}`, "error");
+  } else {
+    showToast(`Inventário aplicado: ${ok} ajuste(s), ${skip} sem diferença.`);
+  }
 }
 
 async function ensureOrcamentosLoaded(options = {}) {
@@ -6501,6 +7388,11 @@ async function refreshAll() {
       if (state.contasReceberLoaded) secondaryLoads.push(loadContasReceber(), loadRecebimentos(), loadParcelasReceberPrevistas());
       if (state.ownerUsersLoaded) secondaryLoads.push(loadOwnerUsers());
       if (state.adminLoaded && state.isPlatformAdmin) secondaryLoads.push(loadAdminEmpresas(), loadAdminVinculos());
+      if (state.estoqueMovimentosLoaded) {
+        state.estoqueMovimentosLoaded = false;
+        state.estoqueReservasLoaded = false;
+        secondaryLoads.push(loadEstoqueMovimentos({ force: true }), loadEstoqueReservas({ force: true }));
+      }
 
       await Promise.all(secondaryLoads);
 
@@ -6512,6 +7404,9 @@ async function refreshAll() {
       if (state.orcamentosLoaded) renderOrcamentosTable();
       if (state.despesasLoaded) renderDespesasTable();
       if (state.ownerUsersLoaded) renderOwnerUsersTable();
+      if (document.getElementById("section-estoque") && !document.getElementById("section-estoque").classList.contains("hidden")) {
+        renderEstoqueSection();
+      }
       if (state.adminLoaded) {
         renderAdminEmpresasSelect();
         renderAdminVinculosTable();
@@ -6598,6 +7493,10 @@ async function createProduto(event) {
   }
 
   const precoFormacao = getCurrentProdutoPrecoFormacaoForSave();
+  const estoqueMaxRaw = String(formData.get("estoque_maximo") || "").trim();
+  const leadTimeRaw = String(formData.get("lead_time_dias") || "").trim();
+  const saldoInicial = Math.max(0, Math.trunc(Number(formData.get("estoque") || 0) || 0));
+  const controlaEstoque = String(formData.get("controla_estoque") || "sim") === "sim";
 
   const payloadCatalogo = {
     empresa_id: state.empresaId,
@@ -6606,10 +7505,11 @@ async function createProduto(event) {
     preco_venda: Number(formData.get("preco") || 0),
     custo: String(formData.get("custo") || "").trim() ? Number(formData.get("custo")) : null,
     margem_percentual: String(formData.get("margem") || "").trim() ? Number(formData.get("margem")) : null,
-    estoque_atual: Number(formData.get("estoque") || 0),
     estoque_minimo: Number(formData.get("ponto_pedido") || 0),
+    estoque_maximo: estoqueMaxRaw ? Number(estoqueMaxRaw) : null,
+    lead_time_dias: leadTimeRaw ? Number(leadTimeRaw) : 7,
     ativo: String(formData.get("ativo") || "sim") === "sim",
-    controla_estoque: String(formData.get("controla_estoque") || "sim") === "sim",
+    controla_estoque: controlaEstoque,
     descricao: String(formData.get("descricao") || "").trim() || null,
     imagem_path: String(formData.get("imagem_path") || "").trim() || null
   };
@@ -6624,7 +7524,10 @@ async function createProduto(event) {
     }
   }
 
+  let produtoId = editId;
+
   if (editId) {
+    // Nao sobrescreve estoque_atual na edicao — saldo so muda por movimentos.
     const { error: updateCatalogError } = await supabaseClient
       .from("produto_catalogo")
       .update(payloadCatalogo)
@@ -6633,11 +7536,35 @@ async function createProduto(event) {
 
     if (updateCatalogError) throw updateCatalogError;
   } else {
-    const { error: insertCatalogError } = await supabaseClient
+    payloadCatalogo.estoque_atual = 0;
+    const { data: inserted, error: insertCatalogError } = await supabaseClient
       .from("produto_catalogo")
-      .insert(payloadCatalogo);
+      .insert(payloadCatalogo)
+      .select("id")
+      .single();
 
     if (insertCatalogError) throw insertCatalogError;
+    produtoId = inserted?.id;
+
+    if (controlaEstoque && saldoInicial > 0 && produtoId) {
+      try {
+        await registrarEstoqueMovimento({
+          produtoId,
+          tipo: "entrada",
+          quantidade: saldoInicial,
+          motivo: "Saldo inicial no cadastro",
+          permitirNegativo: false
+        });
+      } catch (movErr) {
+        console.warn("Falha ao registrar saldo inicial", movErr);
+        // Fallback: seta saldo direto se RPC falhar
+        await supabaseClient
+          .from("produto_catalogo")
+          .update({ estoque_atual: saldoInicial })
+          .eq("id", produtoId)
+          .eq("empresa_id", state.empresaId);
+      }
+    }
   }
 
   state.produtoPrecoFormacaoPending = null;
@@ -7083,6 +8010,8 @@ function attachEvents() {
         } else if (sectionName === "produtos") {
           await ensureProdutosLoaded();
           renderProdutosTable();
+        } else if (sectionName === "estoque") {
+          await ensureEstoqueLoaded();
         } else if (sectionName === "orcamentos") {
           await ensureOrcamentosLoaded();
           renderOrcamentosTable();
@@ -7202,6 +8131,198 @@ function attachEvents() {
         setProdutoFormMode({ editing: false });
         closeProdutoModal();
       }
+    });
+  }
+
+  // ---- Estoque: views, filtros, modal e inventario ----
+  for (const btn of els.estoqueViewButtons || []) {
+    btn.addEventListener("click", async () => {
+      const view = btn.getAttribute("data-estoque-view") || "painel";
+      setEstoqueView(view);
+      try {
+        if (view === "movimentos") {
+          await loadEstoqueMovimentos({ force: true });
+        }
+        renderEstoqueSection();
+      } catch (error) {
+        showToast(`Erro ao carregar estoque: ${error.message}`, "error");
+      }
+    });
+  }
+
+  if (els.openEstoqueMovimentoBtn) {
+    els.openEstoqueMovimentoBtn.addEventListener("click", () => openEstoqueMovimentoModal());
+  }
+  if (els.closeEstoqueMovimentoModalBtn) {
+    els.closeEstoqueMovimentoModalBtn.addEventListener("click", closeEstoqueMovimentoModal);
+  }
+  if (els.estoqueMovimentoModal) {
+    els.estoqueMovimentoModal.addEventListener("click", (event) => {
+      if (event.target === els.estoqueMovimentoModal) closeEstoqueMovimentoModal();
+    });
+  }
+  if (els.estoqueMovimentoForm) {
+    els.estoqueMovimentoForm.addEventListener("submit", async (event) => {
+      try {
+        await submitEstoqueMovimento(event);
+      } catch (error) {
+        showToast(`Erro no movimento: ${error.message}`, "error");
+      }
+    });
+  }
+  if (els.estoqueMovimentoProduto) {
+    els.estoqueMovimentoProduto.addEventListener("change", updateEstoqueMovimentoSaldoInfo);
+  }
+  if (els.estoqueMovimentoTipo) {
+    els.estoqueMovimentoTipo.addEventListener("change", updateEstoqueMovimentoSaldoInfo);
+  }
+
+  if (els.estoqueSaldoBusca) {
+    els.estoqueSaldoBusca.addEventListener("input", () => {
+      state.estoqueFilters.saldoBusca = els.estoqueSaldoBusca.value || "";
+      renderEstoqueSaldosTable();
+    });
+  }
+  if (els.estoqueSaldoStatus) {
+    els.estoqueSaldoStatus.addEventListener("change", () => {
+      state.estoqueFilters.saldoStatus = els.estoqueSaldoStatus.value || "";
+      renderEstoqueSaldosTable();
+    });
+  }
+  if (els.estoqueSaldoAbc) {
+    els.estoqueSaldoAbc.addEventListener("change", () => {
+      state.estoqueFilters.saldoAbc = els.estoqueSaldoAbc.value || "";
+      renderEstoqueSaldosTable();
+    });
+  }
+  if (els.estoqueMovBusca) {
+    els.estoqueMovBusca.addEventListener("input", () => {
+      state.estoqueFilters.movBusca = els.estoqueMovBusca.value || "";
+      renderEstoqueMovimentosTable();
+    });
+  }
+  if (els.estoqueMovTipo) {
+    els.estoqueMovTipo.addEventListener("change", async () => {
+      state.estoqueFilters.movTipo = els.estoqueMovTipo.value || "";
+      state.estoqueMovimentosLoaded = false;
+      try {
+        await loadEstoqueMovimentos({ force: true });
+        renderEstoqueMovimentosTable();
+      } catch (error) {
+        showToast(`Erro ao filtrar movimentos: ${error.message}`, "error");
+      }
+    });
+  }
+  if (els.estoqueMovStart) {
+    els.estoqueMovStart.addEventListener("change", async () => {
+      state.estoqueFilters.movStart = els.estoqueMovStart.value || "";
+      state.estoqueMovimentosLoaded = false;
+      try {
+        await loadEstoqueMovimentos({ force: true });
+        renderEstoqueMovimentosTable();
+      } catch (error) {
+        showToast(`Erro ao filtrar movimentos: ${error.message}`, "error");
+      }
+    });
+  }
+  if (els.estoqueMovEnd) {
+    els.estoqueMovEnd.addEventListener("change", async () => {
+      state.estoqueFilters.movEnd = els.estoqueMovEnd.value || "";
+      state.estoqueMovimentosLoaded = false;
+      try {
+        await loadEstoqueMovimentos({ force: true });
+        renderEstoqueMovimentosTable();
+      } catch (error) {
+        showToast(`Erro ao filtrar movimentos: ${error.message}`, "error");
+      }
+    });
+  }
+  if (els.estoqueMovRefreshBtn) {
+    els.estoqueMovRefreshBtn.addEventListener("click", async () => {
+      try {
+        await loadEstoqueMovimentos({ force: true });
+        renderEstoqueMovimentosTable();
+        showToast("Movimentos atualizados");
+      } catch (error) {
+        showToast(`Erro ao atualizar: ${error.message}`, "error");
+      }
+    });
+  }
+  if (els.estoqueAbcDias) {
+    els.estoqueAbcDias.addEventListener("change", () => {
+      state.estoqueAbcDias = Number(els.estoqueAbcDias.value || 90);
+    });
+  }
+  if (els.estoqueAbcRecalcularBtn) {
+    els.estoqueAbcRecalcularBtn.addEventListener("click", async () => {
+      try {
+        const dias = Number(els.estoqueAbcDias?.value || state.estoqueAbcDias || 90);
+        await loadAndComputeAbc({ dias });
+        await persistAbcClasses();
+        renderEstoqueSection();
+        showToast("Classificação ABC recalculada e salva nos produtos");
+      } catch (error) {
+        showToast(`Erro ao recalcular ABC: ${error.message}`, "error");
+      }
+    });
+  }
+  if (els.estoqueInvBusca) {
+    els.estoqueInvBusca.addEventListener("input", () => {
+      state.estoqueFilters.invBusca = els.estoqueInvBusca.value || "";
+      renderEstoqueInventarioTable();
+    });
+  }
+  if (els.estoqueInvAplicarBtn) {
+    els.estoqueInvAplicarBtn.addEventListener("click", async () => {
+      try {
+        await aplicarInventarioContagens();
+      } catch (error) {
+        showToast(`Erro no inventário: ${error.message}`, "error");
+      }
+    });
+  }
+  if (els.estoqueInventarioTable) {
+    els.estoqueInventarioTable.addEventListener("input", (event) => {
+      const input = event.target?.closest?.("input[data-inv-produto]");
+      if (!input) return;
+      const id = input.getAttribute("data-inv-produto");
+      state.estoqueInventarioDraft[String(id)] = input.value;
+      // Atualiza so a celula de diferenca sem re-render total (mantem foco)
+      const tr = input.closest("tr");
+      if (!tr) return;
+      const saldo = Number(tr.children[1]?.textContent || 0);
+      const contagem = input.value === "" ? null : Number(input.value);
+      const diffCell = tr.children[3];
+      if (!diffCell) return;
+      if (contagem == null || !Number.isFinite(contagem)) {
+        diffCell.textContent = "–";
+        diffCell.className = "";
+        return;
+      }
+      const diff = contagem - saldo;
+      diffCell.textContent = diff > 0 ? `+${diff}` : String(diff);
+      diffCell.className = diff > 0 ? "estoque-qtd-pos" : diff < 0 ? "estoque-qtd-neg" : "";
+    });
+  }
+  if (els.estoqueSaldosTable) {
+    els.estoqueSaldosTable.addEventListener("click", (event) => {
+      const btn = event.target?.closest?.("[data-estoque-mov]");
+      if (!btn) return;
+      openEstoqueMovimentoModal({
+        produtoId: btn.getAttribute("data-produto-id") || "",
+        tipo: btn.getAttribute("data-estoque-mov") || "entrada"
+      });
+    });
+  }
+  if (els.estoqueReposicaoTable) {
+    els.estoqueReposicaoTable.addEventListener("click", (event) => {
+      const btn = event.target?.closest?.("[data-estoque-mov]");
+      if (!btn) return;
+      openEstoqueMovimentoModal({
+        produtoId: btn.getAttribute("data-produto-id") || "",
+        tipo: btn.getAttribute("data-estoque-mov") || "entrada",
+        quantidade: btn.getAttribute("data-qtd-sugerida") || ""
+      });
     });
   }
 
