@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260713e" />
+    <link rel="stylesheet" href="styles.css?v=20260713g" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -135,6 +135,67 @@
             </div>
             <p id="dashboardForecastHint" class="section-subtitle dashboard-forecast-hint"></p>
           </article>
+
+          <div class="dashboard-result-grid">
+            <article class="dashboard-panel dashboard-result-card dashboard-result-pagar" id="dashboardContasPagarCard">
+              <div class="dashboard-result-head">
+                <div>
+                  <h3>Contas a pagar do mês</h3>
+                  <p id="dashboardContasPagarSubtitle" class="section-subtitle">
+                    Parcelas com vencimento no mês corrente.
+                  </p>
+                </div>
+                <div class="dashboard-result-main dashboard-result-main--warn">
+                  <span>Total a pagar</span>
+                  <strong id="dashboardContasPagarValue">R$ 0,00</strong>
+                </div>
+              </div>
+              <div class="dashboard-result-stats">
+                <div>
+                  <span>Em aberto</span>
+                  <strong id="dashboardContasPagarAberto">R$ 0,00</strong>
+                </div>
+                <div>
+                  <span>Já pago</span>
+                  <strong id="dashboardContasPagarPago">R$ 0,00</strong>
+                </div>
+                <div>
+                  <span>Parcelas</span>
+                  <strong id="dashboardContasPagarCount">0</strong>
+                </div>
+              </div>
+            </article>
+
+            <article class="dashboard-panel dashboard-result-card dashboard-result-mes" id="dashboardResultadoCard">
+              <div class="dashboard-result-head">
+                <div>
+                  <h3>Resultado do mês</h3>
+                  <p id="dashboardResultadoSubtitle" class="section-subtitle">
+                    Faturamento do mês menos contas a pagar do mês.
+                  </p>
+                </div>
+                <div class="dashboard-result-main" id="dashboardResultadoMain">
+                  <span>Resultado</span>
+                  <strong id="dashboardResultadoValue">R$ 0,00</strong>
+                </div>
+              </div>
+              <div class="dashboard-result-stats">
+                <div>
+                  <span>Faturamento</span>
+                  <strong id="dashboardResultadoFaturado">R$ 0,00</strong>
+                </div>
+                <div>
+                  <span>(−) Contas a pagar</span>
+                  <strong id="dashboardResultadoPagar">R$ 0,00</strong>
+                </div>
+                <div>
+                  <span>Saldo</span>
+                  <strong id="dashboardResultadoSaldo">R$ 0,00</strong>
+                </div>
+              </div>
+              <p id="dashboardResultadoHint" class="section-subtitle dashboard-result-hint"></p>
+            </article>
+          </div>
 
           <div class="dashboard-daily-grid">
             <div class="dashboard-cash-panel dashboard-panel">
@@ -1930,6 +1991,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260713f"></script>
+    <script type="module" src="app.js?v=20260713g"></script>
   </body>
 </html>

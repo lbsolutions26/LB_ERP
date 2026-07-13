@@ -3078,6 +3078,124 @@ tr.is-clickable-row:hover {
   }
 }
 
+/* ===== Contas a pagar + resultado do mês (dashboard) ===== */
+.dashboard-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin: 0 0 1.25rem;
+}
+
+.dashboard-result-card {
+  margin: 0;
+  padding: 1rem 1.1rem 1.05rem;
+}
+
+.dashboard-result-pagar {
+  background: linear-gradient(145deg, #ffffff 0%, #fff7f0 55%, #f8f3ea 100%);
+  border-color: rgba(214, 124, 47, 0.28);
+}
+
+.dashboard-result-mes {
+  background: linear-gradient(145deg, #ffffff 0%, #f0f7f5 55%, #f7f4ee 100%);
+  border-color: rgba(22, 93, 89, 0.22);
+}
+
+.dashboard-result-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  margin-bottom: 0.85rem;
+}
+
+.dashboard-result-head h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+
+.dashboard-result-main {
+  text-align: right;
+  min-width: 9.5rem;
+}
+
+.dashboard-result-main span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.dashboard-result-main strong {
+  display: block;
+  font-size: 1.45rem;
+  color: var(--brand-strong, #0f4c48);
+  margin-top: 0.15rem;
+  font-family: "Sora", sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.dashboard-result-main--warn strong {
+  color: #b45a12;
+}
+
+.dashboard-result-main.is-positive strong {
+  color: #165d59;
+}
+
+.dashboard-result-main.is-negative strong {
+  color: #b42318;
+}
+
+.dashboard-result-main.is-zero strong {
+  color: var(--ink);
+}
+
+.dashboard-result-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.dashboard-result-stats > div {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.65rem 0.7rem;
+}
+
+.dashboard-result-stats span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.dashboard-result-stats strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1rem;
+}
+
+.dashboard-result-hint {
+  margin: 0.75rem 0 0;
+}
+
+@media (max-width: 900px) {
+  .dashboard-result-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard-result-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-result-main {
+    text-align: left;
+  }
+}
+
 /* ===== Previsao de fechamento (dashboard) ===== */
 .dashboard-forecast-card {
   margin: 1rem 0 1.25rem;

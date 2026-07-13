@@ -161,6 +161,13 @@ const state = {
   parcelasReceberPrevistas: [],
   dashboardMonthlyCash: [],
   dashboardDaily: [],
+  dashboardContasPagarMes: {
+    total: 0,
+    aberto: 0,
+    pago: 0,
+    count: 0,
+    monthKey: ""
+  },
   dashboardCashChartMode: "recebimentos",
   dashboardMonthsBack: 11,
   recebimentoModal: {
@@ -460,6 +467,20 @@ const els = {
   dashboardForecastProjecao: document.getElementById("dashboardForecastProjecao"),
   dashboardForecastDiasMes: document.getElementById("dashboardForecastDiasMes"),
   dashboardForecastHint: document.getElementById("dashboardForecastHint"),
+  dashboardContasPagarCard: document.getElementById("dashboardContasPagarCard"),
+  dashboardContasPagarValue: document.getElementById("dashboardContasPagarValue"),
+  dashboardContasPagarSubtitle: document.getElementById("dashboardContasPagarSubtitle"),
+  dashboardContasPagarAberto: document.getElementById("dashboardContasPagarAberto"),
+  dashboardContasPagarPago: document.getElementById("dashboardContasPagarPago"),
+  dashboardContasPagarCount: document.getElementById("dashboardContasPagarCount"),
+  dashboardResultadoCard: document.getElementById("dashboardResultadoCard"),
+  dashboardResultadoMain: document.getElementById("dashboardResultadoMain"),
+  dashboardResultadoValue: document.getElementById("dashboardResultadoValue"),
+  dashboardResultadoSubtitle: document.getElementById("dashboardResultadoSubtitle"),
+  dashboardResultadoFaturado: document.getElementById("dashboardResultadoFaturado"),
+  dashboardResultadoPagar: document.getElementById("dashboardResultadoPagar"),
+  dashboardResultadoSaldo: document.getElementById("dashboardResultadoSaldo"),
+  dashboardResultadoHint: document.getElementById("dashboardResultadoHint"),
   estoqueTotalCount: document.getElementById("estoqueTotalCount"),
   estoqueComSaldoCount: document.getElementById("estoqueComSaldoCount"),
   estoquePontoPedidoCount: document.getElementById("estoquePontoPedidoCount"),
@@ -4724,6 +4745,148 @@ function renderDashboardForecastCard() {
   state.dashboardForecast = f;
 }
 
+/**
+ * Contas a pagar do mês corrente (parcelas com vencimento no mês)
+ * e resultado = faturamento do mês − total a pagar do mês.
+ */
+async function loadDashboardContasPagarMes() {
+  const empty = {
+    total: 0,
+    aberto: 0,
+    pago: 0,
+    count: 0,
+    monthKey: formatMonthKey(new Date())
+  };
+
+  if (!state.empresaId) {
+    state.dashboardContasPagarMes = empty;
+    return;
+  }
+
+  const now = new Date();
+  const start = formatDateInput(new Date(now.getFullYear(), now.getMonth(), 1));
+  const end = formatDateInput(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+  try {
+    const { data, error } = await fetchAllSupabaseRows(() =>
+      supabaseClient
+        .from("contas_pagar_parcelas")
+        .select("id, valor_parcela, valor_pago, status, vencimento")
+        .eq("empresa_id", state.empresaId)
+        .gte("vencimento", start)
+        .lte("vencimento", end)
+        .order("vencimento", { ascending: true })
+    );
+
+    if (error) {
+      if (isMissingRelationError(error)) {
+        state.dashboardContasPagarMes = empty;
+        return;
+      }
+      throw error;
+    }
+
+    let total = 0;
+    let aberto = 0;
+    let pago = 0;
+    let count = 0;
+
+    for (const row of data || []) {
+      const status = String(row.status || "").toLowerCase();
+      if (status === "cancelado") continue;
+      const valorParcela = Math.max(0, Number(row.valor_parcela || 0));
+      const valorPago = Math.max(0, Math.min(valorParcela, Number(row.valor_pago || 0)));
+      total += valorParcela;
+      pago += valorPago;
+      aberto += Math.max(0, valorParcela - valorPago);
+      count += 1;
+    }
+
+    state.dashboardContasPagarMes = {
+      total: Number(total.toFixed(2)),
+      aberto: Number(aberto.toFixed(2)),
+      pago: Number(pago.toFixed(2)),
+      count,
+      monthKey: formatMonthKey(now)
+    };
+  } catch (error) {
+    console.warn("Falha ao carregar contas a pagar do mês", error.message || error);
+    state.dashboardContasPagarMes = empty;
+  }
+}
+
+function getDashboardFaturamentoMesAtual() {
+  return (state.dashboardDaily || []).reduce(
+    (sum, row) => sum + Number(row.faturamento || 0),
+    0
+  );
+}
+
+function renderDashboardResultCards() {
+  const pagar = state.dashboardContasPagarMes || {
+    total: 0,
+    aberto: 0,
+    pago: 0,
+    count: 0
+  };
+  const faturadoMes = getDashboardFaturamentoMesAtual();
+  const resultado = faturadoMes - Number(pagar.total || 0);
+  const now = new Date();
+  const monthLabel = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const monthName = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+
+  if (els.dashboardContasPagarSubtitle) {
+    els.dashboardContasPagarSubtitle.textContent =
+      `Parcelas com vencimento em ${monthName}.`;
+  }
+  if (els.dashboardContasPagarValue) {
+    els.dashboardContasPagarValue.textContent = moeda.format(pagar.total || 0);
+  }
+  if (els.dashboardContasPagarAberto) {
+    els.dashboardContasPagarAberto.textContent = moeda.format(pagar.aberto || 0);
+  }
+  if (els.dashboardContasPagarPago) {
+    els.dashboardContasPagarPago.textContent = moeda.format(pagar.pago || 0);
+  }
+  if (els.dashboardContasPagarCount) {
+    els.dashboardContasPagarCount.textContent = String(pagar.count || 0);
+  }
+
+  if (els.dashboardResultadoSubtitle) {
+    els.dashboardResultadoSubtitle.textContent =
+      `Faturamento de ${monthName} menos as contas a pagar do mês.`;
+  }
+  if (els.dashboardResultadoFaturado) {
+    els.dashboardResultadoFaturado.textContent = moeda.format(faturadoMes);
+  }
+  if (els.dashboardResultadoPagar) {
+    els.dashboardResultadoPagar.textContent = moeda.format(pagar.total || 0);
+  }
+  if (els.dashboardResultadoSaldo) {
+    els.dashboardResultadoSaldo.textContent = moeda.format(resultado);
+  }
+  if (els.dashboardResultadoValue) {
+    els.dashboardResultadoValue.textContent = moeda.format(resultado);
+  }
+  if (els.dashboardResultadoMain) {
+    els.dashboardResultadoMain.classList.toggle("is-negative", resultado < 0);
+    els.dashboardResultadoMain.classList.toggle("is-positive", resultado > 0);
+    els.dashboardResultadoMain.classList.toggle("is-zero", resultado === 0);
+  }
+  if (els.dashboardResultadoHint) {
+    if (resultado > 0) {
+      els.dashboardResultadoHint.textContent =
+        "Saldo positivo: o faturamento do mês cobre as contas a pagar com vencimento no período.";
+    } else if (resultado < 0) {
+      els.dashboardResultadoHint.textContent =
+        "Saldo negativo: as contas a pagar do mês superam o faturamento atual.";
+    } else {
+      els.dashboardResultadoHint.textContent =
+        "Faturamento e contas a pagar do mês estão equilibrados.";
+    }
+  }
+}
+
 async function loadPedidosSummary() {
   const [countResp, aggregateResp] = await Promise.all([
     supabaseClient
@@ -7505,6 +7668,7 @@ function renderMetrics(options = {}) {
   renderDashboardMetricMonths();
   renderDashboardDailyCharts();
   renderDashboardForecastCard();
+  renderDashboardResultCards();
 
   if (els.entradasCaixaResumo) {
     els.entradasCaixaResumo.textContent = moeda.format(currentMonthEntry);
@@ -7893,7 +8057,8 @@ async function refreshAll() {
       await Promise.all([
         loadDashboardSnapshot(),
         loadDashboardDaily(),
-        loadCalendarioForDashboard()
+        loadCalendarioForDashboard(),
+        loadDashboardContasPagarMes()
       ]);
       renderMetrics({ charts: true });
       setDashboardLoading(false, "Atualizado");
