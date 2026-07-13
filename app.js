@@ -3923,6 +3923,138 @@ function openOrcamentoHtmlPreview(html) {
   return true;
 }
 
+/** Fecha o visualizador de PDF embutido (sem forçar download). */
+function closePdfViewerModal() {
+  const overlay = document.getElementById("pdfViewerOverlay");
+  if (!overlay) return;
+  const url = overlay.dataset.blobUrl || "";
+  overlay.remove();
+  if (url) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Abre o PDF direto na tela (iframe), sem pedir "salvar em..." primeiro.
+ * No celular: visualiza na hora + botão opcional "Enviar" (WhatsApp etc.).
+ */
+function openPdfViewerModal({ blob, fileName, title, shareText }) {
+  closePdfViewerModal();
+
+  const pdfBlob =
+    blob instanceof Blob && blob.type === "application/pdf"
+      ? blob
+      : new Blob([blob], { type: "application/pdf" });
+  const url = URL.createObjectURL(pdfBlob);
+  const file = new File([pdfBlob], fileName || "documento.pdf", { type: "application/pdf" });
+  const canShare =
+    typeof navigator.canShare === "function" &&
+    typeof navigator.share === "function" &&
+    (() => {
+      try {
+        return navigator.canShare({ files: [file] });
+      } catch (_) {
+        return false;
+      }
+    })();
+
+  const overlay = document.createElement("div");
+  overlay.id = "pdfViewerOverlay";
+  overlay.className = "modal-overlay pdf-viewer-overlay modal-overlay--stack";
+  overlay.dataset.blobUrl = url;
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", title || "Visualizar PDF");
+
+  overlay.innerHTML = `
+    <div class="modal-card pdf-viewer-card">
+      <div class="modal-head pdf-viewer-head">
+        <div>
+          <h2 class="pdf-viewer-title">${escapeHtml(title || "PDF")}</h2>
+          <p class="modal-subtitle pdf-viewer-subtitle">PDF aberto direto — não precisa salvar antes</p>
+        </div>
+        <div class="modal-head-actions pdf-viewer-actions">
+          ${
+            canShare
+              ? `<button type="button" class="btn btn-primary" data-pdf-action="share">Enviar</button>`
+              : ""
+          }
+          <button type="button" class="btn btn-ghost" data-pdf-action="open-tab">Nova aba</button>
+          <button type="button" class="btn btn-ghost" data-pdf-action="close">Fechar</button>
+        </div>
+      </div>
+      <div class="pdf-viewer-frame-wrap">
+        <iframe class="pdf-viewer-frame" title="PDF" src="${url}"></iframe>
+        <div class="pdf-viewer-fallback" hidden>
+          <p>Se o PDF não aparecer abaixo, use <strong>Nova aba</strong> ou <strong>Enviar</strong>.</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const close = () => closePdfViewerModal();
+
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+
+  overlay.querySelector('[data-pdf-action="close"]')?.addEventListener("click", close);
+
+  overlay.querySelector('[data-pdf-action="open-tab"]')?.addEventListener("click", () => {
+    // Sem atributo download: o navegador/celular tenta abrir o visualizador, não "Salvar como".
+    const opened = window.open(url, "_blank", "noopener");
+    if (!opened) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  });
+
+  overlay.querySelector('[data-pdf-action="share"]')?.addEventListener("click", async () => {
+    try {
+      await navigator.share({
+        files: [file],
+        title: fileName || "documento.pdf",
+        text: shareText || ""
+      });
+      showToast("PDF enviado");
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+      showToast("Não foi possível compartilhar neste aparelho.", "error");
+    }
+  });
+
+  document.body.appendChild(overlay);
+
+  // Em alguns iOS o iframe de PDF fica em branco — mostra dica e tenta abrir em nova aba.
+  const isIOS =
+    /iPad|iPhone|iPod/i.test(navigator.userAgent || "") ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isIOS) {
+    const fallback = overlay.querySelector(".pdf-viewer-fallback");
+    if (fallback) fallback.hidden = false;
+    // Tenta abrir no visualizador nativo sem download forçado
+    window.setTimeout(() => {
+      const opened = window.open(url, "_blank", "noopener");
+      if (opened) {
+        showToast("PDF aberto no visualizador");
+      }
+    }, 80);
+  } else {
+    showToast("PDF aberto");
+  }
+
+  return true;
+}
+
 async function ensureHtml2PdfLoaded() {
   if (typeof window.html2pdf === "function") return window.html2pdf;
   await new Promise((resolve, reject) => {
@@ -3947,10 +4079,8 @@ async function ensureHtml2PdfLoaded() {
 }
 
 /**
- * Gera PDF real e tenta:
- * 1) Compartilhar no celular (WhatsApp etc.)
- * 2) Abrir o PDF direto no visualizador
- * 3) Fallback: abrir prévia HTML
+ * Gera PDF real e abre direto na tela (sem salvar primeiro).
+ * No celular: visualizador embutido + Enviar (WhatsApp etc.) se o aparelho permitir.
  */
 async function generateDocumentoOrcamentoPdf() {
   syncNovoDocumentoDraftFromForm();
@@ -3989,6 +4119,7 @@ async function generateDocumentoOrcamentoPdf() {
     .slice(0, 40) || "cliente";
   const fileTitle = `${isPedido ? "Pedido" : "Orcamento"}-${clienteSlug}-${dataEmissaoLabel.replace(/\//g, "-")}`;
   const fileName = `${fileTitle}.pdf`;
+  const shareText = `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef} — ${cliente.nome || ""}`.trim();
 
   const bicicleta = createBicicletaDraft(state.novoDocumentoModal.bicicleta);
   const html = buildOrcamentoPdfHtml({
@@ -4058,42 +4189,13 @@ async function generateDocumentoOrcamentoPdf() {
 
       if (!(blob instanceof Blob)) throw new Error("PDF inválido");
 
-      const file = new File([blob], fileName, { type: "application/pdf" });
-
-      // Celular: compartilhar direto (WhatsApp, Drive, etc.)
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: fileName,
-            text: `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef} — ${cliente.nome || ""}`.trim()
-          });
-          showToast("PDF pronto — escolha onde enviar");
-          return;
-        } catch (shareErr) {
-          if (shareErr?.name === "AbortError") return;
-          // continua para abrir no visualizador
-        }
-      }
-
-      const url = URL.createObjectURL(blob);
-      const opened = window.open(url, "_blank");
-      if (!opened) {
-        // Fallback: força download/abertura
-        const a = document.createElement("a");
-        a.href = url;
-        a.target = "_blank";
-        a.rel = "noopener";
-        // download ajuda no desktop; no mobile costuma abrir o visualizador
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        showToast("PDF gerado. Se não abriu, permita pop-ups ou use o arquivo baixado.");
-      } else {
-        showToast("PDF aberto");
-      }
-      window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+      // Abre na hora — sem forçar "Salvar em..."
+      openPdfViewerModal({
+        blob,
+        fileName,
+        title: `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef}`,
+        shareText
+      });
     } finally {
       host.remove();
     }

@@ -3538,6 +3538,114 @@ tr.is-clickable-row:hover {
   z-index: 45;
 }
 
+/* Visualizador de PDF embutido (abre sem salvar primeiro) */
+.pdf-viewer-overlay {
+  padding: 0.5rem;
+  z-index: 60;
+  place-items: stretch;
+}
+
+.pdf-viewer-card {
+  width: min(960px, 100%);
+  max-width: 100%;
+  height: min(96vh, 100%);
+  max-height: 100%;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem;
+  overflow: hidden;
+  background: #f7f4ee;
+}
+
+.pdf-viewer-head {
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.pdf-viewer-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.pdf-viewer-subtitle {
+  font-size: 0.85rem;
+}
+
+.pdf-viewer-actions {
+  flex-shrink: 0;
+}
+
+.pdf-viewer-frame-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #525659;
+}
+
+.pdf-viewer-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 55vh;
+  border: 0;
+  background: #525659;
+}
+
+.pdf-viewer-fallback {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  padding: 0.65rem 0.85rem;
+  background: rgba(255, 248, 230, 0.96);
+  color: #3b372f;
+  font-size: 0.88rem;
+  border-bottom: 1px solid #e2d6bc;
+  z-index: 1;
+}
+
+.pdf-viewer-fallback p {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .pdf-viewer-overlay {
+    padding: 0;
+  }
+
+  .pdf-viewer-card {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    border: 0;
+  }
+
+  .pdf-viewer-head {
+    flex-direction: column;
+  }
+
+  .pdf-viewer-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .pdf-viewer-actions .btn {
+    flex: 1 1 auto;
+    min-height: 2.6rem;
+  }
+
+  .pdf-viewer-frame {
+    min-height: calc(100vh - 9.5rem);
+  }
+}
+
 /* ===== Calendario ===== */
 .calendario-horarios-table input[type='time'],
 .calendario-horarios-table input[type='text'] {
