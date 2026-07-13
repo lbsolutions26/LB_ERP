@@ -76,6 +76,10 @@ const state = {
   itensDocumentoPedidoFoto: "",
   itensDocumentoPedidoId: null,
   itensDocumentoTipo: "pedido",
+  /** Quando abre itens a partir de outra visão do mesmo modal, fecha volta para ela. */
+  itensDocumentoReturnTo: null,
+  itensDocumentoProdutoGroupKey: null,
+  itensDocumentoClienteId: null,
   produtoSort: {
     field: "nome",
     direction: "asc"
@@ -817,13 +821,44 @@ function openItensDocumentoModal() {
   els.itensDocumentoModal.classList.remove("hidden");
 }
 
-function closeItensDocumentoModal() {
+function isItensDocumentoModalOpen() {
+  return Boolean(els.itensDocumentoModal && !els.itensDocumentoModal.classList.contains("hidden"));
+}
+
+/**
+ * Fecha o modal de itens/pedidos do cliente.
+ * Se o usuário abriu "Itens" a partir da lista de pedidos do cliente (ou do detalhe por produto),
+ * volta para essa visão em vez de fechar tudo.
+ */
+async function closeItensDocumentoModal({ force = false } = {}) {
+  if (!force && state.itensDocumentoReturnTo) {
+    const back = state.itensDocumentoReturnTo;
+    state.itensDocumentoReturnTo = null;
+    try {
+      if (back.mode === "cliente_pedidos" && back.clienteId) {
+        await openClientePedidosModal(back.clienteId);
+        return;
+      }
+      if (back.mode === "pedidos_produto" && back.groupKey) {
+        openPedidosProdutoDetalhes(back.groupKey);
+        return;
+      }
+    } catch (error) {
+      console.error(error);
+      showToast(`Erro ao voltar: ${error.message}`, "error");
+    }
+  }
+
+  state.itensDocumentoReturnTo = null;
   if (!els.itensDocumentoModal) return;
   els.itensDocumentoModal.classList.add("hidden");
   if (els.novoPedidoClienteBtn) els.novoPedidoClienteBtn.classList.add("hidden");
   if (els.itensDocumentoModalSubtitle) {
     els.itensDocumentoModalSubtitle.textContent = "";
     els.itensDocumentoModalSubtitle.classList.add("hidden");
+  }
+  if (els.closeItensDocumentoModalBtn) {
+    els.closeItensDocumentoModalBtn.textContent = "Fechar";
   }
 }
 
@@ -4198,6 +4233,23 @@ function buildFallbackItemFromDocumento(documento) {
 }
 
 async function openDocumentoItens(tipoDocumento, documentoId) {
+  // Se já está na lista de pedidos do cliente (ou detalhe por produto), "Fechar" deve voltar para lá.
+  const modalOpen = isItensDocumentoModalOpen();
+  const fromMode = state.itensDocumentoModalMode;
+  if (modalOpen && fromMode === "cliente_pedidos" && state.itensDocumentoClienteId) {
+    state.itensDocumentoReturnTo = {
+      mode: "cliente_pedidos",
+      clienteId: Number(state.itensDocumentoClienteId)
+    };
+  } else if (modalOpen && fromMode === "pedidos_produto" && state.itensDocumentoProdutoGroupKey) {
+    state.itensDocumentoReturnTo = {
+      mode: "pedidos_produto",
+      groupKey: state.itensDocumentoProdutoGroupKey
+    };
+  } else {
+    state.itensDocumentoReturnTo = null;
+  }
+
   state.itensDocumentoModalMode = "itens";
   renderItensDocumentoTableHead();
   let itens = [];
@@ -4243,8 +4295,12 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
     const titulo = tipoDocumento === "pedido" ? "Itens do Pedido" : "Itens do Orcamento";
     els.itensDocumentoModalTitle.textContent = `${titulo} #${documentoId}`;
   }
+  if (els.closeItensDocumentoModalBtn) {
+    els.closeItensDocumentoModalBtn.textContent = state.itensDocumentoReturnTo ? "Voltar" : "Fechar";
+  }
   renderItensDocumentoTableHead();
   renderItensDocumentoTable();
+  updateItensDocumentoModalChrome();
   openItensDocumentoModal();
 }
 
@@ -6263,11 +6319,16 @@ function openPedidosProdutoDetalhes(groupKey) {
   if (!produto) return;
 
   state.itensDocumentoModalMode = "pedidos_produto";
+  state.itensDocumentoProdutoGroupKey = groupKey;
+  state.itensDocumentoReturnTo = null;
   state.itensDocumento = produto.pedidosDetalhes;
   renderItensDocumentoTableHead();
   renderItensDocumentoTable();
   if (els.itensDocumentoModalTitle) {
     els.itensDocumentoModalTitle.textContent = `Pedidos com ${resolvePedidoProdutoNome(produto)}`;
+  }
+  if (els.closeItensDocumentoModalBtn) {
+    els.closeItensDocumentoModalBtn.textContent = "Fechar";
   }
   openItensDocumentoModal();
 }
@@ -6983,6 +7044,7 @@ async function openClientePedidosModal(clienteId) {
   if (error) throw error;
 
   state.itensDocumentoModalMode = "cliente_pedidos";
+  state.itensDocumentoReturnTo = null;
   state.itensDocumentoPedidoFoto = "";
   state.itensDocumentoPedidoId = null;
   state.itensDocumentoClienteId = Number(clienteId);
@@ -6997,6 +7059,9 @@ async function openClientePedidosModal(clienteId) {
 
   if (els.itensDocumentoModalTitle) {
     els.itensDocumentoModalTitle.textContent = `Pedidos de ${cliente.nome}`;
+  }
+  if (els.closeItensDocumentoModalBtn) {
+    els.closeItensDocumentoModalBtn.textContent = "Fechar";
   }
   renderItensDocumentoTableHead();
   renderItensDocumentoTable();
@@ -7017,7 +7082,7 @@ async function openNovoPedidoForCliente(clienteId) {
     showToast(`Erro ao carregar dados para novo pedido: ${error.message}`, "error");
   }
 
-  closeItensDocumentoModal();
+  await closeItensDocumentoModal({ force: true });
   openNovoDocumentoModal("pedido");
   setNovoDocumentoCliente(id);
   showToast("Cliente selecionado no novo pedido");
@@ -9207,7 +9272,11 @@ function attachEvents() {
   });
 
   if (els.closeItensDocumentoModalBtn) {
-    els.closeItensDocumentoModalBtn.addEventListener("click", closeItensDocumentoModal);
+    els.closeItensDocumentoModalBtn.addEventListener("click", () => {
+      closeItensDocumentoModal().catch((error) => {
+        showToast(`Erro ao fechar: ${error.message}`, "error");
+      });
+    });
   }
 
   if (els.novoPedidoClienteBtn) {
@@ -9223,7 +9292,9 @@ function attachEvents() {
   if (els.itensDocumentoModal) {
     els.itensDocumentoModal.addEventListener("click", (event) => {
       if (event.target === els.itensDocumentoModal) {
-        closeItensDocumentoModal();
+        closeItensDocumentoModal().catch((error) => {
+          showToast(`Erro ao fechar: ${error.message}`, "error");
+        });
       }
     });
   }
@@ -9874,7 +9945,8 @@ function attachEvents() {
       const pedidoEditId = getData("data-edit-pedido");
       const orcamentoEditId = getData("data-edit-orcamento");
       if (pedidoEditId) {
-        closeItensDocumentoModal();
+        // Fecha de verdade (nao volta para a lista) ao editar o pedido.
+        await closeItensDocumentoModal({ force: true });
         await openNovoDocumentoEditModal("pedido", Number(pedidoEditId));
         return;
       }
