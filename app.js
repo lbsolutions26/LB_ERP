@@ -7066,6 +7066,99 @@ function getTableFilterValue(tableKey, field) {
   return escapeHtml(getTableViewConfig(tableKey)?.filters?.[field] || "");
 }
 
+/** Chave de dia local (YYYY-MM-DD) a partir de Date ou ISO. */
+function toLocalDateKey(value) {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function formatPedidosDayMilestoneTitle(dateKey) {
+  if (!dateKey || dateKey === "sem-data") return "Sem data";
+  const parts = dateKey.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return "Sem data";
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+  const today = new Date();
+  const todayKey = toLocalDateKey(today);
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const yesterdayKey = toLocalDateKey(yesterday);
+
+  const full = date.toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric"
+  });
+  const labeled = full ? full.charAt(0).toUpperCase() + full.slice(1) : dateKey;
+  if (dateKey === todayKey) return `Hoje · ${labeled}`;
+  if (dateKey === yesterdayKey) return `Ontem · ${labeled}`;
+  return labeled;
+}
+
+function renderPedidosDayMilestoneRow({ dateKey, count, total, colspan, countLabel }) {
+  const title = formatPedidosDayMilestoneTitle(dateKey);
+  const countText = `${count} ${countLabel}${count === 1 ? "" : "s"}`;
+  const totalText = moeda.format(total || 0);
+  const shortDate = dateKey && dateKey !== "sem-data"
+    ? dateKey.split("-").reverse().join("/")
+    : "";
+  return `
+    <tr class="pedidos-day-milestone" data-day-key="${escapeHtml(dateKey || "sem-data")}">
+      <td colspan="${colspan}">
+        <div class="pedidos-day-milestone-inner">
+          <span class="pedidos-day-milestone-dot" aria-hidden="true"></span>
+          <div class="pedidos-day-milestone-text">
+            <strong class="pedidos-day-milestone-title">${escapeHtml(title)}</strong>
+            <span class="pedidos-day-milestone-meta">${escapeHtml(countText)} · ${escapeHtml(totalText)}${shortDate ? ` · ${escapeHtml(shortDate)}` : ""}</span>
+          </div>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function buildRowsWithDayMilestones(rows, {
+  getDateValue,
+  getTotal,
+  colspan,
+  countLabel,
+  renderRow
+}) {
+  if (!rows.length) return "";
+
+  const dayStats = new Map();
+  for (const row of rows) {
+    const key = toLocalDateKey(getDateValue(row)) || "sem-data";
+    const cur = dayStats.get(key) || { count: 0, total: 0 };
+    cur.count += 1;
+    cur.total += Number(getTotal(row) || 0);
+    dayStats.set(key, cur);
+  }
+
+  const parts = [];
+  let lastKey = null;
+  for (const row of rows) {
+    const key = toLocalDateKey(getDateValue(row)) || "sem-data";
+    if (key !== lastKey) {
+      const stats = dayStats.get(key) || { count: 0, total: 0 };
+      parts.push(renderPedidosDayMilestoneRow({
+        dateKey: key,
+        count: stats.count,
+        total: stats.total,
+        colspan,
+        countLabel
+      }));
+      lastKey = key;
+    }
+    parts.push(renderRow(row));
+  }
+  return parts.join("");
+}
+
 function renderPedidosTable() {
   if (state.pedidosView === "produtos") {
     renderPedidosProdutosRows();
@@ -7079,8 +7172,12 @@ function renderPedidosTable() {
       return;
     }
 
-    els.pedidosTable.innerHTML = rows
-      .map((item) => {
+    els.pedidosTable.innerHTML = buildRowsWithDayMilestones(rows, {
+      getDateValue: (item) => item.dataPedido,
+      getTotal: (item) => item.valorTotal,
+      colspan: 6,
+      countLabel: "item",
+      renderRow: (item) => {
         const data = item.dataPedido ? new Date(item.dataPedido).toLocaleDateString("pt-BR") : "-";
         return `
         <tr>
@@ -7092,8 +7189,8 @@ function renderPedidosTable() {
           <td>${moeda.format(item.valorTotal || 0)}</td>
         </tr>
       `;
-      })
-      .join("");
+      }
+    });
     return;
   }
 
@@ -7119,8 +7216,12 @@ function renderPedidosTable() {
     return;
   }
 
-  els.pedidosTable.innerHTML = rows
-    .map((pedido) => {
+  els.pedidosTable.innerHTML = buildRowsWithDayMilestones(rows, {
+    getDateValue: (pedido) => pedido.data_pedido,
+    getTotal: (pedido) => pedido.valor_total,
+    colspan: 6,
+    countLabel: "pedido",
+    renderRow: (pedido) => {
       const data = pedido.data_pedido ? new Date(pedido.data_pedido).toLocaleDateString("pt-BR") : "-";
       const clienteNome = pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${escapeHtml(pedido.cliente_legacy_id)}` : "-");
       return `
@@ -7141,8 +7242,8 @@ function renderPedidosTable() {
         </td>
       </tr>
     `;
-    })
-    .join("");
+    }
+  });
 }
 
 function renderContasReceberTable() {
