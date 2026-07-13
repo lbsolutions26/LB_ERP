@@ -5231,6 +5231,7 @@ async function aplicarInventarioContagens() {
   state.produtosLoaded = false;
   state.estoqueMovimentosLoaded = false;
   await ensureEstoqueLoaded({ force: true });
+  if (state.produtosLoaded) renderProdutosTable();
   renderMetrics();
 
   if (errors.length) {
@@ -9054,6 +9055,8 @@ function attachEvents() {
     const clientePedidosId = target.closest("[data-view-cliente-pedidos]")?.getAttribute("data-view-cliente-pedidos")
       || target.getAttribute("data-view-cliente-pedidos");
     const produtoEditId = target.getAttribute("data-edit-produto");
+    const produtoEstoqueMovId = target.closest("[data-produto-estoque-mov]")?.getAttribute("data-produto-estoque-mov")
+      || target.getAttribute("data-produto-estoque-mov");
     const produtoId = target.getAttribute("data-del-produto");
     const pedidoId = target.getAttribute("data-del-pedido");
     const orcamentoId = target.getAttribute("data-del-orcamento");
@@ -9074,6 +9077,13 @@ function attachEvents() {
       }
       if (produtoEditId) {
         openProdutoEditModal(Number(produtoEditId));
+        return;
+      }
+      if (produtoEstoqueMovId) {
+        openEstoqueMovimentoModal({
+          produtoId: produtoEstoqueMovId,
+          tipo: "entrada"
+        });
         return;
       }
       const pedidoEditId = target.getAttribute("data-edit-pedido");
