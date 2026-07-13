@@ -6345,21 +6345,58 @@ function renderPedidosTableHead() {
 
   els.pedidosTableHead.innerHTML = `
     <tr>
+      <th class="pedido-actions-col" scope="col" aria-label="Acoes"></th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="pedido">Pedido</th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="data">Data</th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="cliente">Cliente</th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="pagamento">Pagamento</th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="total">Total</th>
-      <th></th>
     </tr>
     <tr>
+      <th class="pedido-actions-col"></th>
       <th><input data-table-filter="pedidosSintetico" data-field="pedido" value="${getTableFilterValue("pedidosSintetico", "pedido")}" placeholder="Filtrar" /></th>
       <th><input data-table-filter="pedidosSintetico" data-field="data" value="${getTableFilterValue("pedidosSintetico", "data")}" placeholder="Filtrar" /></th>
       <th><input data-table-filter="pedidosSintetico" data-field="cliente" value="${getTableFilterValue("pedidosSintetico", "cliente")}" placeholder="Filtrar" /></th>
       <th><input data-table-filter="pedidosSintetico" data-field="pagamento" value="${getTableFilterValue("pedidosSintetico", "pagamento")}" placeholder="Filtrar" /></th>
       <th><input data-table-filter="pedidosSintetico" data-field="total" value="${getTableFilterValue("pedidosSintetico", "total")}" placeholder="Filtrar" /></th>
-      <th></th>
     </tr>
+  `;
+}
+
+function closeAllRowActionMenus(exceptMenu = null) {
+  document.querySelectorAll("[data-row-actions].is-open").forEach((menu) => {
+    if (exceptMenu && menu === exceptMenu) return;
+    menu.classList.remove("is-open");
+    const trigger = menu.querySelector("[data-row-actions-toggle]");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+    const panel = menu.querySelector(".row-actions-panel");
+    if (panel) panel.hidden = true;
+  });
+}
+
+/** Menu compacto de acoes (1 botao → Editar / Receber / Itens / Excluir). */
+function renderPedidoRowActionsMenu(pedidoId) {
+  const id = escapeHtml(pedidoId);
+  return `
+    <div class="row-actions-menu" data-row-actions>
+      <button
+        type="button"
+        class="row-actions-trigger"
+        data-row-actions-toggle
+        aria-expanded="false"
+        aria-haspopup="menu"
+        title="Acoes do pedido"
+        aria-label="Acoes do pedido #${id}"
+      >
+        <span aria-hidden="true">⋯</span>
+      </button>
+      <div class="row-actions-panel" role="menu" hidden>
+        <button type="button" role="menuitem" class="row-actions-item" data-edit-pedido="${id}">Editar</button>
+        <button type="button" role="menuitem" class="row-actions-item row-actions-item--finance" data-open-recebimento-pedido="${id}">Receber</button>
+        <button type="button" role="menuitem" class="row-actions-item" data-view-pedido-itens="${id}">Itens</button>
+        <button type="button" role="menuitem" class="row-actions-item row-actions-item--danger" data-del-pedido="${id}">Excluir</button>
+      </div>
+    </div>
   `;
 }
 
@@ -7436,6 +7473,7 @@ function renderPedidosTable() {
       const pagamentoLabel = getPedidoPagamentoLabel(pedido);
       return `
       <tr>
+        <td class="pedido-actions-cell">${renderPedidoRowActionsMenu(pedido.id)}</td>
         <td class="pedido-cell-id">
           ${renderPedidoThumbHtml(pedido)}
           <span>#${escapeHtml(pedido.id)}</span>
@@ -7444,12 +7482,6 @@ function renderPedidosTable() {
         <td>${clienteNome}</td>
         <td>${escapeHtml(pagamentoLabel)}</td>
         <td>${moeda.format(pedido.valor_total || 0)}</td>
-        <td>
-          <button class="action-edit" data-edit-pedido="${pedido.id}">Editar</button>
-          <button class="action-finance" data-open-recebimento-pedido="${pedido.id}">Receber</button>
-          <button class="action-edit" data-view-pedido-itens="${pedido.id}">Itens</button>
-          <button class="action-delete" data-del-pedido="${pedido.id}">Excluir</button>
-        </td>
       </tr>
     `;
     }
@@ -9777,23 +9809,50 @@ function attachEvents() {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
 
-    const clienteId = target.getAttribute("data-del-cliente");
+    // Menu compacto de acoes na lista de pedidos
+    const actionsToggle = target.closest("[data-row-actions-toggle]");
+    if (actionsToggle) {
+      event.preventDefault();
+      event.stopPropagation();
+      const menu = actionsToggle.closest("[data-row-actions]");
+      const wasOpen = menu?.classList.contains("is-open");
+      closeAllRowActionMenus();
+      if (!wasOpen && menu) {
+        menu.classList.add("is-open");
+        actionsToggle.setAttribute("aria-expanded", "true");
+        const panel = menu.querySelector(".row-actions-panel");
+        if (panel) panel.hidden = false;
+      }
+      return;
+    }
+
+    // Fechou o menu ao clicar fora / ao escolher uma acao
+    if (target.closest("[data-row-actions] .row-actions-item")) {
+      closeAllRowActionMenus();
+    } else if (!target.closest("[data-row-actions]")) {
+      closeAllRowActionMenus();
+    }
+
+    // Pega atributo no elemento ou no ancestral (menu de acoes / botoes)
+    const getData = (name) => target.closest(`[${name}]`)?.getAttribute(name) || target.getAttribute(name);
+
+    const clienteId = getData("data-del-cliente");
     const clientePedidosId = target.closest("[data-view-cliente-pedidos]")?.getAttribute("data-view-cliente-pedidos")
       || target.getAttribute("data-view-cliente-pedidos");
-    const produtoEditId = target.getAttribute("data-edit-produto");
+    const produtoEditId = getData("data-edit-produto");
     const produtoEstoqueMovId = target.closest("[data-produto-estoque-mov]")?.getAttribute("data-produto-estoque-mov")
       || target.getAttribute("data-produto-estoque-mov");
-    const produtoId = target.getAttribute("data-del-produto");
-    const pedidoId = target.getAttribute("data-del-pedido");
-    const orcamentoId = target.getAttribute("data-del-orcamento");
-    const pedidoItensId = target.getAttribute("data-view-pedido-itens");
-    const pedidoProdutoGroupKey = target.getAttribute("data-open-pedidos-produto");
-    const pedidoProdutoItensId = target.getAttribute("data-open-pedido-produto-itens");
-    const orcamentoItensId = target.getAttribute("data-view-orcamento-itens");
-    const openRecebimentoPedidoId = target.getAttribute("data-open-recebimento-pedido");
-    const openRecebimentoContaId = target.getAttribute("data-open-recebimento-conta");
-    const openRecebimentoParcelaId = target.getAttribute("data-open-recebimento-parcela");
-    const despesaId = target.getAttribute("data-del-despesa");
+    const produtoId = getData("data-del-produto");
+    const pedidoId = getData("data-del-pedido");
+    const orcamentoId = getData("data-del-orcamento");
+    const pedidoItensId = getData("data-view-pedido-itens");
+    const pedidoProdutoGroupKey = getData("data-open-pedidos-produto");
+    const pedidoProdutoItensId = getData("data-open-pedido-produto-itens");
+    const orcamentoItensId = getData("data-view-orcamento-itens");
+    const openRecebimentoPedidoId = getData("data-open-recebimento-pedido");
+    const openRecebimentoContaId = getData("data-open-recebimento-conta");
+    const openRecebimentoParcelaId = getData("data-open-recebimento-parcela");
+    const despesaId = getData("data-del-despesa");
 
     try {
       // Clique no nome/linha do cliente (exceto botao Excluir)
@@ -9812,8 +9871,8 @@ function attachEvents() {
         });
         return;
       }
-      const pedidoEditId = target.getAttribute("data-edit-pedido");
-      const orcamentoEditId = target.getAttribute("data-edit-orcamento");
+      const pedidoEditId = getData("data-edit-pedido");
+      const orcamentoEditId = getData("data-edit-orcamento");
       if (pedidoEditId) {
         closeItensDocumentoModal();
         await openNovoDocumentoEditModal("pedido", Number(pedidoEditId));

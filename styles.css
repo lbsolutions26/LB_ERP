@@ -2046,6 +2046,120 @@ img.produto-combo-thumb.is-broken {
   white-space: nowrap;
 }
 
+/* Menu compacto de acoes (primeira coluna da lista de pedidos) */
+.pedido-actions-col {
+  width: 3rem;
+  min-width: 3rem;
+  max-width: 3.25rem;
+  padding-left: 0.35rem !important;
+  padding-right: 0.25rem !important;
+}
+
+.pedido-actions-cell {
+  width: 3rem;
+  vertical-align: middle;
+  white-space: nowrap;
+  padding-left: 0.35rem !important;
+  padding-right: 0.25rem !important;
+}
+
+.row-actions-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-actions-trigger {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 210, 196, 0.95);
+  background: linear-gradient(180deg, #fffdf8 0%, #f4eee3 100%);
+  color: #3d372d;
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.row-actions-trigger:hover,
+.row-actions-menu.is-open .row-actions-trigger {
+  border-color: rgba(22, 93, 89, 0.35);
+  background: #e7f4f2;
+  color: var(--brand-strong);
+  box-shadow: 0 4px 12px rgba(22, 93, 89, 0.12);
+}
+
+.row-actions-panel {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.3rem);
+  z-index: 40;
+  min-width: 10.75rem;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.4rem;
+  border-radius: 12px;
+  border: 1px solid rgba(217, 210, 196, 0.95);
+  background: #fffdf8;
+  box-shadow: 0 14px 32px rgba(33, 32, 28, 0.16);
+}
+
+.row-actions-panel[hidden] {
+  display: none !important;
+}
+
+.row-actions-item {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #2d2a24;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+  width: 100%;
+}
+
+.row-actions-item:hover {
+  background: #eef7f5;
+  color: var(--brand-strong);
+}
+
+.row-actions-item--finance:hover {
+  background: #eef4fb;
+  color: #2f5c9a;
+}
+
+.row-actions-item--danger {
+  color: #8a2f2f;
+}
+
+.row-actions-item--danger:hover {
+  background: #fdecec;
+  color: #8a2f2f;
+}
+
+@media (max-width: 720px) {
+  .row-actions-panel {
+    min-width: 11.5rem;
+    left: 0;
+  }
+
+  .row-actions-item {
+    padding: 0.7rem 0.8rem;
+    font-size: 0.98rem;
+  }
+}
+
 .pedido-thumb {
   width: 2.35rem;
   height: 2.35rem;
