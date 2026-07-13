@@ -279,6 +279,12 @@ const els = {
   novoDocumentoStatusSelect: document.getElementById("novoDocumentoStatusSelect"),
   novoDocumentoDataEmissao: document.getElementById("novoDocumentoDataEmissao"),
   novoDocumentoObservacoes: document.getElementById("novoDocumentoObservacoes"),
+  novoDocumentoBicicletaSection: document.getElementById("novoDocumentoBicicletaSection"),
+  novoDocumentoBikeMarca: document.getElementById("novoDocumentoBikeMarca"),
+  novoDocumentoBikeModelo: document.getElementById("novoDocumentoBikeModelo"),
+  novoDocumentoBikeAro: document.getElementById("novoDocumentoBikeAro"),
+  novoDocumentoBikeCor: document.getElementById("novoDocumentoBikeCor"),
+  novoDocumentoBikeAcessorios: document.getElementById("novoDocumentoBikeAcessorios"),
   novoDocumentoItemsGrid: document.getElementById("novoDocumentoItemsGrid"),
   novoDocumentoPagamentoSection: document.getElementById("novoDocumentoPagamentoSection"),
   novoDocumentoPagamentoModo: document.getElementById("novoDocumentoPagamentoModo"),
@@ -1116,6 +1122,47 @@ function ensureTrailingEmptyDocumentoItem() {
   return changed;
 }
 
+function createBicicletaDraft(src = null) {
+  const s = src && typeof src === "object" ? src : {};
+  return {
+    marca: String(s.marca || "").trim(),
+    modelo: String(s.modelo || "").trim(),
+    tamanhoAro: String(s.tamanhoAro || s.tamanho_aro || s.aro || "").trim(),
+    cor: String(s.cor || "").trim(),
+    acessorios: String(s.acessorios || "").trim()
+  };
+}
+
+function isBicicletaFilled(bike) {
+  if (!bike) return false;
+  return Boolean(
+    String(bike.marca || "").trim() ||
+      String(bike.modelo || "").trim() ||
+      String(bike.tamanhoAro || "").trim() ||
+      String(bike.cor || "").trim() ||
+      String(bike.acessorios || "").trim()
+  );
+}
+
+function readBicicletaFromForm() {
+  return createBicicletaDraft({
+    marca: els.novoDocumentoBikeMarca?.value || "",
+    modelo: els.novoDocumentoBikeModelo?.value || "",
+    tamanhoAro: els.novoDocumentoBikeAro?.value || "",
+    cor: els.novoDocumentoBikeCor?.value || "",
+    acessorios: els.novoDocumentoBikeAcessorios?.value || ""
+  });
+}
+
+function fillBicicletaForm(bike) {
+  const b = createBicicletaDraft(bike);
+  if (els.novoDocumentoBikeMarca) els.novoDocumentoBikeMarca.value = b.marca;
+  if (els.novoDocumentoBikeModelo) els.novoDocumentoBikeModelo.value = b.modelo;
+  if (els.novoDocumentoBikeAro) els.novoDocumentoBikeAro.value = b.tamanhoAro;
+  if (els.novoDocumentoBikeCor) els.novoDocumentoBikeCor.value = b.cor;
+  if (els.novoDocumentoBikeAcessorios) els.novoDocumentoBikeAcessorios.value = b.acessorios;
+}
+
 function createDocumentoDraft(tipo = "pedido") {
   const config = getDocumentoModalConfig(tipo);
   return {
@@ -1126,6 +1173,7 @@ function createDocumentoDraft(tipo = "pedido") {
     observacoes: "",
     dataEmissao: formatDateInput(new Date()),
     fotoUrl: "",
+    bicicleta: createBicicletaDraft(),
     pagamento: createPagamentoDraft(),
     parcelasEditadas: null,
     parcelasOriginaisSnapshot: null,
@@ -2695,6 +2743,15 @@ function renderNovoDocumentoModal() {
     els.novoDocumentoDataEmissao.value = state.novoDocumentoModal.dataEmissao || formatDateInput(new Date());
   }
 
+  fillBicicletaForm(state.novoDocumentoModal.bicicleta);
+  if (els.novoDocumentoBicicletaSection) {
+    // Campos da bike fazem sentido no pedido (servico/oficina); some no orcamento.
+    els.novoDocumentoBicicletaSection.classList.toggle(
+      "hidden",
+      state.novoDocumentoModal.tipo !== "pedido"
+    );
+  }
+
   renderNovoDocumentoClienteSelect();
   renderNovoDocumentoStatusSelect();
   renderNovoDocumentoFormaPagamentoSelect();
@@ -3304,6 +3361,7 @@ async function loadDocumentoForEdit(tipo, documentoId) {
       ? formatDateInput(new Date(documento.data_emissao))
       : formatDateInput(new Date()),
     fotoUrl: getPedidoFotoUrl(documento),
+    bicicleta: createBicicletaDraft(rawPayload.bicicleta || rawPayload.bike || null),
     pagamento: {
       ...createPagamentoDraft(),
       ...(rawPayload.pagamento || {})
@@ -3477,6 +3535,7 @@ function syncNovoDocumentoDraftFromForm() {
   if (els.novoDocumentoClienteId) {
     state.novoDocumentoModal.clienteId = els.novoDocumentoClienteId.value || state.novoDocumentoModal.clienteId;
   }
+  state.novoDocumentoModal.bicicleta = readBicicletaFromForm();
 }
 
 function formatQtyForPdf(value) {
@@ -3929,12 +3988,21 @@ async function saveNovoDocumento(event) {
     const rawPayloadBase = draft.rawPayloadBase && typeof draft.rawPayloadBase === "object"
       ? { ...draft.rawPayloadBase }
       : {};
+    const bicicleta = readBicicletaFromForm();
+    draft.bicicleta = bicicleta;
+
     const rawPayload = {
       ...rawPayloadBase,
       source: "novo-documento-modal",
       itens: itens.length,
       pagamento: pagamentoState
     };
+    // Dados da bicicleta no pedido (oficina/servico).
+    if (draft.tipo === "pedido" && isBicicletaFilled(bicicleta)) {
+      rawPayload.bicicleta = bicicleta;
+    } else if (draft.tipo === "pedido") {
+      delete rawPayload.bicicleta;
+    }
     // Snapshot da calculadora (historico da decisao comercial no pedido/orcamento).
     if (draft.precoFormacaoAplicada) {
       rawPayload.preco_formacao = draft.precoFormacaoAplicada;
@@ -4313,6 +4381,23 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
   if (els.itensDocumentoModalTitle) {
     const titulo = tipoDocumento === "pedido" ? "Itens do Pedido" : "Itens do Orcamento";
     els.itensDocumentoModalTitle.textContent = `${titulo} #${documentoId}`;
+  }
+  if (els.itensDocumentoModalSubtitle) {
+    const bike = createBicicletaDraft(documentoData?.raw_payload?.bicicleta || null);
+    if (tipoDocumento === "pedido" && isBicicletaFilled(bike)) {
+      const parts = [
+        bike.marca && `Marca: ${bike.marca}`,
+        bike.modelo && `Modelo: ${bike.modelo}`,
+        bike.tamanhoAro && `Aro: ${bike.tamanhoAro}`,
+        bike.cor && `Cor: ${bike.cor}`,
+        bike.acessorios && `Acessorios: ${bike.acessorios}`
+      ].filter(Boolean);
+      els.itensDocumentoModalSubtitle.textContent = parts.join(" · ");
+      els.itensDocumentoModalSubtitle.classList.remove("hidden");
+    } else if (!state.itensDocumentoReturnTo) {
+      els.itensDocumentoModalSubtitle.textContent = "";
+      els.itensDocumentoModalSubtitle.classList.add("hidden");
+    }
   }
   if (els.closeItensDocumentoModalBtn) {
     els.closeItensDocumentoModalBtn.textContent = state.itensDocumentoReturnTo ? "Voltar" : "Fechar";

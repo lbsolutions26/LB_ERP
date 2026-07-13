@@ -1810,6 +1810,55 @@ table thead input {
   color: #3d372d;
 }
 
+.documento-bike-panel {
+  background: linear-gradient(180deg, #fffdf8 0%, #f7f2e8 100%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem;
+  margin-top: 0.25rem;
+}
+
+.documento-bike-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.documento-bike-grid label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+  color: #3d372d;
+  font-size: 0.9rem;
+}
+
+.documento-bike-grid input,
+.documento-bike-grid textarea {
+  width: 100%;
+  border: 1px solid #cabfa9;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+}
+
+.documento-bike-acessorios {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .documento-bike-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .documento-bike-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .documento-field-label {
   display: block;
 }
