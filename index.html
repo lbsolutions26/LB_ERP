@@ -549,6 +549,7 @@
                 <thead>
                   <tr>
                     <th class="pedido-actions-col" aria-label="Acoes"></th>
+                    <th>Status</th>
                     <th>Título</th>
                     <th>Fornecedor</th>
                     <th>Origem</th>
@@ -556,7 +557,6 @@
                     <th>Vencimento</th>
                     <th>Valor</th>
                     <th>Saldo</th>
-                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody id="comprasPagarTable"></tbody>
@@ -590,6 +590,7 @@
               <thead>
                 <tr>
                   <th class="pedido-actions-col" aria-label="Acoes"></th>
+                  <th>Status</th>
                   <th>Título</th>
                   <th class="contas-pagar-col-fornecedor">Fornecedor / desc.</th>
                   <th>Origem</th>
@@ -598,10 +599,18 @@
                   <th>Vencimento</th>
                   <th>Valor</th>
                   <th>Saldo</th>
-                  <th>Status</th>
                 </tr>
                 <tr class="contas-pagar-filter-row">
                   <th class="pedido-actions-col"></th>
+                  <th>
+                    <select data-despesas-col-filter="status">
+                      <option value="">Todos</option>
+                      <option value="pendente">Pendente</option>
+                      <option value="parcial">Parcial</option>
+                      <option value="pago">Pago</option>
+                      <option value="cancelado">Cancelado</option>
+                    </select>
+                  </th>
                   <th><input data-despesas-col-filter="titulo" type="search" placeholder="Filtrar" /></th>
                   <th class="contas-pagar-col-fornecedor"><input data-despesas-col-filter="fornecedor" type="search" placeholder="Filtrar" /></th>
                   <th>
@@ -616,15 +625,6 @@
                   <th><input data-despesas-col-filter="vencimento" type="search" placeholder="dd/mm/aaaa" /></th>
                   <th><input data-despesas-col-filter="valor" type="search" placeholder="Filtrar" /></th>
                   <th><input data-despesas-col-filter="saldo" type="search" placeholder="Filtrar" /></th>
-                  <th>
-                    <select data-despesas-col-filter="status">
-                      <option value="">Todos</option>
-                      <option value="pendente">Pendente</option>
-                      <option value="parcial">Parcial</option>
-                      <option value="pago">Pago</option>
-                      <option value="cancelado">Cancelado</option>
-                    </select>
-                  </th>
                 </tr>
               </thead>
               <tbody id="despesasPagarTable"></tbody>
@@ -2066,6 +2066,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260713u"></script>
+    <script type="module" src="app.js?v=20260713v"></script>
   </body>
 </html>

@@ -210,6 +210,7 @@ export function installComprasModule(ctx) {
         return `
         <tr class="is-clickable-row" data-edit-conta-pagar="${contaId}" title="Clique para editar o título">
           <td class="pedido-actions-cell" data-stop-row-edit="1">${rowActions(menuItems, "Acoes do titulo")}</td>
+          <td><span class="estoque-status ${r.status === "pago" ? "estoque-status--ok" : "estoque-status--reposicao"}">${escapeHtml(r.status)}</span></td>
           <td>${escapeHtml(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`)}</td>
           <td class="contas-pagar-col-fornecedor" title="${escapeHtml(fornecedorTxt)}">${escapeHtml(fornecedorTxt)}</td>
           ${showOrigem ? `<td>${escapeHtml(origemLabel(r.conta?.origem))}</td>` : ""}
@@ -218,7 +219,6 @@ export function installComprasModule(ctx) {
           <td>${escapeHtml(formatDateBr(r.vencimento))}${vencida ? ' <span class="estoque-status estoque-status--zerado">vencida</span>' : ""}</td>
           <td>${moeda.format(r.valor_parcela || 0)}</td>
           <td>${moeda.format(saldo)}</td>
-          <td><span class="estoque-status ${r.status === "pago" ? "estoque-status--ok" : "estoque-status--reposicao"}">${escapeHtml(r.status)}</span></td>
         </tr>`;
       })
       .join("");
