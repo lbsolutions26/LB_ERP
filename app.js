@@ -7750,13 +7750,33 @@ function renderDashboardMetricMonths() {
   }
 }
 
-function renderDashboardDailyCharts() {
+/**
+ * Dias exibidos nos gráficos diários do dashboard:
+ * apenas dias úteis do calendário (exclui domingo/fechados e feriados de dia inteiro).
+ */
+function getDashboardDailyChartRows() {
   const rows = state.dashboardDaily || [];
+  const cal = state.calendarioForecast || { horarios: [], feriados: [] };
+  const horarios = cal.horarios || [];
+  const feriados = cal.feriados || [];
+
+  return rows.filter((row) => {
+    if (!row?.dia) return false;
+    const date = new Date(`${row.dia}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return false;
+    return isDashboardWorkingDay(date, horarios, feriados);
+  });
+}
+
+function renderDashboardDailyCharts() {
+  const allRows = state.dashboardDaily || [];
+  // Eixo X: só dias úteis (calendário). Totais do mês seguem a base completa.
+  const rows = getDashboardDailyChartRows();
   const hoje = new Date();
   const todayKey = formatDateInput(hoje);
 
-  const totalFaturamento = rows.reduce((sum, row) => sum + Number(row.faturamento || 0), 0);
-  const totalPedidos = rows.reduce((sum, row) => sum + Number(row.pedidosCount || 0), 0);
+  const totalFaturamento = allRows.reduce((sum, row) => sum + Number(row.faturamento || 0), 0);
+  const totalPedidos = allRows.reduce((sum, row) => sum + Number(row.pedidosCount || 0), 0);
 
   if (els.dailyFaturamentoResumo) {
     els.dailyFaturamentoResumo.textContent = moeda.format(totalFaturamento);
@@ -7770,10 +7790,14 @@ function renderDashboardDailyCharts() {
     return `R$ ${rounded.toLocaleString("pt-BR")}`;
   };
 
+  const emptyMessage = allRows.length
+    ? "Nenhum dia util no calendario para exibir neste mes."
+    : "Sem dados para o mes atual.";
+
   const renderChart = (node, valueOf, formatValue, formatInside, colorClass) => {
     if (!node) return;
     if (!rows.length) {
-      node.innerHTML = '<div class="documento-empty-state">Sem dados para o mes atual.</div>';
+      node.innerHTML = `<div class="documento-empty-state">${emptyMessage}</div>`;
       return;
     }
     const maxValue = Math.max(...rows.map((row) => Number(valueOf(row) || 0)), 0);
@@ -7783,8 +7807,11 @@ function renderDashboardDailyCharts() {
         const height = maxValue > 0 ? Math.max(4, Math.round((value / maxValue) * 100)) : 4;
         const isToday = row.dia === todayKey;
         const dayNum = row.dia ? String(Number(row.dia.slice(8, 10))) : "";
+        const weekday = row.dia
+          ? new Date(`${row.dia}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "short" })
+          : "";
         const title = row.dia
-          ? `${new Date(`${row.dia}T12:00:00`).toLocaleDateString("pt-BR")}: ${formatValue(value)}`
+          ? `${new Date(`${row.dia}T12:00:00`).toLocaleDateString("pt-BR")}${weekday ? ` (${weekday})` : ""}: ${formatValue(value)}`
           : formatValue(value);
         const insideLabel = value > 0
           ? `<span class="daily-bar-inside-label">${escapeHtml(formatInside(value))}</span>`
