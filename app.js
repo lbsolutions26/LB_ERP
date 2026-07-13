@@ -453,8 +453,10 @@ const els = {
   entradasCaixaGrid: document.getElementById("entradasCaixaGrid"),
   dailyFaturamentoChart: document.getElementById("dailyFaturamentoChart"),
   dailyFaturamentoResumo: document.getElementById("dailyFaturamentoResumo"),
+  dailyFaturamentoHoje: document.getElementById("dailyFaturamentoHoje"),
   dailyPedidosChart: document.getElementById("dailyPedidosChart"),
   dailyPedidosResumo: document.getElementById("dailyPedidosResumo"),
+  dailyPedidosHoje: document.getElementById("dailyPedidosHoje"),
   dashboardSection: document.getElementById("section-dashboard"),
   dashboardStatusText: document.getElementById("dashboardStatusText"),
   dashboardForecastCard: document.getElementById("dashboardForecastCard"),
@@ -7941,12 +7943,21 @@ function renderDashboardDailyCharts() {
 
   const totalFaturamento = allRows.reduce((sum, row) => sum + Number(row.faturamento || 0), 0);
   const totalPedidos = allRows.reduce((sum, row) => sum + Number(row.pedidosCount || 0), 0);
+  const todayRow = allRows.find((row) => row.dia === todayKey) || null;
+  const faturamentoHoje = Number(todayRow?.faturamento || 0);
+  const pedidosHoje = Number(todayRow?.pedidosCount || 0);
 
   if (els.dailyFaturamentoResumo) {
     els.dailyFaturamentoResumo.textContent = moeda.format(totalFaturamento);
   }
+  if (els.dailyFaturamentoHoje) {
+    els.dailyFaturamentoHoje.textContent = moeda.format(faturamentoHoje);
+  }
   if (els.dailyPedidosResumo) {
     els.dailyPedidosResumo.textContent = formatCompactNumber(totalPedidos);
+  }
+  if (els.dailyPedidosHoje) {
+    els.dailyPedidosHoje.textContent = formatCompactNumber(pedidosHoje);
   }
 
   const formatCurrencyNoCents = (value) => {

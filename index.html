@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260713h" />
+    <link rel="stylesheet" href="styles.css?v=20260713i" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -204,9 +204,15 @@
                   <h3>Faturamento por Dia</h3>
                   <p id="dailyFaturamentoSubtitulo" class="section-subtitle">Pedidos do mês corrente, apenas em dias úteis do calendário (sem domingos e feriados).</p>
                 </div>
-                <div class="dashboard-cash-summary">
-                  <span>Total do mês</span>
-                  <strong id="dailyFaturamentoResumo">R$ 0,00</strong>
+                <div class="dashboard-cash-summary-group">
+                  <div class="dashboard-cash-summary">
+                    <span>Total do mês</span>
+                    <strong id="dailyFaturamentoResumo">R$ 0,00</strong>
+                  </div>
+                  <div class="dashboard-cash-summary dashboard-cash-summary--today">
+                    <span>Hoje</span>
+                    <strong id="dailyFaturamentoHoje">R$ 0,00</strong>
+                  </div>
                 </div>
               </div>
               <div id="dailyFaturamentoChart" class="cash-month-chart daily-chart" aria-label="Gráfico de faturamento por dia">
@@ -220,9 +226,15 @@
                   <h3>Pedidos por Dia</h3>
                   <p id="dailyPedidosSubtitulo" class="section-subtitle">Quantidade de pedidos do mês, apenas em dias úteis do calendário (sem domingos e feriados).</p>
                 </div>
-                <div class="dashboard-cash-summary">
-                  <span>Total do mês</span>
-                  <strong id="dailyPedidosResumo">0</strong>
+                <div class="dashboard-cash-summary-group">
+                  <div class="dashboard-cash-summary">
+                    <span>Total do mês</span>
+                    <strong id="dailyPedidosResumo">0</strong>
+                  </div>
+                  <div class="dashboard-cash-summary dashboard-cash-summary--today">
+                    <span>Hoje</span>
+                    <strong id="dailyPedidosHoje">0</strong>
+                  </div>
                 </div>
               </div>
               <div id="dailyPedidosChart" class="cash-month-chart daily-chart" aria-label="Gráfico de pedidos por dia">
@@ -1991,6 +2003,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260713g"></script>
+    <script type="module" src="app.js?v=20260713i"></script>
   </body>
 </html>

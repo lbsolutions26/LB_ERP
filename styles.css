@@ -672,6 +672,14 @@ h3 {
 
 
 
+.dashboard-cash-summary-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .dashboard-cash-summary {
   display: grid;
   gap: 0.1rem;
@@ -681,6 +689,15 @@ h3 {
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(217, 210, 196, 0.85);
   min-width: 7.5rem;
+}
+
+.dashboard-cash-summary--today {
+  border-color: rgba(22, 93, 89, 0.28);
+  background: linear-gradient(145deg, rgba(22, 93, 89, 0.08) 0%, rgba(255, 255, 255, 0.88) 70%);
+}
+
+.dashboard-cash-summary--today strong {
+  color: var(--brand-strong, #0f4744);
 }
 
 .dashboard-cash-summary span {
