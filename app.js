@@ -80,6 +80,7 @@ const state = {
   itensDocumentoReturnTo: null,
   itensDocumentoProdutoGroupKey: null,
   itensDocumentoClienteId: null,
+  itensDocumentoClienteSummary: null,
   produtoSort: {
     field: "nome",
     direction: "asc"
@@ -353,6 +354,11 @@ const els = {
   itensDocumentoFoto: document.getElementById("itensDocumentoFoto"),
     itensDocumentoTableHead: document.getElementById("itensDocumentoTableHead"),
   itensDocumentoTable: document.getElementById("itensDocumentoTable"),
+  itensDocumentoClienteSummary: document.getElementById("itensDocumentoClienteSummary"),
+  clientePedidosCount: document.getElementById("clientePedidosCount"),
+  clientePedidosTotal: document.getElementById("clientePedidosTotal"),
+  clientePedidosAberto: document.getElementById("clientePedidosAberto"),
+  clientePedidosAbertoMeta: document.getElementById("clientePedidosAbertoMeta"),
   pedidoForm: document.getElementById("pedidoForm"),
   orcamentoForm: document.getElementById("orcamentoForm"),
   despesaForm: document.getElementById("despesaForm"),
@@ -7092,6 +7098,39 @@ function updateItensDocumentoModalChrome() {
       els.itensDocumentoModalSubtitle.classList.add("hidden");
     }
   }
+  renderClientePedidosSummary();
+}
+
+function renderClientePedidosSummary() {
+  const wrap = els.itensDocumentoClienteSummary;
+  if (!wrap) return;
+
+  const isClientePedidos = state.itensDocumentoModalMode === "cliente_pedidos";
+  wrap.classList.toggle("hidden", !isClientePedidos);
+  if (!isClientePedidos) return;
+
+  const summary = state.itensDocumentoClienteSummary || {
+    count: 0,
+    totalPedidos: 0,
+    totalAberto: 0,
+    titulosAbertos: 0
+  };
+
+  if (els.clientePedidosCount) {
+    els.clientePedidosCount.textContent = String(summary.count || 0);
+  }
+  if (els.clientePedidosTotal) {
+    els.clientePedidosTotal.textContent = moeda.format(summary.totalPedidos || 0);
+  }
+  if (els.clientePedidosAberto) {
+    els.clientePedidosAberto.textContent = moeda.format(summary.totalAberto || 0);
+  }
+  if (els.clientePedidosAbertoMeta) {
+    const n = Number(summary.titulosAbertos || 0);
+    els.clientePedidosAbertoMeta.textContent = n
+      ? `${n} título${n === 1 ? "" : "s"} com saldo`
+      : "Nenhum título em aberto";
+  }
 }
 
 async function openClientePedidosModal(clienteId) {
@@ -7101,22 +7140,29 @@ async function openClientePedidosModal(clienteId) {
     return;
   }
 
-  const { data, error } = await supabaseClient
-    .from("documentos_venda")
-    .select("id, data_emissao, status, total, raw_payload, cliente_legacy_id, cliente:clientes(id,nome)")
-    .eq("empresa_id", state.empresaId)
-    .eq("tipo_documento", "pedido")
-    .eq("cliente_id", Number(clienteId))
-    .order("data_emissao", { ascending: false });
+  const idNum = Number(clienteId);
 
-  if (error) throw error;
+  const [pedidosResp, contasResp] = await Promise.all([
+    supabaseClient
+      .from("documentos_venda")
+      .select("id, data_emissao, status, total, raw_payload, cliente_legacy_id, cliente:clientes(id,nome)")
+      .eq("empresa_id", state.empresaId)
+      .eq("tipo_documento", "pedido")
+      .eq("cliente_id", idNum)
+      .order("data_emissao", { ascending: false }),
+    supabaseClient
+      .from("contas_receber")
+      .select("id, valor_aberto, status")
+      .eq("empresa_id", state.empresaId)
+      .eq("cliente_id", idNum)
+  ]);
 
-  state.itensDocumentoModalMode = "cliente_pedidos";
-  state.itensDocumentoReturnTo = null;
-  state.itensDocumentoPedidoFoto = "";
-  state.itensDocumentoPedidoId = null;
-  state.itensDocumentoClienteId = Number(clienteId);
-  state.itensDocumento = (data || []).map((item) => ({
+  if (pedidosResp.error) throw pedidosResp.error;
+  if (contasResp.error && !isMissingRelationError(contasResp.error)) {
+    console.warn("Falha ao carregar titulos em aberto do cliente", contasResp.error.message);
+  }
+
+  const pedidos = (pedidosResp.data || []).map((item) => ({
     id: item.id,
     data_pedido: item.data_emissao,
     status: item.status,
@@ -7124,6 +7170,32 @@ async function openClientePedidosModal(clienteId) {
     raw_payload: item.raw_payload || null,
     cliente: item.cliente || { id: cliente.id, nome: cliente.nome }
   }));
+
+  const totalPedidos = pedidos.reduce((sum, p) => sum + Number(p.valor_total || 0), 0);
+  let totalAberto = 0;
+  let titulosAbertos = 0;
+  for (const conta of contasResp.data || []) {
+    const st = String(conta.status || "").toLowerCase();
+    if (st === "cancelado" || st === "recebido" || st === "quitado") continue;
+    const aberto = Math.max(0, Number(conta.valor_aberto || 0));
+    if (aberto > 0.009) {
+      totalAberto += aberto;
+      titulosAbertos += 1;
+    }
+  }
+
+  state.itensDocumentoModalMode = "cliente_pedidos";
+  state.itensDocumentoReturnTo = null;
+  state.itensDocumentoPedidoFoto = "";
+  state.itensDocumentoPedidoId = null;
+  state.itensDocumentoClienteId = idNum;
+  state.itensDocumento = pedidos;
+  state.itensDocumentoClienteSummary = {
+    count: pedidos.length,
+    totalPedidos: Number(totalPedidos.toFixed(2)),
+    totalAberto: Number(totalAberto.toFixed(2)),
+    titulosAbertos
+  };
 
   if (els.itensDocumentoModalTitle) {
     els.itensDocumentoModalTitle.textContent = `Pedidos de ${cliente.nome}`;

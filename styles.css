@@ -2181,6 +2181,59 @@ img.produto-combo-thumb.is-broken {
     #f3eee4;
 }
 
+.cliente-pedidos-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0.85rem 0 0.35rem;
+}
+
+.cliente-pedidos-summary-card {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  border: 1px solid rgba(217, 210, 196, 0.95);
+  background: linear-gradient(160deg, #ffffff 0%, #f8f5ef 100%);
+  box-shadow: 0 4px 12px rgba(33, 32, 28, 0.04);
+}
+
+.cliente-pedidos-summary-card span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cliente-pedidos-summary-card strong {
+  font-family: "Sora", sans-serif;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.cliente-pedidos-summary-card--aberto {
+  border-color: rgba(214, 124, 47, 0.35);
+  background: linear-gradient(160deg, #fffaf4 0%, #fff3e6 100%);
+}
+
+.cliente-pedidos-summary-card--aberto strong {
+  color: #b45a12;
+}
+
+.cliente-pedidos-summary-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .cliente-pedidos-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
 .itens-documento-foto-wrap {
   margin: 0.85rem 0 0.5rem;
   padding: 0.75rem;

@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260713p" />
+    <link rel="stylesheet" href="styles.css?v=20260713q" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -1329,6 +1329,21 @@
             <p class="section-subtitle">Clique na imagem para ampliar</p>
           </div>
         </div>
+        <div id="itensDocumentoClienteSummary" class="cliente-pedidos-summary hidden" aria-label="Resumo do cliente">
+          <div class="cliente-pedidos-summary-card">
+            <span>Pedidos</span>
+            <strong id="clientePedidosCount">0</strong>
+          </div>
+          <div class="cliente-pedidos-summary-card">
+            <span>Total dos pedidos</span>
+            <strong id="clientePedidosTotal">R$ 0,00</strong>
+          </div>
+          <div class="cliente-pedidos-summary-card cliente-pedidos-summary-card--aberto">
+            <span>Em aberto (títulos)</span>
+            <strong id="clientePedidosAberto">R$ 0,00</strong>
+            <small id="clientePedidosAbertoMeta" class="cliente-pedidos-summary-meta"></small>
+          </div>
+        </div>
         <div class="table-wrap">
           <table>
             <thead id="itensDocumentoTableHead">
@@ -2035,6 +2050,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260713p"></script>
+    <script type="module" src="app.js?v=20260713q"></script>
   </body>
 </html>
