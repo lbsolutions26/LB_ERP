@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712m" />
+    <link rel="stylesheet" href="styles.css?v=20260712n" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -364,7 +364,12 @@
 
         <section id="section-produtos" class="card app-section hidden">
           <div class="section-head">
-            <h2>Produtos</h2>
+            <div>
+              <h2>Produtos</h2>
+              <p class="section-subtitle">
+                Catálogo comercial. Saldo, ponto e ABC são os mesmos da aba Estoque (uma única fonte).
+              </p>
+            </div>
             <button id="openProdutoModalBtn" class="btn">Adicionar novo produto</button>
           </div>
           <div class="table-wrap">
@@ -373,11 +378,15 @@
                 <tr>
                   <th class="sortable" data-sort="nome">Produto</th>
                   <th class="sortable" data-sort="categoria">Categoria</th>
-                  <th class="sortable" data-sort="preco">Preco</th>
+                  <th class="sortable" data-sort="preco">Preço</th>
                   <th class="sortable" data-sort="custo">Custo</th>
                   <th class="sortable" data-sort="margem">Margem</th>
-                  <th class="sortable" data-sort="estoque">Estoque</th>
+                  <th class="sortable" data-sort="classe_abc">ABC</th>
+                  <th class="sortable" data-sort="estoque">Saldo</th>
+                  <th class="sortable" data-sort="reservado">Reserv.</th>
+                  <th class="sortable" data-sort="disponivel">Dispon.</th>
                   <th class="sortable" data-sort="ponto_pedido">Ponto</th>
+                  <th class="sortable" data-sort="status_estoque">Status</th>
                   <th class="sortable" data-sort="ativo">Ativo</th>
                   <th></th>
                 </tr>
@@ -387,8 +396,12 @@
                   <th><input id="filtroProdutoPreco" placeholder="Filtrar" /></th>
                   <th><input id="filtroProdutoCusto" placeholder="Filtrar" /></th>
                   <th><input id="filtroProdutoMargem" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoAbc" placeholder="A/B/C" /></th>
                   <th><input id="filtroProdutoEstoque" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoReservado" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoDisponivel" placeholder="Filtrar" /></th>
                   <th><input id="filtroProdutoPonto" placeholder="Filtrar" /></th>
+                  <th><input id="filtroProdutoStatusEstoque" placeholder="ok/reposicao" /></th>
                   <th><input id="filtroProdutoAtivo" placeholder="Filtrar" /></th>
                   <th></th>
                 </tr>
@@ -1385,6 +1398,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260712m"></script>
+    <script type="module" src="app.js?v=20260712n"></script>
   </body>
 </html>

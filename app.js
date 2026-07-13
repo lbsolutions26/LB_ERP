@@ -81,8 +81,12 @@ const state = {
     preco: "",
     custo: "",
     margem: "",
+    classe_abc: "",
     estoque: "",
+    reservado: "",
+    disponivel: "",
     ponto_pedido: "",
+    status_estoque: "",
     ativo: ""
   },
   tableViews: {
@@ -343,8 +347,12 @@ const els = {
   filtroProdutoPreco: document.getElementById("filtroProdutoPreco"),
   filtroProdutoCusto: document.getElementById("filtroProdutoCusto"),
   filtroProdutoMargem: document.getElementById("filtroProdutoMargem"),
+  filtroProdutoAbc: document.getElementById("filtroProdutoAbc"),
   filtroProdutoEstoque: document.getElementById("filtroProdutoEstoque"),
+  filtroProdutoReservado: document.getElementById("filtroProdutoReservado"),
+  filtroProdutoDisponivel: document.getElementById("filtroProdutoDisponivel"),
   filtroProdutoPonto: document.getElementById("filtroProdutoPonto"),
+  filtroProdutoStatusEstoque: document.getElementById("filtroProdutoStatusEstoque"),
   filtroProdutoAtivo: document.getElementById("filtroProdutoAtivo"),
   pedidosTable: document.getElementById("pedidosTable"),
   pedidosTableHead: document.getElementById("pedidosTableHead"),
@@ -5180,6 +5188,7 @@ async function submitEstoqueMovimento(event) {
   state.estoqueMovimentosLoaded = false;
   showToast("Movimento de estoque registrado");
   await ensureEstoqueLoaded({ force: true });
+  if (state.produtosLoaded) renderProdutosTable();
   renderMetrics();
 }
 
@@ -6449,12 +6458,32 @@ async function openNovoPedidoForCliente(clienteId) {
   showToast("Cliente selecionado no novo pedido");
 }
 
+function getProdutoEstoqueView(produto) {
+  const controla = produto.controla_estoque !== false;
+  const saldo = Number(produto.estoque || 0);
+  const reservado = controla ? getEstoqueReservado(produto.id) : 0;
+  const disponivel = controla ? saldo - reservado : null;
+  const status = controla ? getEstoqueStatus(produto) : "n/a";
+  return { controla, saldo, reservado, disponivel, status };
+}
+
 function renderProdutosTable() {
   const produtos = getFilteredAndSortedProdutos();
 
   els.produtosTable.innerHTML = produtos
-    .map(
-      (produto) => `
+    .map((produto) => {
+      const est = getProdutoEstoqueView(produto);
+      const saldoCell = est.controla
+        ? escapeHtml(est.saldo)
+        : `<span class="field-hint" title="Produto nao controla estoque">–</span>`;
+      const reservCell = est.controla ? escapeHtml(est.reservado) : "–";
+      const dispCell = est.controla ? escapeHtml(Number(est.disponivel.toFixed(2))) : "–";
+      const pontoCell = est.controla ? escapeHtml(produto.ponto_pedido ?? 0) : "–";
+      const statusCell = est.controla
+        ? formatEstoqueStatusBadge(est.status)
+        : `<span class="estoque-status" title="Sem controle de estoque">N/A</span>`;
+
+      return `
       <tr>
         <td class="produto-cell-nome">
           ${renderProdutoThumbHtml(produto)}
@@ -6464,16 +6493,23 @@ function renderProdutosTable() {
         <td>${moeda.format(produto.preco || 0)}</td>
         <td>${produto.custo == null ? "-" : moeda.format(produto.custo)}</td>
         <td>${produto.margem == null ? "-" : `${escapeHtml(produto.margem)}%`}</td>
-        <td>${escapeHtml(produto.estoque ?? 0)}</td>
-        <td>${escapeHtml(produto.ponto_pedido ?? 0)}</td>
+        <td>${est.controla ? formatAbcBadge(produto.classe_abc) : "–"}</td>
+        <td><strong>${saldoCell}</strong></td>
+        <td>${reservCell}</td>
+        <td>${dispCell}</td>
+        <td>${pontoCell}</td>
+        <td>${statusCell}</td>
         <td>${produto.ativo ? "Sim" : "Nao"}</td>
-        <td>
+        <td class="estoque-actions">
           <button class="action-edit" data-edit-produto="${produto.id}">Editar</button>
+          ${est.controla
+            ? `<button type="button" class="btn btn-ghost" data-produto-estoque-mov="${produto.id}">Estoque</button>`
+            : ""}
           <button class="action-delete" data-del-produto="${produto.id}">Excluir</button>
         </td>
       </tr>
-    `
-    )
+    `;
+    })
     .join("");
 
   updateProdutoSortHeaders();
@@ -6505,8 +6541,35 @@ function getProdutoFieldValue(produto, field) {
     return produto.ativo ? "sim" : "nao";
   }
 
+  if (field === "classe_abc") {
+    return String(produto.classe_abc || "-");
+  }
+
+  if (field === "reservado" || field === "disponivel" || field === "status_estoque") {
+    const est = getProdutoEstoqueView(produto);
+    if (field === "reservado") return String(est.reservado);
+    if (field === "disponivel") return est.disponivel == null ? "" : String(est.disponivel);
+    return est.status;
+  }
+
   const value = produto[field];
   return value == null ? "" : String(value);
+}
+
+function getProdutoSortValue(produto, field) {
+  if (field === "reservado" || field === "disponivel") {
+    const est = getProdutoEstoqueView(produto);
+    return field === "reservado" ? est.reservado : (est.disponivel ?? 0);
+  }
+  if (field === "status_estoque") {
+    const order = { negativo: 0, zerado: 1, reposicao: 2, ok: 3, "n/a": 4 };
+    return order[getProdutoEstoqueView(produto).status] ?? 9;
+  }
+  if (field === "classe_abc") {
+    const order = { A: 1, B: 2, C: 3 };
+    return order[String(produto.classe_abc || "").toUpperCase()] ?? 9;
+  }
+  return produto[field];
 }
 
 function getFilteredAndSortedProdutos() {
@@ -6523,8 +6586,8 @@ function getFilteredAndSortedProdutos() {
   const factor = direction === "desc" ? -1 : 1;
 
   filtered.sort((a, b) => {
-    const av = a[field];
-    const bv = b[field];
+    const av = getProdutoSortValue(a, field);
+    const bv = getProdutoSortValue(b, field);
 
     const aNum = Number(av);
     const bNum = Number(bv);
@@ -8009,6 +8072,8 @@ function attachEvents() {
           renderClientesTable();
         } else if (sectionName === "produtos") {
           await ensureProdutosLoaded();
+          // Reserva vem dos pedidos abertos — mesma base da aba Estoque.
+          await loadEstoqueReservas({ force: false });
           renderProdutosTable();
         } else if (sectionName === "estoque") {
           await ensureEstoqueLoaded();
@@ -8853,8 +8918,12 @@ function attachEvents() {
     ["preco", els.filtroProdutoPreco],
     ["custo", els.filtroProdutoCusto],
     ["margem", els.filtroProdutoMargem],
+    ["classe_abc", els.filtroProdutoAbc],
     ["estoque", els.filtroProdutoEstoque],
+    ["reservado", els.filtroProdutoReservado],
+    ["disponivel", els.filtroProdutoDisponivel],
     ["ponto_pedido", els.filtroProdutoPonto],
+    ["status_estoque", els.filtroProdutoStatusEstoque],
     ["ativo", els.filtroProdutoAtivo]
   ];
 
