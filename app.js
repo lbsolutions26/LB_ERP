@@ -449,6 +449,16 @@ const els = {
   dailyPedidosResumo: document.getElementById("dailyPedidosResumo"),
   dashboardSection: document.getElementById("section-dashboard"),
   dashboardStatusText: document.getElementById("dashboardStatusText"),
+  dashboardForecastCard: document.getElementById("dashboardForecastCard"),
+  dashboardForecastValue: document.getElementById("dashboardForecastValue"),
+  dashboardForecastSubtitle: document.getElementById("dashboardForecastSubtitle"),
+  dashboardForecastFaturado: document.getElementById("dashboardForecastFaturado"),
+  dashboardForecastDiasTrab: document.getElementById("dashboardForecastDiasTrab"),
+  dashboardForecastMedia: document.getElementById("dashboardForecastMedia"),
+  dashboardForecastDiasRest: document.getElementById("dashboardForecastDiasRest"),
+  dashboardForecastProjecao: document.getElementById("dashboardForecastProjecao"),
+  dashboardForecastDiasMes: document.getElementById("dashboardForecastDiasMes"),
+  dashboardForecastHint: document.getElementById("dashboardForecastHint"),
   estoqueTotalCount: document.getElementById("estoqueTotalCount"),
   estoqueComSaldoCount: document.getElementById("estoqueComSaldoCount"),
   estoquePontoPedidoCount: document.getElementById("estoquePontoPedidoCount"),
@@ -4519,6 +4529,162 @@ async function loadDashboardDaily() {
   }));
 }
 
+/**
+ * Carrega horários e feriados para a previsão do dashboard.
+ * Se o calendário ainda não foi configurado, usa seg–sex como padrão.
+ */
+async function loadCalendarioForDashboard() {
+  if (!state.empresaId) {
+    state.calendarioForecast = { horarios: [], feriados: [], fromConfig: false };
+    return;
+  }
+
+  try {
+    const [horariosResp, feriadosResp] = await Promise.all([
+      supabaseClient
+        .from("calendario_horarios")
+        .select("dia_semana, aberto, hora_inicio, hora_fim")
+        .eq("empresa_id", state.empresaId),
+      supabaseClient
+        .from("calendario_feriados")
+        .select("data, nome, fecha_dia_todo, recorrente")
+        .eq("empresa_id", state.empresaId)
+    ]);
+
+    if (horariosResp.error && !isMissingRelationError(horariosResp.error)) {
+      throw horariosResp.error;
+    }
+    if (feriadosResp.error && !isMissingRelationError(feriadosResp.error)) {
+      throw feriadosResp.error;
+    }
+
+    const horarios = horariosResp.data || [];
+    state.calendarioForecast = {
+      horarios,
+      feriados: feriadosResp.data || [],
+      fromConfig: horarios.length > 0
+    };
+  } catch (error) {
+    console.warn("Falha ao carregar calendário para previsão", error.message || error);
+    state.calendarioForecast = { horarios: [], feriados: [], fromConfig: false };
+  }
+}
+
+function ymdFromDate(date) {
+  return formatDateInput(date);
+}
+
+function isDashboardWorkingDay(date, horarios = [], feriados = []) {
+  const ymd = ymdFromDate(date);
+  const weekday = date.getDay(); // 0=dom ... 6=sáb
+
+  // Feriado de dia inteiro (ou recorrente no mesmo dia/mês) fecha o dia.
+  const mmdd = ymd.slice(5);
+  const feriado = (feriados || []).find((f) => {
+    if (f.data === ymd) return true;
+    if (f.recorrente && String(f.data || "").slice(5) === mmdd) return true;
+    return false;
+  });
+  if (feriado && feriado.fecha_dia_todo !== false) {
+    return false;
+  }
+
+  if (horarios?.length) {
+    const h = horarios.find((item) => Number(item.dia_semana) === weekday);
+    if (h) return h.aberto !== false;
+    // Dia sem cadastro no calendário: considera fechado se há config parcial
+    return false;
+  }
+
+  // Fallback sem calendário: segunda a sexta.
+  return weekday >= 1 && weekday <= 5;
+}
+
+/**
+ * Previsão de fechamento do mês:
+ * média = faturado / dias trabalhados (úteis até hoje)
+ * previsão = faturado + média * dias úteis restantes
+ */
+function computeMonthRevenueForecast() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const today = new Date(year, month, now.getDate());
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
+
+  const cal = state.calendarioForecast || { horarios: [], feriados: [], fromConfig: false };
+  const horarios = cal.horarios || [];
+  const feriados = cal.feriados || [];
+
+  // Faturado do mês = soma do gráfico diário (mesma base do dashboard).
+  const faturadoMes = (state.dashboardDaily || []).reduce(
+    (sum, row) => sum + Number(row.faturamento || 0),
+    0
+  );
+
+  let diasTrabalhados = 0;
+  let diasRestantes = 0;
+  let diasUteisMes = 0;
+
+  for (let day = 1; day <= monthEnd.getDate(); day += 1) {
+    const d = new Date(year, month, day);
+    if (!isDashboardWorkingDay(d, horarios, feriados)) continue;
+    diasUteisMes += 1;
+    if (d <= today) diasTrabalhados += 1;
+    else diasRestantes += 1;
+  }
+
+  const mediaDia = diasTrabalhados > 0 ? faturadoMes / diasTrabalhados : 0;
+  const projecaoRestante = mediaDia * diasRestantes;
+  const previsao = faturadoMes + projecaoRestante;
+
+  return {
+    faturadoMes,
+    diasTrabalhados,
+    diasRestantes,
+    diasUteisMes,
+    mediaDia,
+    projecaoRestante,
+    previsao,
+    fromConfig: Boolean(cal.fromConfig),
+    monthLabel: monthStart.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+  };
+}
+
+function renderDashboardForecastCard() {
+  if (!els.dashboardForecastValue && !els.dashboardForecastCard) return;
+
+  const f = computeMonthRevenueForecast();
+  const monthName = f.monthLabel.charAt(0).toUpperCase() + f.monthLabel.slice(1);
+
+  if (els.dashboardForecastSubtitle) {
+    els.dashboardForecastSubtitle.textContent = `Projeção para ${monthName} com base no faturamento atual e nos dias úteis.`;
+  }
+  if (els.dashboardForecastValue) els.dashboardForecastValue.textContent = moeda.format(f.previsao);
+  if (els.dashboardForecastFaturado) els.dashboardForecastFaturado.textContent = moeda.format(f.faturadoMes);
+  if (els.dashboardForecastDiasTrab) els.dashboardForecastDiasTrab.textContent = String(f.diasTrabalhados);
+  if (els.dashboardForecastMedia) els.dashboardForecastMedia.textContent = moeda.format(f.mediaDia);
+  if (els.dashboardForecastDiasRest) els.dashboardForecastDiasRest.textContent = String(f.diasRestantes);
+  if (els.dashboardForecastProjecao) els.dashboardForecastProjecao.textContent = moeda.format(f.projecaoRestante);
+  if (els.dashboardForecastDiasMes) els.dashboardForecastDiasMes.textContent = String(f.diasUteisMes);
+
+  if (els.dashboardForecastHint) {
+    if (!f.fromConfig) {
+      els.dashboardForecastHint.textContent =
+        "Calendário ainda não configurado: usando seg–sex como dias úteis. Cadastre em Calendário para mais precisão.";
+    } else if (f.diasTrabalhados <= 0) {
+      els.dashboardForecastHint.textContent =
+        "Ainda não houve dia útil no mês (ou é o primeiro dia). A média será calculada conforme os dias trabalharem.";
+    } else {
+      els.dashboardForecastHint.textContent =
+        `Fórmula: faturado (${moeda.format(f.faturadoMes)}) + média/dia (${moeda.format(f.mediaDia)}) × ${f.diasRestantes} dia(s) restante(s).`;
+    }
+  }
+
+  state.dashboardForecast = f;
+}
+
 async function loadPedidosSummary() {
   const [countResp, aggregateResp] = await Promise.all([
     supabaseClient
@@ -7198,6 +7364,7 @@ function renderMetrics(options = {}) {
 
   renderDashboardMetricMonths();
   renderDashboardDailyCharts();
+  renderDashboardForecastCard();
 
   if (els.entradasCaixaResumo) {
     els.entradasCaixaResumo.textContent = moeda.format(currentMonthEntry);
@@ -7558,7 +7725,8 @@ async function refreshAll() {
       // Dashboard primeiro: pinta a tela cedo e só depois carrega o restante.
       await Promise.all([
         loadDashboardSnapshot(),
-        loadDashboardDaily()
+        loadDashboardDaily(),
+        loadCalendarioForDashboard()
       ]);
       renderMetrics({ charts: true });
       setDashboardLoading(false, "Atualizado");

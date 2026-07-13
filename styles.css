@@ -3011,3 +3011,76 @@ tr.is-clickable-row:hover {
     font-size: 0.65rem;
   }
 }
+
+/* ===== Previsao de fechamento (dashboard) ===== */
+.dashboard-forecast-card {
+  margin: 1rem 0 1.25rem;
+  padding: 1rem 1.1rem 1.05rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(145deg, #ffffff 0%, #f3faf8 55%, #f7f4ee 100%);
+}
+.dashboard-forecast-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  margin-bottom: 0.85rem;
+}
+.dashboard-forecast-head h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+.dashboard-forecast-main {
+  text-align: right;
+  min-width: 10rem;
+}
+.dashboard-forecast-main span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.dashboard-forecast-main strong {
+  display: block;
+  font-size: 1.55rem;
+  color: var(--brand-strong, #0f4c48);
+  margin-top: 0.15rem;
+}
+.dashboard-forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+.dashboard-forecast-grid > div {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.65rem 0.7rem;
+}
+.dashboard-forecast-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.dashboard-forecast-grid strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1rem;
+}
+.dashboard-forecast-hint {
+  margin: 0.75rem 0 0;
+}
+@media (max-width: 1100px) {
+  .dashboard-forecast-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .dashboard-forecast-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-forecast-main {
+    text-align: left;
+  }
+}

@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712t" />
+    <link rel="stylesheet" href="styles.css?v=20260712u" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -93,6 +93,48 @@
               <div class="metric-months" data-metric-months="faturamento"></div>
             </article>
           </div>
+
+          <article class="dashboard-forecast-card dashboard-panel" id="dashboardForecastCard">
+            <div class="dashboard-forecast-head">
+              <div>
+                <h3>Previsão de fechamento do mês</h3>
+                <p id="dashboardForecastSubtitle" class="section-subtitle">
+                  Com base no faturamento do mês e nos dias úteis do calendário.
+                </p>
+              </div>
+              <div class="dashboard-forecast-main">
+                <span>Previsão</span>
+                <strong id="dashboardForecastValue">R$ 0,00</strong>
+              </div>
+            </div>
+            <div class="dashboard-forecast-grid">
+              <div>
+                <span>Faturado no mês</span>
+                <strong id="dashboardForecastFaturado">R$ 0,00</strong>
+              </div>
+              <div>
+                <span>Dias trabalhados</span>
+                <strong id="dashboardForecastDiasTrab">0</strong>
+              </div>
+              <div>
+                <span>Média por dia útil</span>
+                <strong id="dashboardForecastMedia">R$ 0,00</strong>
+              </div>
+              <div>
+                <span>Dias úteis restantes</span>
+                <strong id="dashboardForecastDiasRest">0</strong>
+              </div>
+              <div>
+                <span>Projeção do restante</span>
+                <strong id="dashboardForecastProjecao">R$ 0,00</strong>
+              </div>
+              <div>
+                <span>Dias úteis no mês</span>
+                <strong id="dashboardForecastDiasMes">0</strong>
+              </div>
+            </div>
+            <p id="dashboardForecastHint" class="section-subtitle dashboard-forecast-hint"></p>
+          </article>
 
           <div class="dashboard-daily-grid">
             <div class="dashboard-cash-panel dashboard-panel">
@@ -1888,6 +1930,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260712t"></script>
+    <script type="module" src="app.js?v=20260712u"></script>
   </body>
 </html>
