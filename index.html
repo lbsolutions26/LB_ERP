@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712r" />
+    <link rel="stylesheet" href="styles.css?v=20260712s" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -1481,9 +1481,17 @@
         <form id="despesaForm" class="estoque-movimento-form">
           <label>Descrição / histórico<input name="descricao" required placeholder="Ex.: Aluguel, energia, frete avulso" /></label>
           <label>Fornecedor
-            <select name="fornecedor_id" id="despesaFornecedorSelect">
-              <option value="">Sem fornecedor / avulso</option>
-            </select>
+            <div class="fornecedor-combo" data-fornecedor-combo="despesa">
+              <input type="hidden" name="fornecedor_id" id="despesaFornecedorSelect" value="" />
+              <button type="button" class="fornecedor-combo-trigger" data-fornecedor-combo-trigger>
+                <span data-fornecedor-combo-label>Sem fornecedor / avulso</span>
+                <span class="fornecedor-combo-caret">▾</span>
+              </button>
+              <div class="fornecedor-combo-panel hidden" data-fornecedor-combo-panel>
+                <input type="search" class="fornecedor-combo-search" placeholder="Pesquisar fornecedor..." data-fornecedor-combo-search autocomplete="off" />
+                <div class="fornecedor-combo-options" data-fornecedor-combo-options></div>
+              </div>
+            </div>
           </label>
           <label>Categoria<input name="categoria" placeholder="Ex.: Utilidades, Marketing" /></label>
           <label>Valor total (R$)<input name="valor" type="number" min="0.01" step="0.01" required /></label>
@@ -1517,7 +1525,19 @@
           <input type="hidden" id="contaPagarEditId" />
           <div class="nota-entrada-grid">
             <label>Título / número<input id="contaPagarEditTitulo" required /></label>
-            <label>Fornecedor<select id="contaPagarEditFornecedor"></select></label>
+            <label>Fornecedor
+              <div class="fornecedor-combo" data-fornecedor-combo="contaEdit">
+                <input type="hidden" id="contaPagarEditFornecedor" value="" />
+                <button type="button" class="fornecedor-combo-trigger" data-fornecedor-combo-trigger>
+                  <span data-fornecedor-combo-label>Sem fornecedor / avulso</span>
+                  <span class="fornecedor-combo-caret">▾</span>
+                </button>
+                <div class="fornecedor-combo-panel hidden" data-fornecedor-combo-panel>
+                  <input type="search" class="fornecedor-combo-search" placeholder="Pesquisar fornecedor..." data-fornecedor-combo-search autocomplete="off" />
+                  <div class="fornecedor-combo-options" data-fornecedor-combo-options></div>
+                </div>
+              </div>
+            </label>
             <label>Data de emissão<input id="contaPagarEditEmissao" type="date" required /></label>
             <label>Origem<input id="contaPagarEditOrigem" type="text" readonly /></label>
             <label class="nota-entrada-full">Descrição / observações<textarea id="contaPagarEditObs" rows="2"></textarea></label>
@@ -1545,12 +1565,12 @@
       </div>
     </div>
 
-    <div id="fornecedorModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="fornecedorModalTitle">
+    <div id="fornecedorModal" class="modal-overlay modal-overlay--stack hidden" role="dialog" aria-modal="true" aria-labelledby="fornecedorModalTitle">
       <div class="modal-card">
         <div class="modal-head">
           <div>
             <h3 id="fornecedorModalTitle">Novo fornecedor</h3>
-            <p class="modal-subtitle">Cadastre quem vende para a empresa.</p>
+            <p id="fornecedorModalSubtitle" class="modal-subtitle">Cadastre quem vende para a empresa.</p>
           </div>
           <button id="closeFornecedorModalBtn" class="btn btn-ghost" type="button">Fechar</button>
         </div>
@@ -1586,7 +1606,19 @@
         </div>
         <div class="nota-entrada-form">
           <div class="nota-entrada-grid">
-            <label>Fornecedor<select id="notaEntradaFornecedor" required></select></label>
+            <label>Fornecedor
+              <div class="fornecedor-combo" data-fornecedor-combo="nota">
+                <input type="hidden" id="notaEntradaFornecedor" value="" />
+                <button type="button" class="fornecedor-combo-trigger" data-fornecedor-combo-trigger>
+                  <span data-fornecedor-combo-label>Selecione o fornecedor</span>
+                  <span class="fornecedor-combo-caret">▾</span>
+                </button>
+                <div class="fornecedor-combo-panel hidden" data-fornecedor-combo-panel>
+                  <input type="search" class="fornecedor-combo-search" placeholder="Pesquisar fornecedor..." data-fornecedor-combo-search autocomplete="off" />
+                  <div class="fornecedor-combo-options" data-fornecedor-combo-options></div>
+                </div>
+              </div>
+            </label>
             <label>Nº NF<input id="notaEntradaNumero" placeholder="12345" /></label>
             <label>Série<input id="notaEntradaSerie" placeholder="1" /></label>
             <label>Chave de acesso<input id="notaEntradaChave" placeholder="44 dígitos (opcional)" /></label>
@@ -1728,6 +1760,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260712r"></script>
+    <script type="module" src="app.js?v=20260712s"></script>
   </body>
 </html>

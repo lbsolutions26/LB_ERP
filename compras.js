@@ -1092,16 +1092,266 @@ export function installComprasModule(ctx) {
     showToast("Título excluído");
   }
 
-  /* ---------- Fornecedor modal ---------- */
+  /* ---------- Fornecedor combo + modal rápido ---------- */
 
-  function openFornecedorModal(editId = null) {
+  const FORNECEDOR_COMBO_KEYS = ["despesa", "contaEdit", "nota"];
+
+  function getFornecedorComboRoot(key) {
+    return document.querySelector(`[data-fornecedor-combo="${key}"]`);
+  }
+
+  function getFornecedorComboConfig(key) {
+    if (key === "despesa") {
+      return { emptyLabel: "Sem fornecedor / avulso", allowEmpty: true };
+    }
+    if (key === "contaEdit") {
+      return { emptyLabel: "Sem fornecedor / avulso", allowEmpty: true };
+    }
+    return { emptyLabel: "Selecione o fornecedor", allowEmpty: true };
+  }
+
+  function getFornecedorLabelById(id) {
+    if (!id) return null;
+    const f = (state().compras.fornecedores || []).find((x) => String(x.id) === String(id));
+    return f ? f.nome : null;
+  }
+
+  function setFornecedorComboValue(keyOrEl, selected = "", emptyLabel) {
+    const root =
+      typeof keyOrEl === "string"
+        ? getFornecedorComboRoot(keyOrEl)
+        : keyOrEl?.closest?.("[data-fornecedor-combo]") || null;
+    // Compat: se passou o input hidden diretamente
+    const hidden =
+      (root && root.querySelector('input[type="hidden"]')) ||
+      (keyOrEl instanceof HTMLElement && keyOrEl.tagName === "INPUT" ? keyOrEl : null);
+    const comboRoot = root || hidden?.closest?.("[data-fornecedor-combo]");
+    if (!comboRoot || !hidden) {
+      // fallback antigo se ainda for select
+      if (keyOrEl && keyOrEl.tagName === "SELECT") {
+        fillFornecedorSelectLegacy(keyOrEl, selected, emptyLabel);
+      }
+      return;
+    }
+    const key = comboRoot.getAttribute("data-fornecedor-combo") || "despesa";
+    const cfg = getFornecedorComboConfig(key);
+    const label = emptyLabel || cfg.emptyLabel;
+    hidden.value = selected == null ? "" : String(selected);
+    const labelEl = comboRoot.querySelector("[data-fornecedor-combo-label]");
+    if (labelEl) {
+      labelEl.textContent = selected ? getFornecedorLabelById(selected) || `Fornecedor #${selected}` : label;
+    }
+  }
+
+  function fillFornecedorSelectLegacy(selectEl, selected = "", emptyLabel = "Selecione o fornecedor") {
+    if (!selectEl) return;
+    const opts = [`<option value="">${escapeHtml(emptyLabel)}</option>`];
+    for (const f of state().compras.fornecedores || []) {
+      if (f.ativo === false) continue;
+      const sel = String(f.id) === String(selected) ? " selected" : "";
+      opts.push(`<option value="${escapeHtml(f.id)}"${sel}>${escapeHtml(f.nome)}</option>`);
+    }
+    selectEl.innerHTML = opts.join("");
+  }
+
+  // Alias usado no resto do módulo
+  function fillFornecedorSelect(selectElOrKey, selected = "", emptyLabel = "Selecione o fornecedor") {
+    if (typeof selectElOrKey === "string") {
+      setFornecedorComboValue(selectElOrKey, selected, emptyLabel);
+      return;
+    }
+    if (selectElOrKey?.closest?.("[data-fornecedor-combo]") || selectElOrKey?.id) {
+      // se for o hidden input do combo
+      if (selectElOrKey.id === "despesaFornecedorSelect") {
+        setFornecedorComboValue("despesa", selected, emptyLabel);
+        return;
+      }
+      if (selectElOrKey.id === "contaPagarEditFornecedor") {
+        setFornecedorComboValue("contaEdit", selected, emptyLabel);
+        return;
+      }
+      if (selectElOrKey.id === "notaEntradaFornecedor") {
+        setFornecedorComboValue("nota", selected, emptyLabel);
+        return;
+      }
+    }
+    setFornecedorComboValue(selectElOrKey, selected, emptyLabel);
+  }
+
+  function closeAllFornecedorCombos(exceptRoot = null) {
+    document.querySelectorAll("[data-fornecedor-combo-panel]").forEach((panel) => {
+      if (exceptRoot && exceptRoot.contains(panel)) return;
+      panel.classList.add("hidden");
+    });
+  }
+
+  function renderFornecedorComboOptions(root, query = "") {
+    const optionsEl = root.querySelector("[data-fornecedor-combo-options]");
+    if (!optionsEl) return;
+    const key = root.getAttribute("data-fornecedor-combo") || "despesa";
+    const cfg = getFornecedorComboConfig(key);
+    const hidden = root.querySelector('input[type="hidden"]');
+    const selected = hidden?.value || "";
+    const q = String(query || "").trim().toLowerCase();
+
+    const list = (state().compras.fornecedores || []).filter((f) => {
+      if (f.ativo === false) return false;
+      if (!q) return true;
+      const hay = `${f.nome || ""} ${f.documento || ""} ${f.cidade || ""} ${f.email || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+    const parts = [];
+    parts.push(`
+      <button type="button" class="fornecedor-combo-option fornecedor-combo-option--new" data-fornecedor-combo-new>
+        + Cadastrar novo fornecedor
+      </button>
+    `);
+    if (cfg.allowEmpty) {
+      parts.push(`
+        <button type="button" class="fornecedor-combo-option ${selected === "" ? "active" : ""}" data-fornecedor-combo-pick="" data-label="${escapeHtml(cfg.emptyLabel)}">
+          ${escapeHtml(cfg.emptyLabel)}
+        </button>
+      `);
+    }
+    if (!list.length) {
+      parts.push(`<div class="fornecedor-combo-empty">Nenhum fornecedor encontrado${q ? ` para “${escapeHtml(query)}”` : ""}.</div>`);
+    } else {
+      for (const f of list) {
+        const meta = [f.documento, f.cidade && f.uf ? `${f.cidade}/${f.uf}` : f.cidade || f.uf]
+          .filter(Boolean)
+          .join(" • ");
+        parts.push(`
+          <button type="button" class="fornecedor-combo-option ${String(selected) === String(f.id) ? "active" : ""}" data-fornecedor-combo-pick="${escapeHtml(f.id)}" data-label="${escapeHtml(f.nome)}">
+            <span>${escapeHtml(f.nome)}</span>
+            ${meta ? `<small>${escapeHtml(meta)}</small>` : ""}
+          </button>
+        `);
+      }
+    }
+    optionsEl.innerHTML = parts.join("");
+  }
+
+  function openFornecedorCombo(root) {
+    if (!root) return;
+    closeAllFornecedorCombos(root);
+    const panel = root.querySelector("[data-fornecedor-combo-panel]");
+    const search = root.querySelector("[data-fornecedor-combo-search]");
+    if (!panel) return;
+    panel.classList.remove("hidden");
+    if (search) {
+      search.value = "";
+      renderFornecedorComboOptions(root, "");
+      setTimeout(() => search.focus(), 0);
+    } else {
+      renderFornecedorComboOptions(root, "");
+    }
+  }
+
+  function pickFornecedorCombo(root, id, label) {
+    const key = root.getAttribute("data-fornecedor-combo");
+    const cfg = getFornecedorComboConfig(key);
+    setFornecedorComboValue(key, id || "", label || cfg.emptyLabel);
+    closeAllFornecedorCombos();
+  }
+
+  function refreshAllFornecedorCombos() {
+    for (const key of FORNECEDOR_COMBO_KEYS) {
+      const root = getFornecedorComboRoot(key);
+      if (!root) continue;
+      const hidden = root.querySelector('input[type="hidden"]');
+      const cfg = getFornecedorComboConfig(key);
+      setFornecedorComboValue(key, hidden?.value || "", cfg.emptyLabel);
+      const panel = root.querySelector("[data-fornecedor-combo-panel]");
+      if (panel && !panel.classList.contains("hidden")) {
+        const search = root.querySelector("[data-fornecedor-combo-search]");
+        renderFornecedorComboOptions(root, search?.value || "");
+      }
+    }
+  }
+
+  function attachFornecedorCombos() {
+    // Eventos delegados uma vez
+    if (attachFornecedorCombos._done) return;
+    attachFornecedorCombos._done = true;
+
+    document.addEventListener("click", (ev) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLElement)) return;
+
+      const trigger = t.closest("[data-fornecedor-combo-trigger]");
+      if (trigger) {
+        ev.preventDefault();
+        const root = trigger.closest("[data-fornecedor-combo]");
+        const panel = root?.querySelector("[data-fornecedor-combo-panel]");
+        if (panel?.classList.contains("hidden")) openFornecedorCombo(root);
+        else closeAllFornecedorCombos();
+        return;
+      }
+
+      const novo = t.closest("[data-fornecedor-combo-new]");
+      if (novo) {
+        ev.preventDefault();
+        const root = novo.closest("[data-fornecedor-combo]");
+        const key = root?.getAttribute("data-fornecedor-combo") || null;
+        closeAllFornecedorCombos();
+        openFornecedorModal(null, {
+          quick: true,
+          targetComboKey: key,
+          onSaved: (fornecedor) => {
+            if (key && fornecedor?.id) {
+              setFornecedorComboValue(key, fornecedor.id);
+            }
+            refreshAllFornecedorCombos();
+          }
+        });
+        return;
+      }
+
+      const pick = t.closest("[data-fornecedor-combo-pick]");
+      if (pick) {
+        ev.preventDefault();
+        const root = pick.closest("[data-fornecedor-combo]");
+        if (!root) return;
+        pickFornecedorCombo(
+          root,
+          pick.getAttribute("data-fornecedor-combo-pick") || "",
+          pick.getAttribute("data-label") || ""
+        );
+        return;
+      }
+
+      if (!t.closest("[data-fornecedor-combo]")) {
+        closeAllFornecedorCombos();
+      }
+    });
+
+    document.addEventListener("input", (ev) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLElement)) return;
+      if (!t.matches("[data-fornecedor-combo-search]")) return;
+      const root = t.closest("[data-fornecedor-combo]");
+      if (!root) return;
+      renderFornecedorComboOptions(root, t.value || "");
+    });
+  }
+
+  function openFornecedorModal(editId = null, options = {}) {
     ensureStateDefaults();
     const e = els();
     state().fornecedorModal.editId = editId;
+    state().fornecedorModal.quick = Boolean(options.quick);
+    state().fornecedorModal.targetComboKey = options.targetComboKey || null;
+    state().fornecedorModal.onSaved = typeof options.onSaved === "function" ? options.onSaved : null;
     if (!e.fornecedorModal || !e.fornecedorForm) return;
     e.fornecedorForm.reset();
     if (e.fornecedorModalTitle) {
       e.fornecedorModalTitle.textContent = editId ? "Editar fornecedor" : "Novo fornecedor";
+    }
+    if (e.fornecedorModalSubtitle) {
+      e.fornecedorModalSubtitle.textContent = options.quick
+        ? "Cadastro rápido — a tela anterior permanece aberta."
+        : "Cadastre quem vende para a empresa.";
     }
     if (editId) {
       const f = state().compras.fornecedores.find((x) => Number(x.id) === Number(editId));
@@ -1121,12 +1371,20 @@ export function installComprasModule(ctx) {
       }
     }
     e.fornecedorModal.classList.remove("hidden");
+    // Foco no nome para cadastro rápido
+    const nomeField = e.fornecedorForm.elements.namedItem("nome");
+    if (nomeField && "focus" in nomeField) {
+      setTimeout(() => nomeField.focus(), 50);
+    }
   }
 
   function closeFornecedorModal() {
     const e = els();
     if (e.fornecedorModal) e.fornecedorModal.classList.add("hidden");
     state().fornecedorModal.editId = null;
+    state().fornecedorModal.quick = false;
+    state().fornecedorModal.targetComboKey = null;
+    state().fornecedorModal.onSaved = null;
   }
 
   async function saveFornecedor(event) {
@@ -1148,20 +1406,42 @@ export function installComprasModule(ctx) {
       updated_at: new Date().toISOString()
     };
     const editId = state().fornecedorModal.editId;
+    const onSaved = state().fornecedorModal.onSaved;
+    let saved = null;
+
     if (editId) {
-      const { error } = await sb()
+      const { data, error } = await sb()
         .from("fornecedores")
         .update(payload)
         .eq("id", editId)
-        .eq("empresa_id", state().empresaId);
+        .eq("empresa_id", state().empresaId)
+        .select("id, nome, documento, telefone, email, cidade, uf, ativo, observacoes")
+        .single();
       if (error) throw error;
+      saved = data;
     } else {
-      const { error } = await sb().from("fornecedores").insert(payload);
+      const { data, error } = await sb()
+        .from("fornecedores")
+        .insert(payload)
+        .select("id, nome, documento, telefone, email, cidade, uf, ativo, observacoes")
+        .single();
       if (error) throw error;
+      saved = data;
     }
+
     closeFornecedorModal();
     await loadFornecedores();
-    renderComprasSection();
+    refreshAllFornecedorCombos();
+    // Não re-renderiza toda a seção de compras se for quick (evita “piscar” outras telas)
+    if (!onSaved) {
+      renderComprasSection();
+    } else {
+      // Atualiza só a tabela de fornecedores se estiver visível
+      renderFornecedoresTable();
+    }
+    if (typeof onSaved === "function" && saved) {
+      onSaved(saved);
+    }
     showToast(editId ? "Fornecedor atualizado" : "Fornecedor salvo");
   }
 
@@ -1174,22 +1454,12 @@ export function installComprasModule(ctx) {
       .eq("empresa_id", state().empresaId);
     if (error) throw error;
     await loadFornecedores();
+    refreshAllFornecedorCombos();
     renderComprasSection();
     showToast("Fornecedor excluído");
   }
 
   /* ---------- Nota modal ---------- */
-
-  function fillFornecedorSelect(selectEl, selected = "", emptyLabel = "Selecione o fornecedor") {
-    if (!selectEl) return;
-    const opts = [`<option value="">${escapeHtml(emptyLabel)}</option>`];
-    for (const f of state().compras.fornecedores || []) {
-      if (f.ativo === false) continue;
-      const sel = String(f.id) === String(selected) ? " selected" : "";
-      opts.push(`<option value="${escapeHtml(f.id)}"${sel}>${escapeHtml(f.nome)}</option>`);
-    }
-    selectEl.innerHTML = opts.join("");
-  }
 
   function fillFormaPagamentoSelect(selectEl, selected = "") {
     if (!selectEl) return;
@@ -1834,6 +2104,7 @@ export function installComprasModule(ctx) {
   function attachComprasEvents() {
     ensureStateDefaults();
     const e = els();
+    attachFornecedorCombos();
 
     for (const btn of e.comprasViewButtons || []) {
       btn.addEventListener("click", () => {
