@@ -205,7 +205,17 @@ h3 {
 
 .pedidos-section-title {
   min-width: 0;
-  flex: 1 1 16rem;
+  flex: 1 1 14rem;
+}
+
+.pedidos-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .pedidos-new-btn {
@@ -217,6 +227,7 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.55rem;
   min-width: 0;
 }
@@ -229,29 +240,30 @@ h3 {
   gap: 0.75rem;
 }
 
+/* Pill só do tamanho do conteúdo — não estica o fundo bege */
 .pedidos-view-toggle {
   display: inline-flex;
-  padding: 0.25rem;
+  width: fit-content;
+  max-width: 100%;
+  flex: 0 0 auto;
+  padding: 0.22rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: #f7f1e6;
-  gap: 0.25rem;
-  max-width: 100%;
+  gap: 0.2rem;
 }
 
-.pedidos-view-toggle--main {
-  flex: 1 1 auto;
-  min-width: min(100%, 18rem);
-}
-
+.pedidos-view-toggle--main,
 .pedidos-view-toggle--mode {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
+  min-width: 0;
+  width: fit-content;
 }
 
 .pedidos-view-toggle-btn {
   border: 0;
   border-radius: 999px;
-  padding: 0.5rem 0.85rem;
+  padding: 0.48rem 0.8rem;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -275,28 +287,36 @@ h3 {
 .pedidos-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.5rem;
   align-items: end;
 }
 
 .pedidos-filters label {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.25rem;
   color: #3d372d;
   font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.pedidos-filters input[type="date"] {
+  min-width: 9.5rem;
+  max-width: 11rem;
+  padding: 0.42rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font: inherit;
 }
 
 .pedidos-subview-toggle {
   background: #fcf8ee;
 }
 
-/* Slot reservado: some a opção, mas a linha de navegação não “salta” */
+/* Some de verdade o modo lista — o toggle principal não estica */
 .pedidos-view-toggle--mode.is-inactive,
 .pedidos-view-toggle--mode.hidden {
-  display: inline-flex !important;
-  visibility: hidden;
-  pointer-events: none;
-  opacity: 0;
+  display: none !important;
 }
 
 .action-link {
@@ -1358,35 +1378,40 @@ table thead input {
     align-items: stretch;
   }
 
+  .pedidos-section-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .pedidos-new-btn {
     width: 100%;
   }
 
   .pedidos-nav {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.5rem;
+    gap: 0.45rem;
   }
 
-  .pedidos-view-toggle,
-  .pedidos-view-toggle--main,
-  .pedidos-view-toggle--mode {
+  /* No mobile o pill principal ocupa a linha, mas só o necessário dos 2 botões */
+  .pedidos-view-toggle--main {
     width: 100%;
-    min-width: 0;
-    justify-content: stretch;
+    max-width: 100%;
   }
 
-  .pedidos-view-toggle-btn {
+  .pedidos-view-toggle--main .pedidos-view-toggle-btn {
     flex: 1 1 0;
     text-align: center;
     padding: 0.55rem 0.65rem;
     font-size: 0.92rem;
   }
 
-  /* No mobile, some de verdade o modo lista para não ocupar espaço em branco */
-  .pedidos-view-toggle--mode.is-inactive,
-  .pedidos-view-toggle--mode.hidden {
-    display: none !important;
+  .pedidos-view-toggle--mode {
+    width: 100%;
+  }
+
+  .pedidos-view-toggle--mode .pedidos-view-toggle-btn {
+    flex: 1 1 0;
+    text-align: center;
   }
 
   .pedidos-toolbar {
@@ -1395,8 +1420,16 @@ table thead input {
   }
 
   .pedidos-filters {
+    width: 100%;
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .pedidos-filters input[type="date"] {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
   }
 }
 
