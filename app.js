@@ -182,7 +182,8 @@ const state = {
   ownerUsers: [],
   adminEmpresas: [],
   adminVinculos: [],
-  produtoPrecoVendaCalc: null
+  produtoPrecoVendaCalc: null,
+  produtoPrecoFormacaoPending: null
 };
 
 const els = {
@@ -854,7 +855,9 @@ function createDocumentoDraft(tipo = "pedido") {
     parcelasEditadas: null,
     parcelasOriginaisSnapshot: null,
     itens: [createDocumentoDraftItem()],
-    precoVendaCalc: createPrecoVendaCalcState()
+    precoVendaCalc: createPrecoVendaCalcState(),
+    precoFormacaoAplicada: null,
+    rawPayloadBase: null
   };
 }
 
@@ -2695,6 +2698,22 @@ function applyPrecoVendaCalcToItens() {
     item.valorUnitario = Number((fatia / qtd).toFixed(2));
   });
 
+  // Snapshot da formacao de preco no pedido (historico da decisao comercial).
+  const snapshot = buildPrecoFormacaoSnapshot(calc, result);
+  state.novoDocumentoModal.precoFormacaoAplicada = {
+    ...snapshot,
+    total_atual_antes: Number(result.totalAtual || 0),
+    aplicado_em: new Date().toISOString(),
+    itens: getFilledDocumentoItens().map((item) => ({
+      rowId: item.rowId,
+      produtoId: item.produtoId || null,
+      descricao: item.descricao || "",
+      quantidade: Number(item.quantidade || 0),
+      custo_unitario: getDocumentoItemCustoUnitario(item),
+      valor_unitario: Number(item.valorUnitario || 0)
+    }))
+  };
+
   renderNovoDocumentoItensGrid();
   updateNovoDocumentoResumo();
   renderPrecoVendaCalcPanel();
@@ -2820,6 +2839,58 @@ function renderProdutoPrecoVendaCalcPanel() {
   }
 }
 
+function buildPrecoFormacaoSnapshot(calc, result = null) {
+  const computed = result || computePrecoVendaCalc(calc);
+  return {
+    custo_produto: Number(calc.custoProdutos || 0),
+    mao_de_obra: Number(calc.maoDeObra || 0),
+    frete: Number(calc.frete || 0),
+    embalagem: Number(calc.embalagem || 0),
+    outras_despesas: Number(calc.outrasDespesas || 0),
+    impostos_pct: Number(calc.impostosPct || 0),
+    taxa_cartao_pct: Number(calc.taxaCartaoPct || 0),
+    comissao_pct: Number(calc.comissaoPct || 0),
+    margem_pct: Number(calc.margemPct || 0),
+    custo_base: Number(computed.custoBase || 0),
+    preco_sugerido: Number(computed.precoSugerido || 0),
+    lucro_estimado: Number(computed.lucro || 0),
+    soma_pct: Number(computed.somaPct || 0),
+    atualizado_em: new Date().toISOString()
+  };
+}
+
+function hydrateProdutoPrecoVendaCalcFromSnapshot(snapshot, fallback = {}) {
+  const src = snapshot && typeof snapshot === "object" ? snapshot : {};
+  return createPrecoVendaCalcState({
+    open: false,
+    custoProdutos: Number(src.custo_produto ?? fallback.custo ?? 0),
+    maoDeObra: Number(src.mao_de_obra || 0),
+    frete: Number(src.frete || 0),
+    embalagem: Number(src.embalagem || 0),
+    outrasDespesas: Number(src.outras_despesas || 0),
+    impostosPct: Number(src.impostos_pct || 0),
+    taxaCartaoPct: Number(src.taxa_cartao_pct || 0),
+    comissaoPct: Number(src.comissao_pct || 0),
+    margemPct: Number(src.margem_pct ?? fallback.margem ?? 30) || 30,
+    _custoProdutosTouched: Boolean(src && Object.keys(src).length)
+  });
+}
+
+function getCurrentProdutoPrecoFormacaoForSave() {
+  // Preferencia: snapshot ja aplicado na calculadora; senao monta a partir do estado atual se aberta.
+  if (state.produtoPrecoFormacaoPending) {
+    return state.produtoPrecoFormacaoPending;
+  }
+  if (state.produtoPrecoVendaCalc?.open) {
+    const calc = readProdutoPrecoVendaCalcFromInputs();
+    const result = computePrecoVendaCalc(calc);
+    if (!result.aviso && result.precoSugerido > 0) {
+      return buildPrecoFormacaoSnapshot(calc, result);
+    }
+  }
+  return null;
+}
+
 function applyProdutoPrecoVendaCalcToForm() {
   const calc = ensureProdutoPrecoVendaCalcState();
   const result = computePrecoVendaCalc(calc);
@@ -2834,8 +2905,9 @@ function applyProdutoPrecoVendaCalcToForm() {
   if (els.produtoCalcCusto) {
     setProdutoFormNumber("custo", Number(calc.custoProdutos || 0));
   }
+  state.produtoPrecoFormacaoPending = buildPrecoFormacaoSnapshot(calc, result);
   renderProdutoPrecoVendaCalcPanel();
-  showToast("Preco de venda e margem aplicados no produto");
+  showToast("Preco aplicado. Salve o produto para gravar a formacao de preco.");
 }
 
 async function loadDocumentoForEdit(tipo, documentoId) {
@@ -2904,6 +2976,11 @@ async function loadDocumentoForEdit(tipo, documentoId) {
     }
   }
 
+  const rawPayload = documento.raw_payload && typeof documento.raw_payload === "object"
+    ? documento.raw_payload
+    : {};
+  const precoFormacaoAplicada = rawPayload.preco_formacao || null;
+
   state.novoDocumentoModal = {
     tipo,
     documentoId,
@@ -2916,14 +2993,17 @@ async function loadDocumentoForEdit(tipo, documentoId) {
     fotoUrl: getPedidoFotoUrl(documento),
     pagamento: {
       ...createPagamentoDraft(),
-      ...(documento.raw_payload?.pagamento || {})
+      ...(rawPayload.pagamento || {})
     },
     parcelasEditadas,
     parcelasOriginaisSnapshot: parcelasEditadas ? JSON.stringify(parcelasEditadas) : null,
     itens: (itensData || []).length
       ? (itensData || []).map(normalizeDocumentoItem)
       : [createDocumentoDraftItem()],
-    precoVendaCalc: createPrecoVendaCalcState()
+    precoVendaCalc: hydrateProdutoPrecoVendaCalcFromSnapshot(precoFormacaoAplicada),
+    precoFormacaoAplicada,
+    // Mantem campos legados (foto, import, etc.) ao regravar o pedido.
+    rawPayloadBase: rawPayload
   };
 }
 
@@ -3521,6 +3601,24 @@ async function saveNovoDocumento(event) {
     : new Date().toISOString();
 
   const subtotal = itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
+  const rawPayloadBase = draft.rawPayloadBase && typeof draft.rawPayloadBase === "object"
+    ? { ...draft.rawPayloadBase }
+    : {};
+  const rawPayload = {
+    ...rawPayloadBase,
+    source: "novo-documento-modal",
+    itens: itens.length,
+    pagamento: pagamentoState
+  };
+  // Snapshot da calculadora (historico da decisao comercial no pedido/orcamento).
+  if (draft.precoFormacaoAplicada) {
+    rawPayload.preco_formacao = draft.precoFormacaoAplicada;
+  }
+  // Preserva foto legada se so temos a URL resolvida no draft.
+  if (!rawPayload.foto_url && draft.fotoUrl) {
+    rawPayload.foto_url = draft.fotoUrl;
+  }
+
   const documentoPayload = {
     empresa_id: state.empresaId,
     tipo_documento: draft.tipo,
@@ -3531,11 +3629,7 @@ async function saveNovoDocumento(event) {
     desconto: 0,
     total: subtotal,
     observacoes: observacoes || null,
-    raw_payload: {
-      source: "novo-documento-modal",
-      itens: itens.length,
-      pagamento: pagamentoState
-    },
+    raw_payload: rawPayload,
     data_emissao: dataEmissaoIso
   };
 
@@ -3856,6 +3950,7 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
 function setProdutoFormMode({ editing = false, produto = null } = {}) {
   if (!els.produtoForm) return;
   closeProdutoPrecoVendaCalcPanel();
+  state.produtoPrecoFormacaoPending = null;
   state.produtoPrecoVendaCalc = createPrecoVendaCalcState({ margemPct: 30 });
 
   if (!editing) {
@@ -3882,7 +3977,9 @@ function setProdutoFormMode({ editing = false, produto = null } = {}) {
     els.produtoModalTitle.textContent = "Editar Produto";
   }
   if (els.produtoModalSubtitle) {
-    els.produtoModalSubtitle.textContent = "Atualize os dados e confira a imagem do produto.";
+    els.produtoModalSubtitle.textContent = produto.preco_formacao
+      ? "Atualize os dados. A formacao de preco salva sera recarregada na calculadora."
+      : "Atualize os dados e confira a imagem do produto.";
   }
   if (els.produtoSubmitBtn) {
     els.produtoSubmitBtn.textContent = "Salvar Alteracoes";
@@ -3906,10 +4003,13 @@ function setProdutoFormMode({ editing = false, produto = null } = {}) {
   setValue("imagem_path", produto.imagem_path || "");
   setValue("ativo", produto.ativo ? "sim" : "nao");
   setValue("controla_estoque", produto.controla_estoque === false ? "nao" : "sim");
-  state.produtoPrecoVendaCalc = createPrecoVendaCalcState({
-    custoProdutos: Number(produto.custo || 0),
-    margemPct: Number(produto.margem || 30) || 30
+
+  // Restaura a ultima formacao de preco salva (se existir).
+  state.produtoPrecoVendaCalc = hydrateProdutoPrecoVendaCalcFromSnapshot(produto.preco_formacao, {
+    custo: produto.custo,
+    margem: produto.margem
   });
+  state.produtoPrecoFormacaoPending = produto.preco_formacao || null;
   updateProdutoFormImagePreview();
 }
 
@@ -4121,7 +4221,7 @@ async function loadProdutos() {
   const { data: catalogData, error: catalogError } = await supabaseClient
     .from("produto_catalogo")
     .select(
-      "id, nome, descricao, imagem_path, preco_venda, custo, margem_percentual, estoque_atual, estoque_minimo, ativo, controla_estoque, categoria:produto_categorias(nome)"
+      "id, nome, descricao, imagem_path, preco_venda, custo, margem_percentual, preco_formacao, estoque_atual, estoque_minimo, ativo, controla_estoque, categoria:produto_categorias(nome)"
     )
     .eq("empresa_id", state.empresaId)
     .order("nome");
@@ -4138,6 +4238,7 @@ async function loadProdutos() {
     preco: Number(item.preco_venda || 0),
     custo: item.custo == null ? null : Number(item.custo),
     margem: item.margem_percentual == null ? null : Number(item.margem_percentual),
+    preco_formacao: item.preco_formacao || null,
     estoque: Number(item.estoque_atual || 0),
     ponto_pedido: Number(item.estoque_minimo || 0),
     ativo: Boolean(item.ativo),
@@ -6496,6 +6597,8 @@ async function createProduto(event) {
     categoriaId = categoriaData?.id ?? null;
   }
 
+  const precoFormacao = getCurrentProdutoPrecoFormacaoForSave();
+
   const payloadCatalogo = {
     empresa_id: state.empresaId,
     categoria_id: categoriaId,
@@ -6510,6 +6613,16 @@ async function createProduto(event) {
     descricao: String(formData.get("descricao") || "").trim() || null,
     imagem_path: String(formData.get("imagem_path") || "").trim() || null
   };
+
+  // Mantem formacao anterior se o usuario nao mexeu na calculadora nesta sessao.
+  if (precoFormacao) {
+    payloadCatalogo.preco_formacao = precoFormacao;
+  } else if (editId) {
+    const atual = state.produtos.find((item) => Number(item.id) === Number(editId));
+    if (atual?.preco_formacao) {
+      payloadCatalogo.preco_formacao = atual.preco_formacao;
+    }
+  }
 
   if (editId) {
     const { error: updateCatalogError } = await supabaseClient
@@ -6527,6 +6640,7 @@ async function createProduto(event) {
     if (insertCatalogError) throw insertCatalogError;
   }
 
+  state.produtoPrecoFormacaoPending = null;
   setProdutoFormMode({ editing: false });
   closeProdutoModal();
   showToast(editId ? "Produto atualizado" : "Produto salvo");
