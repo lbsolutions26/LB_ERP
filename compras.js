@@ -2476,9 +2476,16 @@ export function installComprasModule(ctx) {
       const t = ev.target;
       if (!(t instanceof HTMLElement)) return;
 
-      // Clique na linha de conta a pagar (exceto botões de ação)
-      if (!t.closest("[data-stop-row-edit]") && !t.closest("button") && !t.closest("a") && !t.closest("input") && !t.closest("select")) {
-        const row = t.closest("[data-edit-conta-pagar]");
+      // Clique na linha de conta a pagar (exceto menu/botoes de acao)
+      if (
+        !t.closest("[data-stop-row-edit]") &&
+        !t.closest("[data-row-actions]") &&
+        !t.closest("button") &&
+        !t.closest("a") &&
+        !t.closest("input") &&
+        !t.closest("select")
+      ) {
+        const row = t.closest("tr[data-edit-conta-pagar]");
         if (row && (e.despesasPagarTable?.contains(row) || e.comprasPagarTable?.contains(row))) {
           const id = row.getAttribute("data-edit-conta-pagar");
           if (id) {
