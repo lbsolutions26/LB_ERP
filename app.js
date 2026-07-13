@@ -238,6 +238,13 @@ const els = {
   tabs: Array.from(document.querySelectorAll(".tab")),
   sections: Array.from(document.querySelectorAll(".app-section")),
   clienteForm: document.getElementById("clienteForm"),
+  clienteModal: document.getElementById("clienteModal"),
+  clienteModalTitle: document.getElementById("clienteModalTitle"),
+  clienteModalSubtitle: document.getElementById("clienteModalSubtitle"),
+  openClienteModalBtn: document.getElementById("openClienteModalBtn"),
+  closeClienteModalBtn: document.getElementById("closeClienteModalBtn"),
+  clienteSubmitBtn: document.getElementById("clienteSubmitBtn"),
+  clienteFormId: document.getElementById("clienteFormId"),
   produtoForm: document.getElementById("produtoForm"),
   openProdutoModalBtn: document.getElementById("openProdutoModalBtn"),
   closeProdutoModalBtn: document.getElementById("closeProdutoModalBtn"),
@@ -4151,19 +4158,24 @@ function renderItensDocumentoTable() {
     els.itensDocumentoTable.innerHTML = state.itensDocumento
       .map((pedido) => {
         const data = pedido.data_pedido ? new Date(pedido.data_pedido).toLocaleDateString("pt-BR") : "-";
+        const id = escapeHtml(pedido.id);
+        const actions = renderRowActionsMenu(
+          [
+            { label: "Editar", attrs: `data-edit-pedido="${id}"` },
+            { label: "Itens", attrs: `data-view-pedido-itens="${id}"` }
+          ],
+          { label: `Acoes do pedido #${id}` }
+        );
         return `
           <tr>
+            <td class="pedido-actions-cell">${actions}</td>
             <td class="pedido-cell-id">
               ${renderPedidoThumbHtml(pedido)}
-              <span>#${escapeHtml(pedido.id)}</span>
+              <span>#${id}</span>
             </td>
             <td>${data}</td>
             <td>${escapeHtml(pedido.status || "-")}</td>
             <td>${moeda.format(pedido.valor_total || 0)}</td>
-            <td>
-              <button type="button" class="action-edit" data-edit-pedido="${pedido.id}">Editar</button>
-              <button type="button" class="action-edit" data-view-pedido-itens="${pedido.id}">Itens</button>
-            </td>
           </tr>
         `;
       })
@@ -6186,11 +6198,11 @@ function renderItensDocumentoTableHead() {
   if (state.itensDocumentoModalMode === "cliente_pedidos") {
     els.itensDocumentoTableHead.innerHTML = `
       <tr>
+        <th class="pedido-actions-col" aria-label="Acoes"></th>
         <th>Pedido</th>
         <th>Data</th>
         <th>Status</th>
         <th>Total</th>
-        <th></th>
       </tr>
     `;
     return;
@@ -6435,9 +6447,24 @@ function closeAllRowActionMenus(exceptMenu = null) {
   });
 }
 
-/** Menu compacto de acoes (1 botao → Editar / Receber / Itens / Excluir). */
-function renderPedidoRowActionsMenu(pedidoId) {
-  const id = escapeHtml(pedidoId);
+/**
+ * Menu compacto padrao das listas: um botao "⋯" abre as acoes.
+ * items: [{ label, attrs, danger?, finance? }]
+ */
+function renderRowActionsMenu(items, { label = "Acoes" } = {}) {
+  const itemsHtml = (items || [])
+    .map((item) => {
+      const cls = [
+        "row-actions-item",
+        item.finance ? "row-actions-item--finance" : "",
+        item.danger ? "row-actions-item--danger" : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return `<button type="button" role="menuitem" class="${cls}" ${item.attrs || ""}>${escapeHtml(item.label || "")}</button>`;
+    })
+    .join("");
+
   return `
     <div class="row-actions-menu" data-row-actions>
       <button
@@ -6446,19 +6473,63 @@ function renderPedidoRowActionsMenu(pedidoId) {
         data-row-actions-toggle
         aria-expanded="false"
         aria-haspopup="menu"
-        title="Acoes do pedido"
-        aria-label="Acoes do pedido #${id}"
+        title="${escapeHtml(label)}"
+        aria-label="${escapeHtml(label)}"
       >
         <span aria-hidden="true">⋯</span>
       </button>
-      <div class="row-actions-panel" role="menu" hidden>
-        <button type="button" role="menuitem" class="row-actions-item" data-edit-pedido="${id}">Editar</button>
-        <button type="button" role="menuitem" class="row-actions-item row-actions-item--finance" data-open-recebimento-pedido="${id}">Receber</button>
-        <button type="button" role="menuitem" class="row-actions-item" data-view-pedido-itens="${id}">Itens</button>
-        <button type="button" role="menuitem" class="row-actions-item row-actions-item--danger" data-del-pedido="${id}">Excluir</button>
-      </div>
+      <div class="row-actions-panel" role="menu" hidden>${itemsHtml}</div>
     </div>
   `;
+}
+
+function renderPedidoRowActionsMenu(pedidoId) {
+  const id = escapeHtml(pedidoId);
+  return renderRowActionsMenu(
+    [
+      { label: "Editar", attrs: `data-edit-pedido="${id}"` },
+      { label: "Receber", attrs: `data-open-recebimento-pedido="${id}"`, finance: true },
+      { label: "Itens", attrs: `data-view-pedido-itens="${id}"` },
+      { label: "Excluir", attrs: `data-del-pedido="${id}"`, danger: true }
+    ],
+    { label: `Acoes do pedido #${id}` }
+  );
+}
+
+function renderClienteRowActionsMenu(clienteId) {
+  const id = escapeHtml(clienteId);
+  return renderRowActionsMenu(
+    [
+      { label: "Pedidos", attrs: `data-view-cliente-pedidos="${id}"` },
+      { label: "Editar", attrs: `data-edit-cliente="${id}"` },
+      { label: "Excluir", attrs: `data-del-cliente="${id}"`, danger: true }
+    ],
+    { label: "Acoes do cliente" }
+  );
+}
+
+function renderProdutoRowActionsMenu(produtoId, { controlaEstoque = true } = {}) {
+  const id = escapeHtml(produtoId);
+  const items = [
+    { label: "Editar", attrs: `data-edit-produto="${id}"` }
+  ];
+  if (controlaEstoque) {
+    items.push({ label: "Estoque", attrs: `data-produto-estoque-mov="${id}"`, finance: true });
+  }
+  items.push({ label: "Excluir", attrs: `data-del-produto="${id}"`, danger: true });
+  return renderRowActionsMenu(items, { label: "Acoes do produto" });
+}
+
+function renderOrcamentoRowActionsMenu(orcamentoId) {
+  const id = escapeHtml(orcamentoId);
+  return renderRowActionsMenu(
+    [
+      { label: "Editar", attrs: `data-edit-orcamento="${id}"` },
+      { label: "Itens", attrs: `data-view-orcamento-itens="${id}"` },
+      { label: "Excluir", attrs: `data-del-orcamento="${id}"`, danger: true }
+    ],
+    { label: "Acoes do orcamento" }
+  );
 }
 
 function getActivePedidosListFilters() {
@@ -6988,18 +7059,15 @@ function renderClientesTable() {
   els.clientesTable.innerHTML = rows
     .map(
       (cliente) => `
-      <tr class="cliente-row is-clickable" data-view-cliente-pedidos="${cliente.id}" title="Ver pedidos deste cliente">
+      <tr class="cliente-row">
+        <td class="pedido-actions-cell">${renderClienteRowActionsMenu(cliente.id)}</td>
         <td>
-          <button type="button" class="action-link cliente-nome-link" data-view-cliente-pedidos="${cliente.id}">
+          <button type="button" class="action-link cliente-nome-link" data-view-cliente-pedidos="${cliente.id}" title="Ver pedidos deste cliente">
             ${escapeHtml(cliente.nome)}
           </button>
         </td>
         <td>${escapeHtml(cliente.telefone || "-")}</td>
         <td>${escapeHtml(cliente.email || "-")}</td>
-        <td>
-          <button type="button" class="action-edit" data-view-cliente-pedidos="${cliente.id}">Pedidos</button>
-          <button type="button" class="action-delete" data-del-cliente="${cliente.id}">Excluir</button>
-        </td>
       </tr>
     `
     )
@@ -7115,6 +7183,7 @@ function renderProdutosTable() {
 
       return `
       <tr>
+        <td class="pedido-actions-cell">${renderProdutoRowActionsMenu(produto.id, { controlaEstoque: est.controla })}</td>
         <td class="produto-cell-nome">
           ${renderProdutoThumbHtml(produto)}
           <span>${escapeHtml(produto.nome)}</span>
@@ -7130,13 +7199,6 @@ function renderProdutosTable() {
         <td>${pontoCell}</td>
         <td>${statusCell}</td>
         <td>${produto.ativo ? "Sim" : "Nao"}</td>
-        <td class="estoque-actions">
-          <button class="action-edit" data-edit-produto="${produto.id}">Editar</button>
-          ${est.controla
-            ? `<button type="button" class="btn btn-ghost" data-produto-estoque-mov="${produto.id}">Estoque</button>`
-            : ""}
-          <button class="action-delete" data-del-produto="${produto.id}">Excluir</button>
-        </td>
       </tr>
     `;
     })
@@ -7608,8 +7670,21 @@ function renderContasReceberTable() {
       const clienteNome = conta.cliente?.nome || "-";
       const statusConta = conta.statusNormalizado || "aberto";
       const vencimentoClass = statusConta === "vencido" ? "financeiro-vencimento-atrasado" : "";
+      const parcelaId = escapeHtml(conta.parcelaId || "");
+      const contaId = escapeHtml(conta.contaId || conta.id || "");
+      const actions = renderRowActionsMenu(
+        [
+          {
+            label: "Registrar recebimento",
+            attrs: `data-open-recebimento-parcela="${parcelaId}" data-open-recebimento-conta="${contaId}"`,
+            finance: true
+          }
+        ],
+        { label: "Acoes do titulo" }
+      );
       return `
         <tr>
+          <td class="pedido-actions-cell">${actions}</td>
           <td>${emissao}</td>
           <td class="${vencimentoClass}">${vencimento}</td>
           <td>${escapeHtml(clienteNome)}</td>
@@ -7617,9 +7692,6 @@ function renderContasReceberTable() {
           <td><span class="status-chip ${statusConta}">${getContaStatusLabel(statusConta)}</span></td>
           <td>${moeda.format(conta.valor_original || 0)}</td>
           <td>${moeda.format(conta.valor_aberto || 0)}</td>
-          <td>
-            <button class="action-finance" data-open-recebimento-parcela="${conta.parcelaId || ""}" data-open-recebimento-conta="${conta.contaId || conta.id || ""}">Registrar recebimento</button>
-          </td>
         </tr>
       `;
     })
@@ -7653,15 +7725,11 @@ function renderOrcamentosTable() {
       const clienteNome = orcamento.cliente?.nome || (orcamento.cliente_legacy_id ? `Legacy #${escapeHtml(orcamento.cliente_legacy_id)}` : "-");
       return `
       <tr>
+        <td class="pedido-actions-cell">${renderOrcamentoRowActionsMenu(orcamento.id)}</td>
         <td>${data}</td>
         <td>${clienteNome}</td>
         <td>${escapeHtml(orcamento.status || "-")}</td>
         <td>${moeda.format(orcamento.valor_total || 0)}</td>
-        <td>
-            <button class="action-edit" data-edit-orcamento="${orcamento.id}">Editar</button>
-          <button class="action-edit" data-view-orcamento-itens="${orcamento.id}">Itens</button>
-          <button class="action-delete" data-del-orcamento="${orcamento.id}">Excluir</button>
-        </td>
       </tr>
     `;
     })
@@ -8272,9 +8340,56 @@ async function refreshAll() {
   }
 }
 
-async function createCliente(event) {
+function openClienteModal(cliente = null) {
+  if (!els.clienteModal || !els.clienteForm) return;
+  els.clienteForm.reset();
+  const isEdit = Boolean(cliente?.id);
+  if (els.clienteFormId) els.clienteFormId.value = isEdit ? String(cliente.id) : "";
+  if (els.clienteForm.dataset) {
+    if (isEdit) els.clienteForm.dataset.editId = String(cliente.id);
+    else delete els.clienteForm.dataset.editId;
+  }
+  if (isEdit) {
+    const nome = els.clienteForm.elements.namedItem("nome");
+    const telefone = els.clienteForm.elements.namedItem("telefone");
+    const email = els.clienteForm.elements.namedItem("email");
+    if (nome && "value" in nome) nome.value = cliente.nome || "";
+    if (telefone && "value" in telefone) telefone.value = cliente.telefone || "";
+    if (email && "value" in email) email.value = cliente.email || "";
+  }
+  if (els.clienteModalTitle) {
+    els.clienteModalTitle.textContent = isEdit ? "Editar Cliente" : "Novo Cliente";
+  }
+  if (els.clienteModalSubtitle) {
+    els.clienteModalSubtitle.textContent = isEdit
+      ? "Atualize os dados basicos do cliente."
+      : "Preencha os dados basicos do cliente.";
+  }
+  if (els.clienteSubmitBtn) {
+    els.clienteSubmitBtn.textContent = isEdit ? "Salvar alteracoes" : "Salvar Cliente";
+  }
+  els.clienteModal.classList.remove("hidden");
+  window.requestAnimationFrame(() => {
+    const nome = els.clienteForm?.elements?.namedItem("nome");
+    if (nome && "focus" in nome) nome.focus();
+  });
+}
+
+function closeClienteModal() {
+  if (!els.clienteModal) return;
+  els.clienteModal.classList.add("hidden");
+  if (els.clienteForm) {
+    els.clienteForm.reset();
+    delete els.clienteForm.dataset.editId;
+  }
+  if (els.clienteFormId) els.clienteFormId.value = "";
+}
+
+async function saveCliente(event) {
   event.preventDefault();
+  if (!els.clienteForm) return;
   const formData = new FormData(els.clienteForm);
+  const editId = Number(formData.get("id") || els.clienteForm.dataset.editId || 0) || null;
   const payload = {
     empresa_id: state.empresaId,
     nome: String(formData.get("nome") || "").trim(),
@@ -8282,11 +8397,38 @@ async function createCliente(event) {
     email: String(formData.get("email") || "").trim() || null
   };
 
-  await createClienteFromPayload(payload);
+  if (!payload.nome) {
+    throw new Error("Informe o nome do cliente.");
+  }
 
-  els.clienteForm.reset();
-  showToast("Cliente salvo");
+  if (editId) {
+    const { error } = await supabaseClient
+      .from("clientes")
+      .update({
+        nome: payload.nome,
+        telefone: payload.telefone,
+        email: payload.email
+      })
+      .eq("empresa_id", state.empresaId)
+      .eq("id", editId);
+    if (error) throw error;
+    showToast("Cliente atualizado");
+  } else {
+    await createClienteFromPayload(payload);
+    showToast("Cliente salvo");
+  }
+
+  closeClienteModal();
+  state.clientesLoaded = false;
+  await ensureClientesLoaded({ force: true });
+  renderClientesTable();
+  renderSelects();
   await refreshAll();
+}
+
+/** @deprecated use saveCliente */
+async function createCliente(event) {
+  return saveCliente(event);
 }
 
 async function createClienteFromPayload(payload) {
@@ -8799,7 +8941,8 @@ function initComprasModule() {
       formatDateInput,
       registrarEstoqueMovimento,
       ensureProdutosLoaded,
-      loadFormasPagamento
+      loadFormasPagamento,
+      renderRowActionsMenu
     }
   });
   comprasModule.ensureStateDefaults();
@@ -8920,13 +9063,27 @@ function attachEvents() {
     });
   }
 
-  els.clienteForm.addEventListener("submit", async (event) => {
-    try {
-      await createCliente(event);
-    } catch (error) {
-      showToast(`Erro ao salvar cliente: ${error.message}`, "error");
-    }
-  });
+  if (els.clienteForm) {
+    els.clienteForm.addEventListener("submit", async (event) => {
+      try {
+        await saveCliente(event);
+      } catch (error) {
+        showToast(`Erro ao salvar cliente: ${error.message}`, "error");
+      }
+    });
+  }
+
+  if (els.openClienteModalBtn) {
+    els.openClienteModalBtn.addEventListener("click", () => openClienteModal(null));
+  }
+  if (els.closeClienteModalBtn) {
+    els.closeClienteModalBtn.addEventListener("click", closeClienteModal);
+  }
+  if (els.clienteModal) {
+    els.clienteModal.addEventListener("click", (event) => {
+      if (event.target === els.clienteModal) closeClienteModal();
+    });
+  }
 
   els.produtoForm.addEventListener("submit", async (event) => {
     try {
@@ -9926,8 +10083,22 @@ function attachEvents() {
     const despesaId = getData("data-del-despesa");
 
     try {
-      // Clique no nome/linha do cliente (exceto botao Excluir)
-      if (clientePedidosId && !target.closest("[data-del-cliente]")) {
+      const clienteEditId = getData("data-edit-cliente");
+      if (clienteEditId) {
+        const cliente = state.clientes.find((item) => String(item.id) === String(clienteEditId));
+        if (!cliente) {
+          showToast("Cliente nao encontrado", "error");
+          return;
+        }
+        openClienteModal(cliente);
+        return;
+      }
+      // Pedidos do cliente (nome ou acao do menu) — nao dispara em Editar/Excluir
+      if (
+        clientePedidosId &&
+        !target.closest("[data-del-cliente]") &&
+        !target.closest("[data-edit-cliente]")
+      ) {
         await openClientePedidosModal(Number(clientePedidosId));
         return;
       }

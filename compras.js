@@ -18,8 +18,19 @@ export function installComprasModule(ctx) {
     formatDateInput,
     registrarEstoqueMovimento,
     ensureProdutosLoaded,
-    loadFormasPagamento
+    loadFormasPagamento,
+    renderRowActionsMenu
   } = helpers;
+
+  function rowActions(items, label = "Acoes") {
+    if (typeof renderRowActionsMenu === "function") {
+      return renderRowActionsMenu(items, { label });
+    }
+    // Fallback minimo se o helper nao estiver disponivel
+    return items
+      .map((item) => `<button type="button" class="btn btn-ghost" ${item.attrs || ""}>${escapeHtml(item.label || "")}</button>`)
+      .join(" ");
+  }
 
   function state() {
     return getState();
@@ -125,8 +136,15 @@ export function installComprasModule(ctx) {
           r.conta?.fornecedor?.nome ||
           (r.conta?.origem === "despesa_manual" ? r.conta?.observacoes || r.conta?.numero_titulo : null) ||
           "–";
+        const contaId = escapeHtml(r.conta_pagar_id);
+        const parcelaId = escapeHtml(r.id);
+        const menuItems = [{ label: "Editar", attrs: `data-edit-conta-pagar="${contaId}"` }];
+        if (r.status !== "pago" && r.status !== "cancelado") {
+          menuItems.push({ label: "Pagar", attrs: `data-pagar-parcela="${parcelaId}"`, finance: true });
+        }
         return `
-        <tr class="is-clickable-row" data-edit-conta-pagar="${r.conta_pagar_id}" title="Clique para editar o título">
+        <tr class="is-clickable-row" data-edit-conta-pagar="${contaId}" title="Clique para editar o título">
+          <td class="pedido-actions-cell" data-stop-row-edit="1">${rowActions(menuItems, "Acoes do titulo")}</td>
           <td>${escapeHtml(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`)}</td>
           <td>${escapeHtml(fornecedorTxt)}</td>
           ${showOrigem ? `<td>${escapeHtml(origemLabel(r.conta?.origem))}</td>` : ""}
@@ -136,12 +154,6 @@ export function installComprasModule(ctx) {
           <td>${moeda.format(r.valor_parcela || 0)}</td>
           <td>${moeda.format(saldo)}</td>
           <td><span class="estoque-status ${r.status === "pago" ? "estoque-status--ok" : "estoque-status--reposicao"}">${escapeHtml(r.status)}</span></td>
-          <td class="estoque-actions" data-stop-row-edit="1">
-            <button type="button" class="btn btn-ghost" data-edit-conta-pagar="${r.conta_pagar_id}">Editar</button>
-            ${r.status !== "pago" && r.status !== "cancelado"
-              ? `<button type="button" class="btn" data-pagar-parcela="${r.id}">Pagar</button>`
-              : ""}
-          </td>
         </tr>`;
       })
       .join("");
@@ -563,9 +575,26 @@ export function installComprasModule(ctx) {
       .map((n) => {
         const statusClass =
           n.status === "lancada" ? "estoque-status--ok" : n.status === "cancelada" ? "estoque-status--zerado" : "estoque-status--reposicao";
+        const id = escapeHtml(n.id);
+        let menuItems = [];
+        if (n.status === "rascunho") {
+          menuItems = [
+            { label: "Editar", attrs: `data-edit-nota="${id}"` },
+            { label: "Lancar", attrs: `data-lancar-nota="${id}"`, finance: true },
+            { label: "Excluir", attrs: `data-del-nota="${id}"`, danger: true }
+          ];
+        } else if (n.status === "lancada") {
+          menuItems = [
+            { label: "Ver", attrs: `data-view-nota="${id}"` },
+            { label: "Cancelar", attrs: `data-cancelar-nota="${id}"`, danger: true }
+          ];
+        } else {
+          menuItems = [{ label: "Ver", attrs: `data-view-nota="${id}"` }];
+        }
         return `
         <tr>
-          <td>#${escapeHtml(n.id)}</td>
+          <td class="pedido-actions-cell">${rowActions(menuItems, "Acoes da nota")}</td>
+          <td>#${id}</td>
           <td>${escapeHtml(n.numero_nf || "–")}${n.serie ? ` / ${escapeHtml(n.serie)}` : ""}</td>
           <td>${escapeHtml(n.fornecedor?.nome || "–")}</td>
           <td>${escapeHtml(n.data_entrada || "–")}</td>
@@ -573,17 +602,6 @@ export function installComprasModule(ctx) {
           <td>${moeda.format(n.valor_total || 0)}</td>
           <td>${n.estoque_aplicado ? "Sim" : "Não"}</td>
           <td>${n.financeiro_aplicado ? "Sim" : "Não"}</td>
-          <td class="estoque-actions">
-            ${n.status === "rascunho"
-              ? `<button type="button" class="btn btn-ghost" data-edit-nota="${n.id}">Editar</button>
-                 <button type="button" class="btn" data-lancar-nota="${n.id}">Lançar</button>
-                 <button type="button" class="action-delete" data-del-nota="${n.id}">Excluir</button>`
-              : n.status === "lancada"
-                ? `<button type="button" class="btn btn-ghost" data-view-nota="${n.id}">Ver</button>
-                   <button type="button" class="btn btn-ghost" data-cancelar-nota="${n.id}">Cancelar</button>`
-                : `<button type="button" class="btn btn-ghost" data-view-nota="${n.id}">Ver</button>`
-            }
-          </td>
         </tr>`;
       })
       .join("");
@@ -604,21 +622,25 @@ export function installComprasModule(ctx) {
       return;
     }
     e.comprasFornecedoresTable.innerHTML = rows
-      .map(
-        (f) => `
+      .map((f) => {
+        const id = escapeHtml(f.id);
+        return `
       <tr>
+        <td class="pedido-actions-cell">${rowActions(
+          [
+            { label: "Editar", attrs: `data-edit-fornecedor="${id}"` },
+            { label: "Excluir", attrs: `data-del-fornecedor="${id}"`, danger: true }
+          ],
+          "Acoes do fornecedor"
+        )}</td>
         <td>${escapeHtml(f.nome)}</td>
         <td>${escapeHtml(f.documento || "–")}</td>
         <td>${escapeHtml(f.telefone || "–")}</td>
         <td>${escapeHtml(f.email || "–")}</td>
         <td>${escapeHtml([f.cidade, f.uf].filter(Boolean).join("/") || "–")}</td>
         <td>${f.ativo === false ? "Não" : "Sim"}</td>
-        <td class="estoque-actions">
-          <button type="button" class="action-edit" data-edit-fornecedor="${f.id}">Editar</button>
-          <button type="button" class="action-delete" data-del-fornecedor="${f.id}">Excluir</button>
-        </td>
-      </tr>`
-      )
+      </tr>`;
+      })
       .join("");
   }
 

@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260713n" />
+    <link rel="stylesheet" href="styles.css?v=20260713p" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -275,29 +275,27 @@
         </section>
 
         <section id="section-clientes" class="card app-section hidden">
-          <h2>Clientes</h2>
-          <div class="form-block">
-            <form id="clienteForm">
-              <input name="nome" placeholder="Nome" required />
-              <input name="telefone" placeholder="Telefone" />
-              <input name="email" placeholder="Email" type="email" />
-              <button type="submit" class="btn">Salvar Cliente</button>
-            </form>
+          <div class="section-head">
+            <div>
+              <h2>Clientes</h2>
+              <p class="section-subtitle">Cadastre clientes e consulte os pedidos de cada um.</p>
+            </div>
+            <button id="openClienteModalBtn" class="btn" type="button">Novo Cliente</button>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th class="pedido-actions-col" scope="col" aria-label="Acoes"></th>
                   <th class="sortable" data-table="clientes" data-sort="nome">Nome</th>
                   <th class="sortable" data-table="clientes" data-sort="telefone">Telefone</th>
                   <th class="sortable" data-table="clientes" data-sort="email">Email</th>
-                  <th></th>
                 </tr>
                 <tr>
+                  <th class="pedido-actions-col"></th>
                   <th><input data-table-filter="clientes" data-field="nome" placeholder="Filtrar" /></th>
                   <th><input data-table-filter="clientes" data-field="telefone" placeholder="Filtrar" /></th>
                   <th><input data-table-filter="clientes" data-field="email" placeholder="Filtrar" /></th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody id="clientesTable"></tbody>
@@ -381,6 +379,7 @@
             <table>
               <thead>
                 <tr>
+                  <th class="pedido-actions-col" scope="col" aria-label="Acoes"></th>
                   <th class="sortable" data-table="financeiro" data-sort="emissao">Emissao</th>
                   <th class="sortable" data-table="financeiro" data-sort="vencimento">Vencimento</th>
                   <th class="sortable" data-table="financeiro" data-sort="cliente">Cliente</th>
@@ -388,9 +387,9 @@
                   <th class="sortable" data-table="financeiro" data-sort="status">Status</th>
                   <th class="sortable" data-table="financeiro" data-sort="original">Original</th>
                   <th class="sortable" data-table="financeiro" data-sort="aberto">Aberto</th>
-                  <th></th>
                 </tr>
                 <tr>
+                  <th class="pedido-actions-col"></th>
                   <th><input data-table-filter="financeiro" data-field="emissao" placeholder="Filtrar" /></th>
                   <th><input data-table-filter="financeiro" data-field="vencimento" placeholder="Filtrar" /></th>
                   <th><input data-table-filter="financeiro" data-field="cliente" placeholder="Filtrar" /></th>
@@ -398,7 +397,6 @@
                   <th><input data-table-filter="financeiro" data-field="status" placeholder="Filtrar" /></th>
                   <th><input data-table-filter="financeiro" data-field="original" placeholder="Filtrar" /></th>
                   <th><input data-table-filter="financeiro" data-field="aberto" placeholder="Filtrar" /></th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody id="contasReceberTable"></tbody>
@@ -427,18 +425,18 @@
             <table>
               <thead>
                 <tr>
+                  <th class="pedido-actions-col" scope="col" aria-label="Acoes"></th>
                   <th class="sortable" data-table="orcamentos" data-sort="data">Data</th>
                   <th class="sortable" data-table="orcamentos" data-sort="cliente">Cliente</th>
                   <th class="sortable" data-table="orcamentos" data-sort="status">Status</th>
                   <th class="sortable" data-table="orcamentos" data-sort="total">Total</th>
-                  <th></th>
                 </tr>
                 <tr>
+                  <th class="pedido-actions-col"></th>
                   <th><input data-table-filter="orcamentos" data-field="data" placeholder="Filtrar" /></th>
                   <th><input data-table-filter="orcamentos" data-field="cliente" placeholder="Filtrar" /></th>
                   <th><input data-table-filter="orcamentos" data-field="status" placeholder="Filtrar" /></th>
                   <th><input data-table-filter="orcamentos" data-field="total" placeholder="Filtrar" /></th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody id="orcamentosTable"></tbody>
@@ -490,6 +488,7 @@
               <table>
                 <thead>
                   <tr>
+                    <th class="pedido-actions-col" aria-label="Acoes"></th>
                     <th>ID</th>
                     <th>NF</th>
                     <th>Fornecedor</th>
@@ -498,7 +497,6 @@
                     <th>Total</th>
                     <th>Estoque</th>
                     <th>Financeiro</th>
-                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="comprasNotasTable"></tbody>
@@ -514,13 +512,13 @@
               <table>
                 <thead>
                   <tr>
+                    <th class="pedido-actions-col" aria-label="Acoes"></th>
                     <th>Nome</th>
                     <th>Documento</th>
                     <th>Telefone</th>
                     <th>E-mail</th>
                     <th>Cidade/UF</th>
                     <th>Ativo</th>
-                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="comprasFornecedoresTable"></tbody>
@@ -550,6 +548,7 @@
               <table>
                 <thead>
                   <tr>
+                    <th class="pedido-actions-col" aria-label="Acoes"></th>
                     <th>Título</th>
                     <th>Fornecedor</th>
                     <th>Origem</th>
@@ -558,7 +557,6 @@
                     <th>Valor</th>
                     <th>Saldo</th>
                     <th>Status</th>
-                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="comprasPagarTable"></tbody>
@@ -611,6 +609,7 @@
             <table>
               <thead>
                 <tr>
+                  <th class="pedido-actions-col" aria-label="Acoes"></th>
                   <th>Título</th>
                   <th>Fornecedor / desc.</th>
                   <th>Origem</th>
@@ -620,7 +619,6 @@
                   <th>Valor</th>
                   <th>Saldo</th>
                   <th>Status</th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody id="despesasPagarTable"></tbody>
@@ -642,6 +640,7 @@
             <table>
               <thead>
                 <tr>
+                  <th class="pedido-actions-col" scope="col" aria-label="Acoes"></th>
                   <th class="sortable" data-sort="nome">Produto</th>
                   <th class="sortable" data-sort="categoria">Categoria</th>
                   <th class="sortable" data-sort="preco">Preço</th>
@@ -654,9 +653,9 @@
                   <th class="sortable" data-sort="ponto_pedido">Ponto</th>
                   <th class="sortable" data-sort="status_estoque">Status</th>
                   <th class="sortable" data-sort="ativo">Ativo</th>
-                  <th></th>
                 </tr>
                 <tr>
+                  <th class="pedido-actions-col"></th>
                   <th><input id="filtroProdutoNome" placeholder="Filtrar" /></th>
                   <th><input id="filtroProdutoCategoria" placeholder="Filtrar" /></th>
                   <th><input id="filtroProdutoPreco" placeholder="Filtrar" /></th>
@@ -669,7 +668,6 @@
                   <th><input id="filtroProdutoPonto" placeholder="Filtrar" /></th>
                   <th><input id="filtroProdutoStatusEstoque" placeholder="ok/reposicao" /></th>
                   <th><input id="filtroProdutoAtivo" placeholder="Filtrar" /></th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody id="produtosTable"></tbody>
@@ -1593,6 +1591,36 @@
       </div>
     </div>
 
+    <div id="clienteModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="clienteModalTitle">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="clienteModalTitle">Novo Cliente</h3>
+            <p id="clienteModalSubtitle" class="modal-subtitle">Preencha os dados basicos do cliente.</p>
+          </div>
+          <button id="closeClienteModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+        <form id="clienteForm" class="quick-client-form">
+          <input type="hidden" name="id" id="clienteFormId" value="" />
+          <label>
+            Nome
+            <input name="nome" required placeholder="Nome do cliente" />
+          </label>
+          <label>
+            Telefone
+            <input name="telefone" placeholder="(00) 00000-0000" />
+          </label>
+          <label>
+            Email
+            <input name="email" type="email" placeholder="cliente@email.com" />
+          </label>
+          <div class="quick-client-actions">
+            <button id="clienteSubmitBtn" type="submit" class="btn">Salvar Cliente</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div id="recebimentoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="recebimentoModalTitle">
       <div class="modal-card modal-recebimento-card">
         <div class="modal-head">
@@ -2007,6 +2035,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260713o"></script>
+    <script type="module" src="app.js?v=20260713p"></script>
   </body>
 </html>
