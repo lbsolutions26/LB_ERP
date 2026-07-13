@@ -6453,56 +6453,97 @@ function renderPedidosTableHead() {
   `;
 }
 
+function getRowActionsPanel(menu) {
+  if (!(menu instanceof HTMLElement)) return null;
+  // Painel pode ter sido movido para document.body
+  const id = menu.dataset.rowActionsId;
+  if (id) {
+    const safeId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(id)
+      : String(id).replace(/["\\]/g, "\\$&");
+    const hosted = document.querySelector(`[data-row-actions-panel="${safeId}"]`);
+    if (hosted instanceof HTMLElement) return hosted;
+  }
+  const local = menu.querySelector(".row-actions-panel");
+  return local instanceof HTMLElement ? local : null;
+}
+
 function closeAllRowActionMenus(exceptMenu = null) {
   document.querySelectorAll("[data-row-actions].is-open").forEach((menu) => {
     if (exceptMenu && menu === exceptMenu) return;
     menu.classList.remove("is-open");
     const trigger = menu.querySelector("[data-row-actions-toggle]");
     if (trigger) trigger.setAttribute("aria-expanded", "false");
-    const panel = menu.querySelector(".row-actions-panel");
+    const panel = getRowActionsPanel(menu);
     if (panel) {
       panel.hidden = true;
+      panel.classList.remove("is-open-panel");
       panel.style.top = "";
       panel.style.bottom = "";
       panel.style.left = "";
       panel.style.right = "";
+      // Devolve o painel ao menu (evita painéis orfaos no body)
+      if (panel.parentElement === document.body) {
+        menu.appendChild(panel);
+      }
     }
   });
 }
 
-/** Posiciona o menu em fixed para nao ser cortado por table-wrap (overflow). */
+/**
+ * Posiciona o menu colado ao botao clicado.
+ * Move o painel para document.body + position:fixed com coords de getBoundingClientRect,
+ * para escapar de overflow e de ancestors com transform (ex.: .card animado).
+ */
 function positionRowActionsPanel(menu) {
   const trigger = menu?.querySelector?.("[data-row-actions-toggle]");
-  const panel = menu?.querySelector?.(".row-actions-panel");
-  if (!(trigger instanceof HTMLElement) || !(panel instanceof HTMLElement)) return;
+  let panel = menu?.querySelector?.(".row-actions-panel");
+  if (!(trigger instanceof HTMLElement)) return;
+  if (!(panel instanceof HTMLElement)) {
+    panel = getRowActionsPanel(menu);
+  }
+  if (!(panel instanceof HTMLElement)) return;
+
+  if (!menu.dataset.rowActionsId) {
+    menu.dataset.rowActionsId = `ra-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  }
+  panel.dataset.rowActionsPanel = menu.dataset.rowActionsId;
+
+  // Portal para o body: fixed passa a ser relativo à viewport de verdade
+  if (panel.parentElement !== document.body) {
+    document.body.appendChild(panel);
+  }
 
   panel.hidden = false;
-  // Mede depois de tornar visivel
+  panel.classList.add("is-open-panel");
+
+  // Força layout antes de medir
+  const panelWidth = Math.max(panel.offsetWidth || 0, 176);
+  const panelHeight = Math.max(panel.offsetHeight || 0, 120);
   const rect = trigger.getBoundingClientRect();
-  const panelWidth = Math.max(panel.offsetWidth || 180, 172);
-  const panelHeight = panel.offsetHeight || 200;
   const margin = 8;
+  const gap = 6;
 
   let left = rect.left;
   if (left + panelWidth > window.innerWidth - margin) {
-    left = Math.max(margin, window.innerWidth - panelWidth - margin);
+    left = Math.max(margin, rect.right - panelWidth);
   }
   if (left < margin) left = margin;
 
   const spaceBelow = window.innerHeight - rect.bottom;
-  const openUp = spaceBelow < panelHeight + 12 && rect.top > panelHeight + 12;
+  const openUp = spaceBelow < panelHeight + gap + 4 && rect.top > panelHeight + gap + 4;
 
   panel.style.position = "fixed";
   panel.style.left = `${Math.round(left)}px`;
   panel.style.right = "auto";
+  panel.style.zIndex = "1300";
   if (openUp) {
     panel.style.top = "auto";
-    panel.style.bottom = `${Math.round(window.innerHeight - rect.top + 6)}px`;
+    panel.style.bottom = `${Math.round(window.innerHeight - rect.top + gap)}px`;
   } else {
     panel.style.bottom = "auto";
-    panel.style.top = `${Math.round(rect.bottom + 6)}px`;
+    panel.style.top = `${Math.round(rect.bottom + gap)}px`;
   }
-  panel.style.zIndex = "1200";
 }
 
 /**
@@ -10206,9 +10247,10 @@ function attachEvents() {
     }
 
     // Fechou o menu ao clicar fora / ao escolher uma acao
-    if (target.closest("[data-row-actions] .row-actions-item")) {
+    // (painel pode estar no body, fora de [data-row-actions])
+    if (target.closest(".row-actions-item")) {
       closeAllRowActionMenus();
-    } else if (!target.closest("[data-row-actions]")) {
+    } else if (!target.closest("[data-row-actions]") && !target.closest(".row-actions-panel")) {
       closeAllRowActionMenus();
     }
 

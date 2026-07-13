@@ -2098,9 +2098,9 @@ img.produto-combo-thumb.is-broken {
 }
 
 .row-actions-panel {
-  /* left/top definidos em JS (position:fixed) para nao cortar em .table-wrap */
+  /* left/top definidos em JS; painel é movido para body ao abrir */
   position: fixed;
-  z-index: 1200;
+  z-index: 1300;
   min-width: 10.75rem;
   display: grid;
   gap: 0.2rem;
@@ -2109,6 +2109,7 @@ img.produto-combo-thumb.is-broken {
   border: 1px solid rgba(217, 210, 196, 0.95);
   background: #fffdf8;
   box-shadow: 0 14px 32px rgba(33, 32, 28, 0.16);
+  margin: 0;
 }
 
 /* Botao flutuante global: novo pedido em qualquer aba */
