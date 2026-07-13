@@ -335,6 +335,20 @@ const els = {
   pedidoForm: document.getElementById("pedidoForm"),
   orcamentoForm: document.getElementById("orcamentoForm"),
   despesaForm: document.getElementById("despesaForm"),
+  despesaModal: document.getElementById("despesaModal"),
+  closeDespesaModalBtn: document.getElementById("closeDespesaModalBtn"),
+  openDespesaModalBtn: document.getElementById("openDespesaModalBtn"),
+  despesaFornecedorSelect: document.getElementById("despesaFornecedorSelect"),
+  despesaFormaPagamento: document.getElementById("despesaFormaPagamento"),
+  despesasPagarTable: document.getElementById("despesasPagarTable"),
+  despesasPagarBusca: document.getElementById("despesasPagarBusca"),
+  despesasPagarStatus: document.getElementById("despesasPagarStatus"),
+  despesasPagarOrigem: document.getElementById("despesasPagarOrigem"),
+  despesasKpiAberto: document.getElementById("despesasKpiAberto"),
+  despesasKpiVencidas: document.getElementById("despesasKpiVencidas"),
+  despesasKpiSemana: document.getElementById("despesasKpiSemana"),
+  despesasKpiPagasMes: document.getElementById("despesasKpiPagasMes"),
+  despesasSectionSubtitle: document.getElementById("despesasSectionSubtitle"),
   ownerUserForm: document.getElementById("ownerUserForm"),
   adminEmpresaForm: document.getElementById("adminEmpresaForm"),
   adminInviteForm: document.getElementById("adminInviteForm"),
@@ -6996,6 +7010,12 @@ function renderOrcamentosTable() {
 }
 
 function renderDespesasTable() {
+  // Aba Contas a Pagar unificada (modulo compras).
+  if (comprasModule) {
+    comprasModule.renderContasPagarTable();
+    return;
+  }
+  if (!els.despesasPagarTable && !els.despesasTable) return;
   const rows = getFilteredAndSortedTableRows(state.despesas, "despesas", {
     data: {
       filter: (despesa) => despesa.data_despesa ? new Date(despesa.data_despesa).toLocaleDateString("pt-BR") : "-",
@@ -7009,6 +7029,7 @@ function renderDespesasTable() {
     }
   });
 
+  if (!els.despesasTable) return;
   if (!rows.length) {
     els.despesasTable.innerHTML = '<tr><td colspan="5">Nenhuma despesa encontrada para os filtros selecionados.</td></tr>';
     updateTableSortHeaders("despesas");
@@ -8158,8 +8179,8 @@ function attachEvents() {
           await ensureOrcamentosLoaded();
           renderOrcamentosTable();
         } else if (sectionName === "despesas") {
-          await ensureDespesasLoaded();
-          renderDespesasTable();
+          // Caixa único de saídas (NF + despesas manuais) via contas_pagar
+          if (comprasModule) await comprasModule.ensureDespesasPagarLoaded();
         } else if (sectionName === "financeiro") {
           await ensureContasReceberLoaded();
           renderContasReceberTable();
@@ -9083,13 +9104,7 @@ function attachEvents() {
     }
   });
 
-  els.despesaForm.addEventListener("submit", async (event) => {
-    try {
-      await createDespesa(event);
-    } catch (error) {
-      showToast(`Erro ao salvar despesa: ${error.message}`, "error");
-    }
-  });
+  // Despesa modal é gerenciado pelo modulo de compras (contas_pagar unificado).
 
   els.ownerUserForm.addEventListener("submit", async (event) => {
     try {

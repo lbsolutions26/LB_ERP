@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712o" />
+    <link rel="stylesheet" href="styles.css?v=20260712p" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -53,7 +53,7 @@
         <button class="tab" data-section="financeiro">Contas a Receber</button>
         <button class="tab" data-section="compras">Compras</button>
         <button class="tab" data-section="orcamentos">Orcamentos</button>
-        <button class="tab" data-section="despesas">Despesas</button>
+        <button class="tab" data-section="despesas">Contas a Pagar</button>
         <button class="tab" data-section="produtos">Produtos</button>
         <button class="tab" data-section="estoque">Estoque</button>
         <button id="ownerUsersTab" class="tab hidden" data-section="usuarios">Usuarios</button>
@@ -409,6 +409,11 @@
           </div>
 
           <div id="comprasPagarView" class="compras-view hidden">
+            <p class="section-subtitle estoque-view-hint">
+              Os títulos de NF e despesas manuais ficam unificados em
+              <strong>Contas a Pagar</strong> (menu principal) — um só lugar para quem paga.
+              Abaixo, atalho só das parcelas ligadas a notas de compra.
+            </p>
             <div class="estoque-filters">
               <label>Buscar<input id="comprasPagarBusca" type="search" placeholder="Título ou fornecedor" /></label>
               <label>Status
@@ -427,6 +432,7 @@
                   <tr>
                     <th>Título</th>
                     <th>Fornecedor</th>
+                    <th>Origem</th>
                     <th>Parc.</th>
                     <th>Vencimento</th>
                     <th>Valor</th>
@@ -442,38 +448,61 @@
         </section>
 
         <section id="section-despesas" class="card app-section hidden">
-          <h2>Despesas</h2>
-          <div class="form-block">
-            <form id="despesaForm">
-              <input name="descricao" placeholder="Descricao" required />
-              <input name="categoria" placeholder="Categoria" />
-              <input name="valor" type="number" min="0" step="0.01" placeholder="Valor" required />
-              <select name="status" required>
-                <option value="aberto">Aberto</option>
-                <option value="pago">Pago</option>
-              </select>
-              <button type="submit" class="btn">Salvar Despesa</button>
-            </form>
+          <div class="section-head">
+            <div>
+              <h2>Contas a Pagar</h2>
+              <p id="despesasSectionSubtitle" class="section-subtitle">
+                Caixa único de saídas: títulos de NF de compra e despesas manuais. Quem paga vê tudo aqui.
+              </p>
+            </div>
+            <div class="pedidos-toolbar">
+              <button id="openDespesaModalBtn" class="btn" type="button">Nova despesa</button>
+            </div>
           </div>
+
+          <div class="metric-grid relatorio-grid estoque-kpi-grid">
+            <article><span>Em aberto</span><strong id="despesasKpiAberto">R$ 0,00</strong></article>
+            <article><span>Vencidas</span><strong id="despesasKpiVencidas">0</strong></article>
+            <article><span>A vencer (7 dias)</span><strong id="despesasKpiSemana">R$ 0,00</strong></article>
+            <article><span>Pagas no mês</span><strong id="despesasKpiPagasMes">R$ 0,00</strong></article>
+          </div>
+
+          <div class="estoque-filters">
+            <label>Buscar<input id="despesasPagarBusca" type="search" placeholder="Título, fornecedor ou origem" /></label>
+            <label>Status
+              <select id="despesasPagarStatus">
+                <option value="">Todos</option>
+                <option value="pendente">Pendente</option>
+                <option value="parcial">Parcial</option>
+                <option value="pago">Pago</option>
+                <option value="cancelado">Cancelado</option>
+              </select>
+            </label>
+            <label>Origem
+              <select id="despesasPagarOrigem">
+                <option value="">Todas</option>
+                <option value="nota_entrada">NF / Compras</option>
+                <option value="despesa_manual">Despesa manual</option>
+              </select>
+            </label>
+          </div>
+
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th class="sortable" data-table="despesas" data-sort="data">Data</th>
-                  <th class="sortable" data-table="despesas" data-sort="descricao">Descricao</th>
-                  <th class="sortable" data-table="despesas" data-sort="status">Status</th>
-                  <th class="sortable" data-table="despesas" data-sort="valor">Valor</th>
-                  <th></th>
-                </tr>
-                <tr>
-                  <th><input data-table-filter="despesas" data-field="data" placeholder="Filtrar" /></th>
-                  <th><input data-table-filter="despesas" data-field="descricao" placeholder="Filtrar" /></th>
-                  <th><input data-table-filter="despesas" data-field="status" placeholder="Filtrar" /></th>
-                  <th><input data-table-filter="despesas" data-field="valor" placeholder="Filtrar" /></th>
+                  <th>Título</th>
+                  <th>Fornecedor / desc.</th>
+                  <th>Origem</th>
+                  <th>Parc.</th>
+                  <th>Vencimento</th>
+                  <th>Valor</th>
+                  <th>Saldo</th>
+                  <th>Status</th>
                   <th></th>
                 </tr>
               </thead>
-              <tbody id="despesasTable"></tbody>
+              <tbody id="despesasPagarTable"></tbody>
             </table>
           </div>
         </section>
@@ -1439,6 +1468,40 @@
       </div>
     </div>
 
+    <div id="despesaModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="despesaModalTitle">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="despesaModalTitle">Nova despesa</h3>
+            <p class="modal-subtitle">Gera título em Contas a Pagar (mesmo caixa das NFs de compra).</p>
+          </div>
+          <button id="closeDespesaModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+        <form id="despesaForm" class="estoque-movimento-form">
+          <label>Descrição / histórico<input name="descricao" required placeholder="Ex.: Aluguel, energia, frete avulso" /></label>
+          <label>Fornecedor
+            <select name="fornecedor_id" id="despesaFornecedorSelect">
+              <option value="">Sem fornecedor / avulso</option>
+            </select>
+          </label>
+          <label>Categoria<input name="categoria" placeholder="Ex.: Utilidades, Marketing" /></label>
+          <label>Valor total (R$)<input name="valor" type="number" min="0.01" step="0.01" required /></label>
+          <label>Parcelas<input name="parcelas" type="number" min="1" step="1" value="1" /></label>
+          <label>1º vencimento<input name="vencimento" type="date" required /></label>
+          <label>Intervalo (dias)<input name="intervalo_dias" type="number" min="1" step="1" value="30" /></label>
+          <label>Forma de pagamento<select name="forma_pagamento_id" id="despesaFormaPagamento"></select></label>
+          <label>Observações<textarea name="observacoes" rows="2"></textarea></label>
+          <label class="checkbox-inline">
+            <input type="checkbox" name="ja_pago" id="despesaJaPago" />
+            Já está pago (quita na criação)
+          </label>
+          <div class="documento-modal-footer">
+            <button type="submit" class="btn">Salvar despesa</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div id="fornecedorModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="fornecedorModalTitle">
       <div class="modal-card">
         <div class="modal-head">
@@ -1596,6 +1659,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260712o"></script>
+    <script type="module" src="app.js?v=20260712p"></script>
   </body>
 </html>

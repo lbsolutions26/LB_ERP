@@ -48,7 +48,10 @@ export function installComprasModule(ctx) {
           notaStatus: "",
           fornBusca: "",
           pagarStatus: "",
-          pagarBusca: ""
+          pagarBusca: "",
+          despesasStatus: "",
+          despesasBusca: "",
+          despesasOrigem: ""
         }
       };
     }
@@ -58,6 +61,113 @@ export function installComprasModule(ctx) {
     if (!s.fornecedorModal) {
       s.fornecedorModal = { editId: null };
     }
+  }
+
+  function origemLabel(origem) {
+    const o = String(origem || "");
+    if (o === "nota_entrada") return "NF / Compras";
+    if (o === "despesa_manual") return "Despesa";
+    return o || "–";
+  }
+
+  function getParcelasPagarRows(options = {}) {
+    const busca = String(options.busca ?? "").toLowerCase();
+    const statusF = options.status || "";
+    const origemF = options.origem || "";
+    const onlyNota = Boolean(options.onlyNota);
+    const contasById = Object.fromEntries((state().compras.contas || []).map((c) => [String(c.id), c]));
+    let rows = (state().compras.parcelas || []).map((p) => ({
+      ...p,
+      conta: contasById[String(p.conta_pagar_id)]
+    }));
+    if (onlyNota) {
+      rows = rows.filter((r) => r.conta?.origem === "nota_entrada" || r.conta?.nota_entrada_id);
+    }
+    if (origemF) {
+      rows = rows.filter((r) => String(r.conta?.origem || "") === origemF);
+    }
+    if (statusF) rows = rows.filter((r) => r.status === statusF);
+    if (busca) {
+      rows = rows.filter((r) => {
+        const hay = `${r.conta?.numero_titulo || ""} ${r.conta?.fornecedor?.nome || ""} ${r.conta?.observacoes || ""} ${r.conta?.origem || ""}`.toLowerCase();
+        return hay.includes(busca);
+      });
+    }
+    rows.sort((a, b) => String(a.vencimento || "").localeCompare(String(b.vencimento || "")));
+    return rows;
+  }
+
+  function renderParcelasIntoTable(tableEl, rows, { showOrigem = true } = {}) {
+    if (!tableEl) return;
+    const colSpan = showOrigem ? 9 : 8;
+    if (!rows.length) {
+      tableEl.innerHTML = `<tr><td colspan="${colSpan}">Nenhuma parcela a pagar.</td></tr>`;
+      return;
+    }
+    tableEl.innerHTML = rows
+      .map((r) => {
+        const saldo = Math.max(0, Number(r.valor_parcela || 0) - Number(r.valor_pago || 0));
+        const vencida =
+          r.status !== "pago" &&
+          r.status !== "cancelado" &&
+          r.vencimento &&
+          new Date(r.vencimento) < new Date(new Date().toDateString());
+        const fornecedorTxt =
+          r.conta?.fornecedor?.nome ||
+          (r.conta?.origem === "despesa_manual" ? r.conta?.observacoes || r.conta?.numero_titulo : null) ||
+          "–";
+        return `
+        <tr>
+          <td>${escapeHtml(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`)}</td>
+          <td>${escapeHtml(fornecedorTxt)}</td>
+          ${showOrigem ? `<td>${escapeHtml(origemLabel(r.conta?.origem))}</td>` : ""}
+          <td>${escapeHtml(r.numero_parcela)}</td>
+          <td>${escapeHtml(r.vencimento || "–")}${vencida ? ' <span class="estoque-status estoque-status--zerado">vencida</span>' : ""}</td>
+          <td>${moeda.format(r.valor_parcela || 0)}</td>
+          <td>${moeda.format(saldo)}</td>
+          <td><span class="estoque-status ${r.status === "pago" ? "estoque-status--ok" : "estoque-status--reposicao"}">${escapeHtml(r.status)}</span></td>
+          <td class="estoque-actions">
+            ${r.status !== "pago" && r.status !== "cancelado"
+              ? `<button type="button" class="btn" data-pagar-parcela="${r.id}">Pagar</button>`
+              : "–"}
+          </td>
+        </tr>`;
+      })
+      .join("");
+  }
+
+  function renderDespesasKpis() {
+    const e = els();
+    const rows = getParcelasPagarRows({});
+    const now = new Date();
+    const today = new Date(now.toDateString());
+    const week = new Date(today);
+    week.setDate(week.getDate() + 7);
+    let aberto = 0;
+    let vencidas = 0;
+    let semana = 0;
+    let pagasMes = 0;
+    for (const r of rows) {
+      const saldo = Math.max(0, Number(r.valor_parcela || 0) - Number(r.valor_pago || 0));
+      if (r.status !== "pago" && r.status !== "cancelado") {
+        aberto += saldo;
+        if (r.vencimento) {
+          const v = new Date(r.vencimento);
+          if (v < today) vencidas += 1;
+          else if (v <= week) semana += saldo;
+        }
+      }
+      if (r.status === "pago" && r.vencimento) {
+        const v = new Date(r.vencimento);
+        if (v.getMonth() === now.getMonth() && v.getFullYear() === now.getFullYear()) {
+          pagasMes += Number(r.valor_pago || r.valor_parcela || 0);
+        }
+      }
+    }
+    if (e.despesasKpiAberto) e.despesasKpiAberto.textContent = moeda.format(aberto);
+    if (e.despesasKpiVencidas) e.despesasKpiVencidas.textContent = String(vencidas);
+    if (e.despesasKpiSemana) e.despesasKpiSemana.textContent = moeda.format(semana);
+    if (e.despesasKpiPagasMes) e.despesasKpiPagasMes.textContent = moeda.format(pagasMes);
   }
 
   function createNotaItem(produto = null) {
@@ -166,7 +276,7 @@ export function installComprasModule(ctx) {
     const { data: contas, error } = await sb()
       .from("contas_pagar")
       .select(
-        "id, nota_entrada_id, fornecedor_id, numero_titulo, emissao, valor_original, valor_aberto, status, observacoes, fornecedor:fornecedores(id, nome)"
+        "id, nota_entrada_id, fornecedor_id, origem, numero_titulo, emissao, valor_original, valor_aberto, status, observacoes, fornecedor:fornecedores(id, nome)"
       )
       .eq("empresa_id", state().empresaId)
       .order("emissao", { ascending: false })
@@ -333,52 +443,22 @@ export function installComprasModule(ctx) {
 
   function renderContasPagarTable() {
     const e = els();
-    if (!e.comprasPagarTable) return;
-    const busca = String(state().compras.filters.pagarBusca || "").toLowerCase();
-    const statusF = state().compras.filters.pagarStatus || "";
-    const contasById = Object.fromEntries((state().compras.contas || []).map((c) => [String(c.id), c]));
-    let rows = (state().compras.parcelas || []).map((p) => ({
-      ...p,
-      conta: contasById[String(p.conta_pagar_id)]
-    }));
-    if (statusF) rows = rows.filter((r) => r.status === statusF);
-    if (busca) {
-      rows = rows.filter((r) => {
-        const hay = `${r.conta?.numero_titulo || ""} ${r.conta?.fornecedor?.nome || ""}`.toLowerCase();
-        return hay.includes(busca);
-      });
-    }
-    rows.sort((a, b) => String(a.vencimento || "").localeCompare(String(b.vencimento || "")));
+    // Atalho em Compras: só NFs
+    const rowsCompras = getParcelasPagarRows({
+      busca: state().compras.filters.pagarBusca,
+      status: state().compras.filters.pagarStatus,
+      onlyNota: true
+    });
+    renderParcelasIntoTable(e.comprasPagarTable, rowsCompras, { showOrigem: true });
 
-    if (!rows.length) {
-      e.comprasPagarTable.innerHTML = `<tr><td colspan="8">Nenhuma parcela a pagar.</td></tr>`;
-      return;
-    }
-
-    e.comprasPagarTable.innerHTML = rows
-      .map((r) => {
-        const saldo = Math.max(0, Number(r.valor_parcela || 0) - Number(r.valor_pago || 0));
-        const vencida =
-          r.status !== "pago" &&
-          r.vencimento &&
-          new Date(r.vencimento) < new Date(new Date().toDateString());
-        return `
-        <tr>
-          <td>${escapeHtml(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`)}</td>
-          <td>${escapeHtml(r.conta?.fornecedor?.nome || "–")}</td>
-          <td>${escapeHtml(r.numero_parcela)}</td>
-          <td>${escapeHtml(r.vencimento || "–")}${vencida ? ' <span class="estoque-status estoque-status--zerado">vencida</span>' : ""}</td>
-          <td>${moeda.format(r.valor_parcela || 0)}</td>
-          <td>${moeda.format(saldo)}</td>
-          <td><span class="estoque-status ${r.status === "pago" ? "estoque-status--ok" : "estoque-status--reposicao"}">${escapeHtml(r.status)}</span></td>
-          <td class="estoque-actions">
-            ${r.status !== "pago" && r.status !== "cancelado"
-              ? `<button type="button" class="btn" data-pagar-parcela="${r.id}">Pagar</button>`
-              : "–"}
-          </td>
-        </tr>`;
-      })
-      .join("");
+    // Caixa único: aba Contas a Pagar
+    const rowsDespesas = getParcelasPagarRows({
+      busca: state().compras.filters.despesasBusca,
+      status: state().compras.filters.despesasStatus,
+      origem: state().compras.filters.despesasOrigem
+    });
+    renderParcelasIntoTable(e.despesasPagarTable, rowsDespesas, { showOrigem: true });
+    renderDespesasKpis();
   }
 
   function renderComprasSection() {
@@ -388,6 +468,121 @@ export function installComprasModule(ctx) {
     renderNotasTable();
     renderFornecedoresTable();
     renderContasPagarTable();
+  }
+
+  async function ensureDespesasPagarLoaded(options = {}) {
+    await ensureComprasLoaded(options);
+    renderContasPagarTable();
+  }
+
+  function openDespesaModal() {
+    ensureStateDefaults();
+    const e = els();
+    if (!e.despesaModal || !e.despesaForm) return;
+    e.despesaForm.reset();
+    fillFornecedorSelect(e.despesaFornecedorSelect, "", "Sem fornecedor / avulso");
+    fillFormaPagamentoSelect(e.despesaFormaPagamento, "");
+    const venc = e.despesaForm.elements.namedItem("vencimento");
+    if (venc && "value" in venc) venc.value = formatDateInput(new Date());
+    const parc = e.despesaForm.elements.namedItem("parcelas");
+    if (parc && "value" in parc) parc.value = "1";
+    const intervalo = e.despesaForm.elements.namedItem("intervalo_dias");
+    if (intervalo && "value" in intervalo) intervalo.value = "30";
+    e.despesaModal.classList.remove("hidden");
+  }
+
+  function closeDespesaModal() {
+    const e = els();
+    if (e.despesaModal) e.despesaModal.classList.add("hidden");
+  }
+
+  async function saveDespesaManual(event) {
+    event.preventDefault();
+    const e = els();
+    const formData = new FormData(e.despesaForm);
+    const descricao = String(formData.get("descricao") || "").trim();
+    const valor = Number(formData.get("valor") || 0);
+    const nParcelas = Math.max(1, Math.trunc(Number(formData.get("parcelas") || 1)));
+    const intervalo = Math.max(1, Math.trunc(Number(formData.get("intervalo_dias") || 30)));
+    const vencimento = String(formData.get("vencimento") || "").trim();
+    const fornecedorId = String(formData.get("fornecedor_id") || "").trim();
+    const formaId = String(formData.get("forma_pagamento_id") || "").trim();
+    const categoria = String(formData.get("categoria") || "").trim();
+    const observacoes = String(formData.get("observacoes") || "").trim();
+    const jaPago = Boolean(formData.get("ja_pago"));
+
+    if (!descricao) throw new Error("Informe a descrição.");
+    if (!(valor > 0)) throw new Error("Informe um valor válido.");
+    if (!vencimento) throw new Error("Informe o vencimento.");
+
+    const baseVenc = new Date(`${vencimento}T12:00:00`);
+    const cents = Math.round(valor * 100);
+    const base = Math.floor(cents / nParcelas);
+    const resto = cents - base * nParcelas;
+    const obsParts = [descricao];
+    if (categoria) obsParts.push(`Cat.: ${categoria}`);
+    if (observacoes) obsParts.push(observacoes);
+
+    const { data: conta, error: contaErr } = await sb()
+      .from("contas_pagar")
+      .insert({
+        empresa_id: state().empresaId,
+        nota_entrada_id: null,
+        fornecedor_id: fornecedorId ? Number(fornecedorId) : null,
+        origem: "despesa_manual",
+        numero_titulo: `DESP-${Date.now().toString().slice(-8)}`,
+        emissao: new Date().toISOString(),
+        valor_original: Number(valor.toFixed(2)),
+        valor_aberto: jaPago ? 0 : Number(valor.toFixed(2)),
+        status: jaPago ? "pago" : "aberto",
+        observacoes: obsParts.join(" | ")
+      })
+      .select("id, numero_titulo")
+      .single();
+    if (contaErr) throw contaErr;
+
+    const parcelasPayload = [];
+    for (let i = 0; i < nParcelas; i += 1) {
+      const valorCents = base + (i < resto ? 1 : 0);
+      const venc = new Date(baseVenc);
+      venc.setDate(venc.getDate() + i * intervalo);
+      const valorParcela = Number((valorCents / 100).toFixed(2));
+      parcelasPayload.push({
+        empresa_id: state().empresaId,
+        conta_pagar_id: conta.id,
+        numero_parcela: i + 1,
+        vencimento: formatDateInput(venc),
+        valor_parcela: valorParcela,
+        valor_pago: jaPago ? valorParcela : 0,
+        status: jaPago ? "pago" : "pendente",
+        forma_pagamento_id: formaId ? Number(formaId) : null,
+        observacoes: descricao
+      });
+    }
+
+    const { data: parcelasCriadas, error: pErr } = await sb()
+      .from("contas_pagar_parcelas")
+      .insert(parcelasPayload)
+      .select("id, valor_parcela");
+    if (pErr) throw pErr;
+
+    if (jaPago && parcelasCriadas?.length) {
+      const pags = parcelasCriadas.map((p) => ({
+        empresa_id: state().empresaId,
+        parcela_id: p.id,
+        data_pagamento: vencimento,
+        valor: Number(p.valor_parcela || 0),
+        forma_pagamento_id: formaId ? Number(formaId) : null,
+        observacoes: "Pago na criação da despesa"
+      }));
+      const { error: payErr } = await sb().from("pagamentos").insert(pags);
+      if (payErr) throw payErr;
+    }
+
+    closeDespesaModal();
+    state().compras.loaded = false;
+    await ensureComprasLoaded({ force: true });
+    showToast(`Despesa ${conta.numero_titulo} lançada em Contas a Pagar`);
   }
 
   /* ---------- Fornecedor modal ---------- */
@@ -478,9 +673,9 @@ export function installComprasModule(ctx) {
 
   /* ---------- Nota modal ---------- */
 
-  function fillFornecedorSelect(selectEl, selected = "") {
+  function fillFornecedorSelect(selectEl, selected = "", emptyLabel = "Selecione o fornecedor") {
     if (!selectEl) return;
-    const opts = ['<option value="">Selecione o fornecedor</option>'];
+    const opts = [`<option value="">${escapeHtml(emptyLabel)}</option>`];
     for (const f of state().compras.fornecedores || []) {
       if (f.ativo === false) continue;
       const sel = String(f.id) === String(selected) ? " selected" : "";
@@ -1228,6 +1423,53 @@ export function installComprasModule(ctx) {
       });
     }
 
+    // Contas a Pagar (aba principal)
+    if (e.openDespesaModalBtn) {
+      e.openDespesaModalBtn.addEventListener("click", async () => {
+        try {
+          await ensureComprasLoaded();
+          openDespesaModal();
+        } catch (err) {
+          showToast(`Erro: ${err.message}`, "error");
+        }
+      });
+    }
+    if (e.closeDespesaModalBtn) {
+      e.closeDespesaModalBtn.addEventListener("click", closeDespesaModal);
+    }
+    if (e.despesaModal) {
+      e.despesaModal.addEventListener("click", (ev) => {
+        if (ev.target === e.despesaModal) closeDespesaModal();
+      });
+    }
+    if (e.despesaForm) {
+      e.despesaForm.addEventListener("submit", async (ev) => {
+        try {
+          await saveDespesaManual(ev);
+        } catch (err) {
+          showToast(`Erro ao salvar despesa: ${err.message}`, "error");
+        }
+      });
+    }
+    if (e.despesasPagarBusca) {
+      e.despesasPagarBusca.addEventListener("input", () => {
+        state().compras.filters.despesasBusca = e.despesasPagarBusca.value || "";
+        renderContasPagarTable();
+      });
+    }
+    if (e.despesasPagarStatus) {
+      e.despesasPagarStatus.addEventListener("change", () => {
+        state().compras.filters.despesasStatus = e.despesasPagarStatus.value || "";
+        renderContasPagarTable();
+      });
+    }
+    if (e.despesasPagarOrigem) {
+      e.despesasPagarOrigem.addEventListener("change", () => {
+        state().compras.filters.despesasOrigem = e.despesasPagarOrigem.value || "";
+        renderContasPagarTable();
+      });
+    }
+
     // Clicks nas tabelas
     document.addEventListener("click", async (ev) => {
       const t = ev.target;
@@ -1282,9 +1524,12 @@ export function installComprasModule(ctx) {
 
   return {
     ensureComprasLoaded,
+    ensureDespesasPagarLoaded,
     renderComprasSection,
+    renderContasPagarTable,
     setComprasView,
     attachComprasEvents,
-    ensureStateDefaults
+    ensureStateDefaults,
+    openDespesaModal
   };
 }
