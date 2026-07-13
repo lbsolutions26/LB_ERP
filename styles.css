@@ -3278,6 +3278,62 @@ textarea:focus {
   }
 }
 
+/* ===== Contas a Pagar (tabela principal) ===== */
+.contas-pagar-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+.contas-pagar-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+  margin-top: 0.35rem;
+}
+
+.contas-pagar-table th,
+.contas-pagar-table td {
+  vertical-align: middle;
+  white-space: nowrap;
+  padding: 0.5rem 0.5rem;
+}
+
+.contas-pagar-table .contas-pagar-col-fornecedor {
+  max-width: 9.5rem;
+  width: 9.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contas-pagar-table td.contas-pagar-col-fornecedor {
+  max-width: 9.5rem;
+}
+
+.contas-pagar-filter-row th {
+  padding: 0.35rem 0.35rem 0.55rem;
+  border-bottom: 1px solid #e7dfcf;
+  background: rgba(255, 253, 248, 0.9);
+}
+
+.contas-pagar-filter-row input,
+.contas-pagar-filter-row select {
+  width: 100%;
+  min-width: 4.5rem;
+  max-width: 9rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.contas-pagar-filter-row .contas-pagar-col-fornecedor input {
+  max-width: 9rem;
+}
+
 /* ===== Compras / NF entrada ===== */
 .modal-nota-card {
   max-width: min(1100px, 96vw);

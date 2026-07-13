@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260713t" />
+    <link rel="stylesheet" href="styles.css?v=20260713u" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -585,33 +585,13 @@
             <article><span>Pagas no mês</span><strong id="despesasKpiPagasMes">R$ 0,00</strong></article>
           </div>
 
-          <div class="estoque-filters">
-            <label>Buscar<input id="despesasPagarBusca" type="search" placeholder="Título, fornecedor ou origem" /></label>
-            <label>Status
-              <select id="despesasPagarStatus">
-                <option value="">Todos</option>
-                <option value="pendente">Pendente</option>
-                <option value="parcial">Parcial</option>
-                <option value="pago">Pago</option>
-                <option value="cancelado">Cancelado</option>
-              </select>
-            </label>
-            <label>Origem
-              <select id="despesasPagarOrigem">
-                <option value="">Todas</option>
-                <option value="nota_entrada">NF / Compras</option>
-                <option value="despesa_manual">Despesa manual</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="table-wrap">
-            <table>
+          <div class="table-wrap contas-pagar-table-wrap">
+            <table class="contas-pagar-table">
               <thead>
                 <tr>
                   <th class="pedido-actions-col" aria-label="Acoes"></th>
                   <th>Título</th>
-                  <th>Fornecedor / desc.</th>
+                  <th class="contas-pagar-col-fornecedor">Fornecedor / desc.</th>
                   <th>Origem</th>
                   <th>Emissão</th>
                   <th>Parc.</th>
@@ -619,6 +599,32 @@
                   <th>Valor</th>
                   <th>Saldo</th>
                   <th>Status</th>
+                </tr>
+                <tr class="contas-pagar-filter-row">
+                  <th class="pedido-actions-col"></th>
+                  <th><input data-despesas-col-filter="titulo" type="search" placeholder="Filtrar" /></th>
+                  <th class="contas-pagar-col-fornecedor"><input data-despesas-col-filter="fornecedor" type="search" placeholder="Filtrar" /></th>
+                  <th>
+                    <select data-despesas-col-filter="origem">
+                      <option value="">Todas</option>
+                      <option value="nota_entrada">NF / Compras</option>
+                      <option value="despesa_manual">Despesa</option>
+                    </select>
+                  </th>
+                  <th><input data-despesas-col-filter="emissao" type="search" placeholder="dd/mm/aaaa" /></th>
+                  <th><input data-despesas-col-filter="parcela" type="search" placeholder="Nº" /></th>
+                  <th><input data-despesas-col-filter="vencimento" type="search" placeholder="dd/mm/aaaa" /></th>
+                  <th><input data-despesas-col-filter="valor" type="search" placeholder="Filtrar" /></th>
+                  <th><input data-despesas-col-filter="saldo" type="search" placeholder="Filtrar" /></th>
+                  <th>
+                    <select data-despesas-col-filter="status">
+                      <option value="">Todos</option>
+                      <option value="pendente">Pendente</option>
+                      <option value="parcial">Parcial</option>
+                      <option value="pago">Pago</option>
+                      <option value="cancelado">Cancelado</option>
+                    </select>
+                  </th>
                 </tr>
               </thead>
               <tbody id="despesasPagarTable"></tbody>
@@ -2060,6 +2066,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260713t"></script>
+    <script type="module" src="app.js?v=20260713u"></script>
   </body>
 </html>

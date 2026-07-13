@@ -44,6 +44,20 @@ export function installComprasModule(ctx) {
     return getSupabase();
   }
 
+  function defaultDespesasColFilters() {
+    return {
+      titulo: "",
+      fornecedor: "",
+      origem: "",
+      emissao: "",
+      parcela: "",
+      vencimento: "",
+      valor: "",
+      saldo: "",
+      status: ""
+    };
+  }
+
   function ensureStateDefaults() {
     const s = state();
     if (!s.compras) {
@@ -62,9 +76,14 @@ export function installComprasModule(ctx) {
           pagarBusca: "",
           despesasStatus: "",
           despesasBusca: "",
-          despesasOrigem: ""
+          despesasOrigem: "",
+          despesasCols: defaultDespesasColFilters()
         }
       };
+    }
+    if (!s.compras.filters) s.compras.filters = {};
+    if (!s.compras.filters.despesasCols) {
+      s.compras.filters.despesasCols = defaultDespesasColFilters();
     }
     if (!s.notaEntradaModal) {
       s.notaEntradaModal = createNotaDraft();
@@ -108,13 +127,59 @@ export function installComprasModule(ctx) {
     return rows;
   }
 
-  function formatEmissaoDisplay(value) {
+  function formatDateBr(value) {
     if (!value) return "–";
-    try {
-      return formatDateInput(new Date(value));
-    } catch (_e) {
-      return String(value).slice(0, 10);
+    const raw = String(value).trim();
+    // YYYY-MM-DD (com ou sem hora)
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    const d = value instanceof Date ? value : new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString("pt-BR");
     }
+    return raw;
+  }
+
+  function formatEmissaoDisplay(value) {
+    return formatDateBr(value);
+  }
+
+  function moneyFilterMatch(value, needle) {
+    const n = String(needle || "").trim().toLowerCase();
+    if (!n) return true;
+    const formatted = moeda.format(value || 0).toLowerCase();
+    const plain = String(Number(value || 0).toFixed(2)).replace(".", ",");
+    return formatted.includes(n) || plain.includes(n) || String(value || "").includes(n);
+  }
+
+  function applyDespesasColumnFilters(rows) {
+    ensureStateDefaults();
+    const f = state().compras.filters.despesasCols || {};
+    return rows.filter((r) => {
+      const titulo = String(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`).toLowerCase();
+      const fornecedor = String(
+        r.conta?.fornecedor?.nome ||
+          (r.conta?.origem === "despesa_manual" ? r.conta?.observacoes || r.conta?.numero_titulo : "") ||
+          ""
+      ).toLowerCase();
+      const origem = String(r.conta?.origem || "");
+      const emissaoBr = formatDateBr(r.conta?.emissao).toLowerCase();
+      const vencBr = formatDateBr(r.vencimento).toLowerCase();
+      const parcela = String(r.numero_parcela ?? "").toLowerCase();
+      const status = String(r.status || "").toLowerCase();
+      const saldo = Math.max(0, Number(r.valor_parcela || 0) - Number(r.valor_pago || 0));
+
+      if (f.titulo && !titulo.includes(String(f.titulo).toLowerCase())) return false;
+      if (f.fornecedor && !fornecedor.includes(String(f.fornecedor).toLowerCase())) return false;
+      if (f.origem && origem !== f.origem) return false;
+      if (f.emissao && !emissaoBr.includes(String(f.emissao).toLowerCase())) return false;
+      if (f.parcela && !parcela.includes(String(f.parcela).toLowerCase())) return false;
+      if (f.vencimento && !vencBr.includes(String(f.vencimento).toLowerCase())) return false;
+      if (f.valor && !moneyFilterMatch(r.valor_parcela, f.valor)) return false;
+      if (f.saldo && !moneyFilterMatch(saldo, f.saldo)) return false;
+      if (f.status && status !== String(f.status).toLowerCase()) return false;
+      return true;
+    });
   }
 
   function renderParcelasIntoTable(tableEl, rows, { showOrigem = true, showEmissao = false } = {}) {
@@ -131,7 +196,7 @@ export function installComprasModule(ctx) {
           r.status !== "pago" &&
           r.status !== "cancelado" &&
           r.vencimento &&
-          new Date(r.vencimento) < new Date(new Date().toDateString());
+          new Date(`${String(r.vencimento).slice(0, 10)}T12:00:00`) < new Date(new Date().toDateString());
         const fornecedorTxt =
           r.conta?.fornecedor?.nome ||
           (r.conta?.origem === "despesa_manual" ? r.conta?.observacoes || r.conta?.numero_titulo : null) ||
@@ -146,11 +211,11 @@ export function installComprasModule(ctx) {
         <tr class="is-clickable-row" data-edit-conta-pagar="${contaId}" title="Clique para editar o título">
           <td class="pedido-actions-cell" data-stop-row-edit="1">${rowActions(menuItems, "Acoes do titulo")}</td>
           <td>${escapeHtml(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`)}</td>
-          <td>${escapeHtml(fornecedorTxt)}</td>
+          <td class="contas-pagar-col-fornecedor" title="${escapeHtml(fornecedorTxt)}">${escapeHtml(fornecedorTxt)}</td>
           ${showOrigem ? `<td>${escapeHtml(origemLabel(r.conta?.origem))}</td>` : ""}
           ${showEmissao ? `<td>${escapeHtml(formatEmissaoDisplay(r.conta?.emissao))}</td>` : ""}
           <td>${escapeHtml(r.numero_parcela)}</td>
-          <td>${escapeHtml(r.vencimento || "–")}${vencida ? ' <span class="estoque-status estoque-status--zerado">vencida</span>' : ""}</td>
+          <td>${escapeHtml(formatDateBr(r.vencimento))}${vencida ? ' <span class="estoque-status estoque-status--zerado">vencida</span>' : ""}</td>
           <td>${moeda.format(r.valor_parcela || 0)}</td>
           <td>${moeda.format(saldo)}</td>
           <td><span class="estoque-status ${r.status === "pago" ? "estoque-status--ok" : "estoque-status--reposicao"}">${escapeHtml(r.status)}</span></td>
@@ -654,12 +719,15 @@ export function installComprasModule(ctx) {
     });
     renderParcelasIntoTable(e.comprasPagarTable, rowsCompras, { showOrigem: true, showEmissao: false });
 
-    // Caixa único: aba Contas a Pagar
-    const rowsDespesas = getParcelasPagarRows({
+    // Caixa único: aba Contas a Pagar (filtros de coluna no cabeçalho)
+    const cols = state().compras.filters.despesasCols || {};
+    let rowsDespesas = getParcelasPagarRows({
       busca: state().compras.filters.despesasBusca,
-      status: state().compras.filters.despesasStatus,
-      origem: state().compras.filters.despesasOrigem
+      // status/origem do cabeçalho têm prioridade; fallback nos selects antigos se existirem
+      status: cols.status || state().compras.filters.despesasStatus || "",
+      origem: cols.origem || state().compras.filters.despesasOrigem || ""
     });
+    rowsDespesas = applyDespesasColumnFilters(rowsDespesas);
     renderParcelasIntoTable(e.despesasPagarTable, rowsDespesas, { showOrigem: true, showEmissao: true });
     renderDespesasKpis();
   }
@@ -2406,6 +2474,20 @@ export function installComprasModule(ctx) {
         renderContasPagarTable();
       });
     }
+
+    // Filtros por coluna no cabeçalho da tabela Contas a Pagar
+    const applyDespesasColFilterFromEl = (t) => {
+      if (!(t instanceof HTMLElement)) return;
+      const field = t.getAttribute("data-despesas-col-filter");
+      if (!field) return;
+      ensureStateDefaults();
+      state().compras.filters.despesasCols[field] = "value" in t ? String(t.value || "") : "";
+      if (field === "status") state().compras.filters.despesasStatus = state().compras.filters.despesasCols.status || "";
+      if (field === "origem") state().compras.filters.despesasOrigem = state().compras.filters.despesasCols.origem || "";
+      renderContasPagarTable();
+    };
+    document.addEventListener("input", (ev) => applyDespesasColFilterFromEl(ev.target));
+    document.addEventListener("change", (ev) => applyDespesasColFilterFromEl(ev.target));
 
     if (e.closeContaPagarEditModalBtn) {
       e.closeContaPagarEditModalBtn.addEventListener("click", closeContaPagarEditModal);
