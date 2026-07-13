@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712j" />
+    <link rel="stylesheet" href="styles.css?v=20260712k" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -601,7 +601,72 @@
             </div>
           </div>
 
+          <section id="produtoPrecoVendaCalcPanel" class="preco-venda-calc-panel hidden">
+            <div class="documento-items-panel-head">
+              <div>
+                <h4>Calculadora de preço de venda</h4>
+                <span class="documento-items-hint">Monte o preço do produto com custos e encargos. Todos os campos são editáveis.</span>
+              </div>
+              <button id="closeProdutoPrecoVendaCalcBtn" class="btn btn-ghost" type="button">Fechar calculadora</button>
+            </div>
+
+            <div class="preco-venda-calc-grid">
+              <fieldset class="preco-venda-calc-card">
+                <legend>Custos fixos (R$)</legend>
+                <label>Custo do produto
+                  <input id="produtoCalcCusto" type="number" min="0" step="0.01" />
+                </label>
+                <label>Mão de obra / serviço
+                  <input id="produtoCalcMaoDeObra" type="number" min="0" step="0.01" />
+                </label>
+                <label>Frete / deslocamento
+                  <input id="produtoCalcFrete" type="number" min="0" step="0.01" />
+                </label>
+                <label>Embalagem / insumos
+                  <input id="produtoCalcEmbalagem" type="number" min="0" step="0.01" />
+                </label>
+                <label>Outras despesas
+                  <input id="produtoCalcOutrasDespesas" type="number" min="0" step="0.01" />
+                </label>
+              </fieldset>
+
+              <fieldset class="preco-venda-calc-card">
+                <legend>Encargos sobre o preço de venda (%)</legend>
+                <label>Impostos
+                  <input id="produtoCalcImpostosPct" type="number" min="0" max="99" step="0.01" />
+                </label>
+                <label>Taxa cartão / financeira
+                  <input id="produtoCalcTaxaCartaoPct" type="number" min="0" max="99" step="0.01" />
+                </label>
+                <label>Comissão / indicação
+                  <input id="produtoCalcComissaoPct" type="number" min="0" max="99" step="0.01" />
+                </label>
+                <label>Margem de lucro desejada
+                  <input id="produtoCalcMargemPct" type="number" min="0" max="99" step="0.01" />
+                </label>
+              </fieldset>
+
+              <div class="preco-venda-calc-card preco-venda-calc-result">
+                <h5>Resultado</h5>
+                <div class="preco-venda-calc-result-rows">
+                  <div><span>Custo total base</span><strong id="produtoCalcCustoBase">R$ 0,00</strong></div>
+                  <div><span>Soma dos percentuais</span><strong id="produtoCalcSomaPct">0%</strong></div>
+                  <div><span>Lucro estimado</span><strong id="produtoCalcLucro">R$ 0,00</strong></div>
+                  <div class="preco-venda-calc-destaque"><span>Preço de venda sugerido</span><strong id="produtoCalcPrecoSugerido">R$ 0,00</strong></div>
+                  <div><span>Preço atual do produto</span><strong id="produtoCalcPrecoAtual">R$ 0,00</strong></div>
+                  <div><span>Diferença</span><strong id="produtoCalcDiferenca">R$ 0,00</strong></div>
+                </div>
+                <p id="produtoCalcAviso" class="preco-venda-calc-aviso hidden"></p>
+                <div class="preco-venda-calc-actions">
+                  <button id="produtoCalcRecarregarCustoBtn" type="button" class="btn btn-ghost">Usar custo do cadastro</button>
+                  <button id="produtoCalcAplicarPrecoBtn" type="button" class="btn">Aplicar no preço de venda</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <div class="produto-form-actions">
+            <button id="openProdutoPrecoVendaCalcBtn" class="btn btn-ghost" type="button">Calculadora de preço</button>
             <button id="produtoSubmitBtn" type="submit" class="btn">Salvar Produto</button>
           </div>
         </form>
@@ -1008,6 +1073,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260712j"></script>
+    <script type="module" src="app.js?v=20260712k"></script>
   </body>
 </html>

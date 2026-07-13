@@ -1419,9 +1419,14 @@ table thead input {
 .produto-form-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.5rem;
   padding-top: 0.25rem;
   border-top: 1px solid rgba(217, 210, 196, 0.8);
+}
+
+#produtoPrecoVendaCalcPanel {
+  margin-top: 0.25rem;
 }
 
 .produto-thumb.is-clickable,

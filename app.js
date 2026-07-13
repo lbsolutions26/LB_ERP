@@ -181,7 +181,8 @@ const state = {
   },
   ownerUsers: [],
   adminEmpresas: [],
-  adminVinculos: []
+  adminVinculos: [],
+  produtoPrecoVendaCalc: null
 };
 
 const els = {
@@ -272,6 +273,27 @@ const els = {
   calcAviso: document.getElementById("calcAviso"),
   calcRecarregarCustosBtn: document.getElementById("calcRecarregarCustosBtn"),
   calcAplicarPrecosBtn: document.getElementById("calcAplicarPrecosBtn"),
+  openProdutoPrecoVendaCalcBtn: document.getElementById("openProdutoPrecoVendaCalcBtn"),
+  closeProdutoPrecoVendaCalcBtn: document.getElementById("closeProdutoPrecoVendaCalcBtn"),
+  produtoPrecoVendaCalcPanel: document.getElementById("produtoPrecoVendaCalcPanel"),
+  produtoCalcCusto: document.getElementById("produtoCalcCusto"),
+  produtoCalcMaoDeObra: document.getElementById("produtoCalcMaoDeObra"),
+  produtoCalcFrete: document.getElementById("produtoCalcFrete"),
+  produtoCalcEmbalagem: document.getElementById("produtoCalcEmbalagem"),
+  produtoCalcOutrasDespesas: document.getElementById("produtoCalcOutrasDespesas"),
+  produtoCalcImpostosPct: document.getElementById("produtoCalcImpostosPct"),
+  produtoCalcTaxaCartaoPct: document.getElementById("produtoCalcTaxaCartaoPct"),
+  produtoCalcComissaoPct: document.getElementById("produtoCalcComissaoPct"),
+  produtoCalcMargemPct: document.getElementById("produtoCalcMargemPct"),
+  produtoCalcCustoBase: document.getElementById("produtoCalcCustoBase"),
+  produtoCalcSomaPct: document.getElementById("produtoCalcSomaPct"),
+  produtoCalcLucro: document.getElementById("produtoCalcLucro"),
+  produtoCalcPrecoSugerido: document.getElementById("produtoCalcPrecoSugerido"),
+  produtoCalcPrecoAtual: document.getElementById("produtoCalcPrecoAtual"),
+  produtoCalcDiferenca: document.getElementById("produtoCalcDiferenca"),
+  produtoCalcAviso: document.getElementById("produtoCalcAviso"),
+  produtoCalcRecarregarCustoBtn: document.getElementById("produtoCalcRecarregarCustoBtn"),
+  produtoCalcAplicarPrecoBtn: document.getElementById("produtoCalcAplicarPrecoBtn"),
   novoClienteRapidoModal: document.getElementById("novoClienteRapidoModal"),
   closeNovoClienteRapidoModalBtn: document.getElementById("closeNovoClienteRapidoModalBtn"),
   novoClienteRapidoForm: document.getElementById("novoClienteRapidoForm"),
@@ -2679,6 +2701,143 @@ function applyPrecoVendaCalcToItens() {
   showToast("Preco sugerido aplicado nos itens do pedido");
 }
 
+function getProdutoFormNumber(name, fallback = 0) {
+  const field = els.produtoForm?.elements?.namedItem(name);
+  if (!field || !("value" in field)) return fallback;
+  const num = Number(field.value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function setProdutoFormNumber(name, value) {
+  const field = els.produtoForm?.elements?.namedItem(name);
+  if (!field || !("value" in field)) return;
+  field.value = String(Number(value || 0));
+}
+
+function ensureProdutoPrecoVendaCalcState() {
+  if (!state.produtoPrecoVendaCalc) {
+    state.produtoPrecoVendaCalc = createPrecoVendaCalcState({
+      custoProdutos: 0,
+      margemPct: 30
+    });
+  }
+  return state.produtoPrecoVendaCalc;
+}
+
+function syncProdutoPrecoVendaCalcFromForm(options = {}) {
+  const calc = ensureProdutoPrecoVendaCalcState();
+  const custoCadastro = Math.max(0, getProdutoFormNumber("custo", 0));
+  if (!options.keepOverrides || !calc._custoProdutosTouched) {
+    calc.custoProdutos = Number(custoCadastro.toFixed(2));
+  }
+  const margemCadastro = getProdutoFormNumber("margem", NaN);
+  if (!options.keepOverrides && Number.isFinite(margemCadastro) && margemCadastro > 0) {
+    calc.margemPct = margemCadastro;
+  }
+  return calc;
+}
+
+function openProdutoPrecoVendaCalcPanel() {
+  const calc = ensureProdutoPrecoVendaCalcState();
+  calc.open = true;
+  calc._custoProdutosTouched = false;
+  syncProdutoPrecoVendaCalcFromForm();
+  renderProdutoPrecoVendaCalcPanel();
+  els.produtoPrecoVendaCalcPanel?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeProdutoPrecoVendaCalcPanel() {
+  const calc = ensureProdutoPrecoVendaCalcState();
+  calc.open = false;
+  if (els.produtoPrecoVendaCalcPanel) els.produtoPrecoVendaCalcPanel.classList.add("hidden");
+}
+
+function readProdutoPrecoVendaCalcFromInputs() {
+  const calc = ensureProdutoPrecoVendaCalcState();
+  if (els.produtoCalcCusto) {
+    calc.custoProdutos = Math.max(0, Number(els.produtoCalcCusto.value || 0));
+    calc._custoProdutosTouched = true;
+  }
+  if (els.produtoCalcMaoDeObra) calc.maoDeObra = Math.max(0, Number(els.produtoCalcMaoDeObra.value || 0));
+  if (els.produtoCalcFrete) calc.frete = Math.max(0, Number(els.produtoCalcFrete.value || 0));
+  if (els.produtoCalcEmbalagem) calc.embalagem = Math.max(0, Number(els.produtoCalcEmbalagem.value || 0));
+  if (els.produtoCalcOutrasDespesas) calc.outrasDespesas = Math.max(0, Number(els.produtoCalcOutrasDespesas.value || 0));
+  if (els.produtoCalcImpostosPct) calc.impostosPct = Math.max(0, Number(els.produtoCalcImpostosPct.value || 0));
+  if (els.produtoCalcTaxaCartaoPct) calc.taxaCartaoPct = Math.max(0, Number(els.produtoCalcTaxaCartaoPct.value || 0));
+  if (els.produtoCalcComissaoPct) calc.comissaoPct = Math.max(0, Number(els.produtoCalcComissaoPct.value || 0));
+  if (els.produtoCalcMargemPct) calc.margemPct = Math.max(0, Number(els.produtoCalcMargemPct.value || 0));
+  return calc;
+}
+
+function renderProdutoPrecoVendaCalcPanel() {
+  if (!els.produtoPrecoVendaCalcPanel) return;
+  const calc = ensureProdutoPrecoVendaCalcState();
+  els.produtoPrecoVendaCalcPanel.classList.toggle("hidden", !calc.open);
+  if (!calc.open) return;
+
+  // Reusa a mesma formula do pedido, com custo do produto no campo custoProdutos.
+  const resultCore = computePrecoVendaCalc(calc);
+  const precoAtual = Math.max(0, getProdutoFormNumber("preco", 0));
+  const result = {
+    ...resultCore,
+    totalAtual: precoAtual,
+    diferenca: resultCore.precoSugerido - precoAtual
+  };
+
+  const setIfNotFocused = (el, value) => {
+    if (!el) return;
+    if (document.activeElement === el) return;
+    el.value = value;
+  };
+
+  setIfNotFocused(els.produtoCalcCusto, String(Number(calc.custoProdutos || 0).toFixed(2)));
+  setIfNotFocused(els.produtoCalcMaoDeObra, String(Number(calc.maoDeObra || 0).toFixed(2)));
+  setIfNotFocused(els.produtoCalcFrete, String(Number(calc.frete || 0).toFixed(2)));
+  setIfNotFocused(els.produtoCalcEmbalagem, String(Number(calc.embalagem || 0).toFixed(2)));
+  setIfNotFocused(els.produtoCalcOutrasDespesas, String(Number(calc.outrasDespesas || 0).toFixed(2)));
+  setIfNotFocused(els.produtoCalcImpostosPct, String(Number(calc.impostosPct || 0)));
+  setIfNotFocused(els.produtoCalcTaxaCartaoPct, String(Number(calc.taxaCartaoPct || 0)));
+  setIfNotFocused(els.produtoCalcComissaoPct, String(Number(calc.comissaoPct || 0)));
+  setIfNotFocused(els.produtoCalcMargemPct, String(Number(calc.margemPct || 0)));
+
+  if (els.produtoCalcCustoBase) els.produtoCalcCustoBase.textContent = moeda.format(result.custoBase);
+  if (els.produtoCalcSomaPct) els.produtoCalcSomaPct.textContent = `${result.somaPct.toFixed(2)}%`;
+  if (els.produtoCalcLucro) els.produtoCalcLucro.textContent = moeda.format(result.lucro);
+  if (els.produtoCalcPrecoSugerido) els.produtoCalcPrecoSugerido.textContent = moeda.format(result.precoSugerido);
+  if (els.produtoCalcPrecoAtual) els.produtoCalcPrecoAtual.textContent = moeda.format(result.totalAtual);
+  if (els.produtoCalcDiferenca) {
+    const diff = result.diferenca;
+    els.produtoCalcDiferenca.textContent = `${diff >= 0 ? "+" : ""}${moeda.format(diff)}`;
+    els.produtoCalcDiferenca.classList.toggle("is-positive", diff > 0.009);
+    els.produtoCalcDiferenca.classList.toggle("is-negative", diff < -0.009);
+  }
+  if (els.produtoCalcAviso) {
+    els.produtoCalcAviso.textContent = result.aviso || "";
+    els.produtoCalcAviso.classList.toggle("hidden", !result.aviso);
+  }
+  if (els.produtoCalcAplicarPrecoBtn) {
+    els.produtoCalcAplicarPrecoBtn.disabled = Boolean(result.aviso) || result.precoSugerido <= 0;
+  }
+}
+
+function applyProdutoPrecoVendaCalcToForm() {
+  const calc = ensureProdutoPrecoVendaCalcState();
+  const result = computePrecoVendaCalc(calc);
+  if (result.aviso || result.precoSugerido <= 0) {
+    showToast(result.aviso || "Nao foi possivel calcular o preco.", "error");
+    return;
+  }
+
+  setProdutoFormNumber("preco", Number(result.precoSugerido.toFixed(2)));
+  setProdutoFormNumber("margem", Number(calc.margemPct || 0));
+  // Mantem o custo principal do cadastro alinhado com o custo base do produto na calculadora.
+  if (els.produtoCalcCusto) {
+    setProdutoFormNumber("custo", Number(calc.custoProdutos || 0));
+  }
+  renderProdutoPrecoVendaCalcPanel();
+  showToast("Preco de venda e margem aplicados no produto");
+}
+
 async function loadDocumentoForEdit(tipo, documentoId) {
   const { data: documento, error: documentoError } = await supabaseClient
     .from("documentos_venda")
@@ -3696,6 +3855,8 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
 
 function setProdutoFormMode({ editing = false, produto = null } = {}) {
   if (!els.produtoForm) return;
+  closeProdutoPrecoVendaCalcPanel();
+  state.produtoPrecoVendaCalc = createPrecoVendaCalcState({ margemPct: 30 });
 
   if (!editing) {
     els.produtoForm.reset();
@@ -3745,6 +3906,10 @@ function setProdutoFormMode({ editing = false, produto = null } = {}) {
   setValue("imagem_path", produto.imagem_path || "");
   setValue("ativo", produto.ativo ? "sim" : "nao");
   setValue("controla_estoque", produto.controla_estoque === false ? "nao" : "sim");
+  state.produtoPrecoVendaCalc = createPrecoVendaCalcState({
+    custoProdutos: Number(produto.custo || 0),
+    margemPct: Number(produto.margem || 30) || 30
+  });
   updateProdutoFormImagePreview();
 }
 
@@ -6846,6 +7011,57 @@ function attachEvents() {
 
   if (els.openProdutoModalBtn) {
     els.openProdutoModalBtn.addEventListener("click", openProdutoCreateModal);
+  }
+
+  if (els.openProdutoPrecoVendaCalcBtn) {
+    els.openProdutoPrecoVendaCalcBtn.addEventListener("click", () => openProdutoPrecoVendaCalcPanel());
+  }
+  if (els.closeProdutoPrecoVendaCalcBtn) {
+    els.closeProdutoPrecoVendaCalcBtn.addEventListener("click", () => closeProdutoPrecoVendaCalcPanel());
+  }
+  if (els.produtoCalcRecarregarCustoBtn) {
+    els.produtoCalcRecarregarCustoBtn.addEventListener("click", () => {
+      const calc = ensureProdutoPrecoVendaCalcState();
+      calc._custoProdutosTouched = false;
+      syncProdutoPrecoVendaCalcFromForm();
+      renderProdutoPrecoVendaCalcPanel();
+      showToast("Custo recarregado do cadastro do produto");
+    });
+  }
+  if (els.produtoCalcAplicarPrecoBtn) {
+    els.produtoCalcAplicarPrecoBtn.addEventListener("click", () => applyProdutoPrecoVendaCalcToForm());
+  }
+
+  const produtoCalcInputs = [
+    els.produtoCalcCusto,
+    els.produtoCalcMaoDeObra,
+    els.produtoCalcFrete,
+    els.produtoCalcEmbalagem,
+    els.produtoCalcOutrasDespesas,
+    els.produtoCalcImpostosPct,
+    els.produtoCalcTaxaCartaoPct,
+    els.produtoCalcComissaoPct,
+    els.produtoCalcMargemPct
+  ].filter(Boolean);
+
+  for (const input of produtoCalcInputs) {
+    input.addEventListener("input", () => {
+      readProdutoPrecoVendaCalcFromInputs();
+      renderProdutoPrecoVendaCalcPanel();
+    });
+  }
+
+  // Se o usuario editar custo/preco/margem no formulario com a calculadora aberta, atualiza o resultado.
+  for (const name of ["custo", "preco", "margem"]) {
+    const field = els.produtoForm?.elements?.namedItem(name);
+    if (!(field instanceof HTMLElement)) continue;
+    field.addEventListener("input", () => {
+      if (!state.produtoPrecoVendaCalc?.open) return;
+      if (name === "custo" && !state.produtoPrecoVendaCalc._custoProdutosTouched) {
+        syncProdutoPrecoVendaCalcFromForm({ keepOverrides: false });
+      }
+      renderProdutoPrecoVendaCalcPanel();
+    });
   }
 
   if (els.openPedidoModalBtn) {
