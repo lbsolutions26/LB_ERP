@@ -101,7 +101,7 @@ const state = {
     },
     pedidosSintetico: {
       sort: { field: "data", direction: "desc" },
-      filters: { pedido: "", data: "", cliente: "", status: "", total: "" }
+      filters: { pedido: "", data: "", cliente: "", pagamento: "", total: "" }
     },
     pedidosAnalitico: {
       sort: { field: "data", direction: "desc" },
@@ -1542,6 +1542,37 @@ function getFormaPagamentoNome(formaPagamentoId) {
   if (!formaPagamentoId) return null;
   const forma = state.formasPagamento.find((item) => String(item.id) === String(formaPagamentoId));
   return forma?.nome || null;
+}
+
+function getPagamentoModoLabel(modo) {
+  const value = String(modo || "").toLowerCase();
+  if (value === "parcelado") return "Parcelado";
+  if (value === "entrada_parcelas") return "Entrada + parcelas";
+  if (value === "avista" || value === "a_vista" || value === "à vista") return "A vista";
+  return "";
+}
+
+/** Rotulo de tipo de pagamento a partir do snapshot salvo no pedido (raw_payload.pagamento). */
+function getPedidoPagamentoLabel(pedidoOrDoc) {
+  const raw = pedidoOrDoc?.raw_payload;
+  const pag = raw && typeof raw === "object" ? raw.pagamento : null;
+  if (!pag || typeof pag !== "object") return "-";
+
+  const modoLabel = getPagamentoModoLabel(pag.modo);
+  const formaNome = getFormaPagamentoNome(pag.formaPagamentoId);
+  const parcelas = Math.max(0, Number(pag.parcelas || 0));
+  const parts = [];
+
+  if (String(pag.modo || "").toLowerCase() === "parcelado" && parcelas > 0) {
+    parts.push(`${parcelas}x`);
+  } else if (String(pag.modo || "").toLowerCase() === "entrada_parcelas" && parcelas > 0) {
+    parts.push(`Entrada + ${parcelas}x`);
+  } else if (modoLabel) {
+    parts.push(modoLabel);
+  }
+
+  if (formaNome) parts.push(formaNome);
+  return parts.length ? parts.join(" · ") : "-";
 }
 
 function normalizeContaStatus(status, valorAberto, isVencida) {
@@ -4918,6 +4949,14 @@ async function loadPedidosSummary() {
 }
 
 async function ensurePedidosLoaded(options = {}) {
+  // Formas de pagamento alimentam a coluna "Pagamento" da lista.
+  if (!state.formasPagamento?.length) {
+    try {
+      await loadFormasPagamento();
+    } catch (error) {
+      console.warn("Falha ao carregar formas de pagamento", error.message || error);
+    }
+  }
   if (state.pedidosLoaded && !options.force) return;
   await loadPedidos();
   state.pedidosLoaded = true;
@@ -6309,7 +6348,7 @@ function renderPedidosTableHead() {
       <th class="sortable" data-table="pedidosSintetico" data-sort="pedido">Pedido</th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="data">Data</th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="cliente">Cliente</th>
-      <th class="sortable" data-table="pedidosSintetico" data-sort="status">Status</th>
+      <th class="sortable" data-table="pedidosSintetico" data-sort="pagamento">Pagamento</th>
       <th class="sortable" data-table="pedidosSintetico" data-sort="total">Total</th>
       <th></th>
     </tr>
@@ -6317,7 +6356,7 @@ function renderPedidosTableHead() {
       <th><input data-table-filter="pedidosSintetico" data-field="pedido" value="${getTableFilterValue("pedidosSintetico", "pedido")}" placeholder="Filtrar" /></th>
       <th><input data-table-filter="pedidosSintetico" data-field="data" value="${getTableFilterValue("pedidosSintetico", "data")}" placeholder="Filtrar" /></th>
       <th><input data-table-filter="pedidosSintetico" data-field="cliente" value="${getTableFilterValue("pedidosSintetico", "cliente")}" placeholder="Filtrar" /></th>
-      <th><input data-table-filter="pedidosSintetico" data-field="status" value="${getTableFilterValue("pedidosSintetico", "status")}" placeholder="Filtrar" /></th>
+      <th><input data-table-filter="pedidosSintetico" data-field="pagamento" value="${getTableFilterValue("pedidosSintetico", "pagamento")}" placeholder="Filtrar" /></th>
       <th><input data-table-filter="pedidosSintetico" data-field="total" value="${getTableFilterValue("pedidosSintetico", "total")}" placeholder="Filtrar" /></th>
       <th></th>
     </tr>
@@ -6482,10 +6521,6 @@ async function loadPedidosFilteredFromDatabase() {
         query = query.eq("id", cleanId ? Number(cleanId) : -1);
       }
 
-      if (filters.status) {
-        query = query.ilike("status", `%${filters.status}%`);
-      }
-
       if (filters.cliente) {
         query = query.ilike("cliente.nome", `%${filters.cliente}%`);
       }
@@ -6534,7 +6569,6 @@ async function loadPedidosFilteredFromDatabase() {
             const cleanId = String(filters.pedido).replace(/[^\d]/g, "");
             query = query.eq("id", cleanId ? Number(cleanId) : -1);
           }
-          if (filters.status) query = query.ilike("status", `%${filters.status}%`);
           if (filters.cliente) query = query.ilike("cliente.nome", `%${filters.cliente}%`);
           if (filters.data) {
             const range = parseLooseDateFilter(filters.data);
@@ -6569,6 +6603,12 @@ async function loadPedidosFilteredFromDatabase() {
         const label = row.data_emissao ? new Date(row.data_emissao).toLocaleDateString("pt-BR") : "";
         return label.toLowerCase().includes(needle);
       });
+    }
+
+    // Pagamento fica no raw_payload — filtra no cliente.
+    if (filters.pagamento) {
+      const needle = String(filters.pagamento).toLowerCase();
+      docsData = docsData.filter((row) => getPedidoPagamentoLabel(row).toLowerCase().includes(needle));
     }
 
     state.pedidosSource = "documentos_venda";
@@ -7369,7 +7409,7 @@ function renderPedidosTable() {
       sort: (pedido) => pedido.data_pedido ? new Date(pedido.data_pedido).getTime() : 0
     },
     cliente: (pedido) => pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${pedido.cliente_legacy_id}` : "-"),
-    status: (pedido) => pedido.status || "-",
+    pagamento: (pedido) => getPedidoPagamentoLabel(pedido),
     total: {
       filter: (pedido) => moeda.format(pedido.valor_total || 0),
       sort: (pedido) => Number(pedido.valor_total || 0)
@@ -7389,6 +7429,7 @@ function renderPedidosTable() {
     renderRow: (pedido) => {
       const data = pedido.data_pedido ? new Date(pedido.data_pedido).toLocaleDateString("pt-BR") : "-";
       const clienteNome = pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${escapeHtml(pedido.cliente_legacy_id)}` : "-");
+      const pagamentoLabel = getPedidoPagamentoLabel(pedido);
       return `
       <tr>
         <td class="pedido-cell-id">
@@ -7397,7 +7438,7 @@ function renderPedidosTable() {
         </td>
         <td>${data}</td>
         <td>${clienteNome}</td>
-        <td>${escapeHtml(pedido.status || "-")}</td>
+        <td>${escapeHtml(pagamentoLabel)}</td>
         <td>${moeda.format(pedido.valor_total || 0)}</td>
         <td>
           <button class="action-edit" data-edit-pedido="${pedido.id}">Editar</button>
