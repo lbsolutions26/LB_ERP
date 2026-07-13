@@ -262,6 +262,7 @@ const els = {
   imageLightboxCaption: document.getElementById("imageLightboxCaption"),
   closeImageLightboxBtn: document.getElementById("closeImageLightboxBtn"),
   openPedidoModalBtn: document.getElementById("openPedidoModalBtn"),
+  fabNovoPedidoBtn: document.getElementById("fabNovoPedidoBtn"),
   novoDocumentoModal: document.getElementById("novoDocumentoModal"),
   closeNovoDocumentoModalBtn: document.getElementById("closeNovoDocumentoModalBtn"),
   novoDocumentoForm: document.getElementById("novoDocumentoForm"),
@@ -4450,6 +4451,9 @@ function updateShellVisibility() {
   const isLogged = Boolean(state.session);
   els.authScreen.classList.toggle("hidden", isLogged);
   els.appShell.classList.toggle("hidden", !isLogged);
+  if (els.fabNovoPedidoBtn) {
+    els.fabNovoPedidoBtn.classList.toggle("hidden", !isLogged);
+  }
 }
 
 async function login(event) {
@@ -6449,8 +6453,49 @@ function closeAllRowActionMenus(exceptMenu = null) {
     const trigger = menu.querySelector("[data-row-actions-toggle]");
     if (trigger) trigger.setAttribute("aria-expanded", "false");
     const panel = menu.querySelector(".row-actions-panel");
-    if (panel) panel.hidden = true;
+    if (panel) {
+      panel.hidden = true;
+      panel.style.top = "";
+      panel.style.bottom = "";
+      panel.style.left = "";
+      panel.style.right = "";
+    }
   });
+}
+
+/** Posiciona o menu em fixed para nao ser cortado por table-wrap (overflow). */
+function positionRowActionsPanel(menu) {
+  const trigger = menu?.querySelector?.("[data-row-actions-toggle]");
+  const panel = menu?.querySelector?.(".row-actions-panel");
+  if (!(trigger instanceof HTMLElement) || !(panel instanceof HTMLElement)) return;
+
+  panel.hidden = false;
+  // Mede depois de tornar visivel
+  const rect = trigger.getBoundingClientRect();
+  const panelWidth = Math.max(panel.offsetWidth || 180, 172);
+  const panelHeight = panel.offsetHeight || 200;
+  const margin = 8;
+
+  let left = rect.left;
+  if (left + panelWidth > window.innerWidth - margin) {
+    left = Math.max(margin, window.innerWidth - panelWidth - margin);
+  }
+  if (left < margin) left = margin;
+
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const openUp = spaceBelow < panelHeight + 12 && rect.top > panelHeight + 12;
+
+  panel.style.position = "fixed";
+  panel.style.left = `${Math.round(left)}px`;
+  panel.style.right = "auto";
+  if (openUp) {
+    panel.style.top = "auto";
+    panel.style.bottom = `${Math.round(window.innerHeight - rect.top + 6)}px`;
+  } else {
+    panel.style.bottom = "auto";
+    panel.style.top = `${Math.round(rect.bottom + 6)}px`;
+  }
+  panel.style.zIndex = "1200";
 }
 
 /**
@@ -6506,6 +6551,7 @@ function renderClienteRowActionsMenu(clienteId) {
   const id = escapeHtml(clienteId);
   return renderRowActionsMenu(
     [
+      { label: "Novo pedido", attrs: `data-novo-pedido-cliente="${id}"`, finance: true },
       { label: "Pedidos", attrs: `data-view-cliente-pedidos="${id}"` },
       { label: "Editar", attrs: `data-edit-cliente="${id}"` },
       { label: "Excluir", attrs: `data-del-cliente="${id}"`, danger: true }
@@ -9220,16 +9266,42 @@ function attachEvents() {
     });
   }
 
+  async function openNovoPedidoRapido() {
+    try {
+      await Promise.all([ensureClientesLoaded(), ensureProdutosLoaded()]);
+    } catch (error) {
+      showToast(`Erro ao carregar dados para novo pedido: ${error.message}`, "error");
+    }
+    openNovoDocumentoModal("pedido");
+  }
+
   if (els.openPedidoModalBtn) {
-    els.openPedidoModalBtn.addEventListener("click", async () => {
-      try {
-        await Promise.all([ensureClientesLoaded(), ensureProdutosLoaded()]);
-      } catch (error) {
-        showToast(`Erro ao carregar dados para novo pedido: ${error.message}`, "error");
-      }
-      openNovoDocumentoModal("pedido");
+    els.openPedidoModalBtn.addEventListener("click", () => {
+      openNovoPedidoRapido().catch((error) => {
+        showToast(`Erro ao abrir novo pedido: ${error.message}`, "error");
+      });
     });
   }
+
+  if (els.fabNovoPedidoBtn) {
+    els.fabNovoPedidoBtn.addEventListener("click", () => {
+      openNovoPedidoRapido().catch((error) => {
+        showToast(`Erro ao abrir novo pedido: ${error.message}`, "error");
+      });
+    });
+  }
+
+  // Fecha menu de acoes ao rolar/redimensionar (ele usa position:fixed)
+  window.addEventListener(
+    "scroll",
+    () => {
+      closeAllRowActionMenus();
+    },
+    true
+  );
+  window.addEventListener("resize", () => {
+    closeAllRowActionMenus();
+  });
 
   if (els.closeProdutoModalBtn) {
     els.closeProdutoModalBtn.addEventListener("click", () => {
@@ -10109,7 +10181,7 @@ function attachEvents() {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
 
-    // Menu compacto de acoes na lista de pedidos
+    // Menu compacto de acoes nas listas
     const actionsToggle = target.closest("[data-row-actions-toggle]");
     if (actionsToggle) {
       event.preventDefault();
@@ -10120,8 +10192,8 @@ function attachEvents() {
       if (!wasOpen && menu) {
         menu.classList.add("is-open");
         actionsToggle.setAttribute("aria-expanded", "true");
-        const panel = menu.querySelector(".row-actions-panel");
-        if (panel) panel.hidden = false;
+        // fixed + coords: evita o menu sumir dentro de table-wrap com overflow
+        positionRowActionsPanel(menu);
       }
       return;
     }
@@ -10139,6 +10211,7 @@ function attachEvents() {
     const clienteId = getData("data-del-cliente");
     const clientePedidosId = target.closest("[data-view-cliente-pedidos]")?.getAttribute("data-view-cliente-pedidos")
       || target.getAttribute("data-view-cliente-pedidos");
+    const novoPedidoClienteId = getData("data-novo-pedido-cliente");
     const produtoEditId = getData("data-edit-produto");
     const produtoEstoqueMovId = target.closest("[data-produto-estoque-mov]")?.getAttribute("data-produto-estoque-mov")
       || target.getAttribute("data-produto-estoque-mov");
@@ -10155,6 +10228,10 @@ function attachEvents() {
     const despesaId = getData("data-del-despesa");
 
     try {
+      if (novoPedidoClienteId) {
+        await openNovoPedidoForCliente(Number(novoPedidoClienteId));
+        return;
+      }
       const clienteEditId = getData("data-edit-cliente");
       if (clienteEditId) {
         const cliente = state.clientes.find((item) => String(item.id) === String(clienteEditId));
@@ -10165,11 +10242,12 @@ function attachEvents() {
         openClienteModal(cliente);
         return;
       }
-      // Pedidos do cliente (nome ou acao do menu) — nao dispara em Editar/Excluir
+      // Pedidos do cliente (nome ou acao do menu) — nao dispara em Editar/Excluir/Novo
       if (
         clientePedidosId &&
         !target.closest("[data-del-cliente]") &&
-        !target.closest("[data-edit-cliente]")
+        !target.closest("[data-edit-cliente]") &&
+        !target.closest("[data-novo-pedido-cliente]")
       ) {
         await openClientePedidosModal(Number(clientePedidosId));
         return;

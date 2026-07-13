@@ -2098,10 +2098,9 @@ img.produto-combo-thumb.is-broken {
 }
 
 .row-actions-panel {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 0.3rem);
-  z-index: 40;
+  /* left/top definidos em JS (position:fixed) para nao cortar em .table-wrap */
+  position: fixed;
+  z-index: 1200;
   min-width: 10.75rem;
   display: grid;
   gap: 0.2rem;
@@ -2110,6 +2109,53 @@ img.produto-combo-thumb.is-broken {
   border: 1px solid rgba(217, 210, 196, 0.95);
   background: #fffdf8;
   box-shadow: 0 14px 32px rgba(33, 32, 28, 0.16);
+}
+
+/* Botao flutuante global: novo pedido em qualquer aba */
+.fab-novo-pedido {
+  position: fixed;
+  right: 1.15rem;
+  bottom: 1.15rem;
+  z-index: 60;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(145deg, var(--brand) 0%, var(--brand-strong) 100%);
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 28px rgba(22, 93, 89, 0.38);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.fab-novo-pedido:hover {
+  transform: translateY(-2px) scale(1.03);
+  filter: brightness(1.05);
+  box-shadow: 0 14px 32px rgba(22, 93, 89, 0.45);
+}
+
+.fab-novo-pedido:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.fab-novo-pedido span {
+  display: block;
+  margin-top: -0.1rem;
+}
+
+@media (max-width: 720px) {
+  .fab-novo-pedido {
+    right: 1rem;
+    bottom: 1rem;
+    width: 3.35rem;
+    height: 3.35rem;
+  }
 }
 
 .row-actions-panel[hidden] {
