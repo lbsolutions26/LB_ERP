@@ -928,7 +928,7 @@ export function installComprasModule(ctx) {
     e.contaPagarEditParcelasList.innerHTML = (edit.parcelas || [])
       .map(
         (p, index) => `
-      <div class="documento-payment-parcela-row" data-cp-parcela-index="${index}">
+      <div class="documento-payment-parcela-row conta-pagar-parcela-row" data-cp-parcela-index="${index}">
         <div class="parcela-numero">#${p.numero || index + 1}</div>
         <label>Vencimento
           <input type="date" data-cp-parcela-field="vencimento" value="${escapeHtml(p.vencimento || "")}" />
@@ -938,6 +938,9 @@ export function installComprasModule(ctx) {
         </label>
         <label>Valor pago
           <input type="number" min="0" step="0.01" data-cp-parcela-field="valorPago" value="${Number(p.valorPago || 0).toFixed(2)}" />
+        </label>
+        <label>Data pagamento
+          <input type="date" data-cp-parcela-field="dataPagamento" value="${escapeHtml(p.dataPagamento || "")}" />
         </label>
         <label>Forma
           <select data-cp-parcela-field="formaPagamentoId">${formasHtml.join("")}</select>
@@ -968,6 +971,42 @@ export function installComprasModule(ctx) {
     renderContaPagarEditTotals();
   }
 
+  /** Garante registro na tabela pagamentos (data real da baixa). */
+  async function syncParcelaPagamentoRecord(parcelaId, { valorPago, dataPagamento, formaPagamentoId, status }) {
+    if (!parcelaId) return;
+    await sb().from("pagamentos").delete().eq("empresa_id", state().empresaId).eq("parcela_id", parcelaId);
+
+    const valor = Number(valorPago || 0);
+    if (status === "cancelado" || valor <= 0.009) return;
+
+    const data =
+      String(dataPagamento || "").trim() ||
+      formatDateInput(new Date());
+
+    const { error } = await sb().from("pagamentos").insert({
+      empresa_id: state().empresaId,
+      parcela_id: Number(parcelaId),
+      data_pagamento: data,
+      valor: Number(valor.toFixed(2)),
+      forma_pagamento_id: formaPagamentoId ? Number(formaPagamentoId) : null,
+      observacoes: "Baixa via edição de título"
+    });
+    if (error) throw error;
+  }
+
+  function applyPagoDefaultsToParcela(p) {
+    if (!p) return;
+    if (String(p.status) === "pago") {
+      const valor = Number(p.valor || 0);
+      if (Number(p.valorPago || 0) + 0.009 < valor) {
+        p.valorPago = valor;
+      }
+      if (!p.dataPagamento) {
+        p.dataPagamento = formatDateInput(new Date());
+      }
+    }
+  }
+
   async function openContaPagarEditModal(contaId) {
     ensureStateDefaults();
     const e = els();
@@ -994,21 +1033,54 @@ export function installComprasModule(ctx) {
       .order("numero_parcela", { ascending: true });
     if (pErr) throw pErr;
 
+    // Datas reais de pagamento (ultima baixa por parcela)
+    const parcelaIds = (parcelas || []).map((p) => p.id).filter(Boolean);
+    const lastPayDateByParcela = {};
+    if (parcelaIds.length) {
+      const { data: pays, error: payErr } = await sb()
+        .from("pagamentos")
+        .select("parcela_id, data_pagamento, valor")
+        .eq("empresa_id", state().empresaId)
+        .in("parcela_id", parcelaIds)
+        .order("data_pagamento", { ascending: false });
+      if (!payErr) {
+        for (const pay of pays || []) {
+          const key = String(pay.parcela_id);
+          if (!lastPayDateByParcela[key] && pay.data_pagamento) {
+            lastPayDateByParcela[key] = String(pay.data_pagamento).slice(0, 10);
+          }
+        }
+      }
+    }
+
     const edit = ensureContaPagarEditState();
     edit.contaId = conta.id;
     edit.origem = conta.origem;
     edit.notaEntradaId = conta.nota_entrada_id;
     edit.removedIds = [];
-    edit.parcelas = (parcelas || []).map((p) => ({
-      id: p.id,
-      numero: p.numero_parcela,
-      vencimento: p.vencimento || "",
-      valor: Number(p.valor_parcela || 0),
-      valorPago: Number(p.valor_pago || 0),
-      status: p.status || "pendente",
-      formaPagamentoId: p.forma_pagamento_id ? String(p.forma_pagamento_id) : "",
-      observacoes: p.observacoes || ""
-    }));
+    edit.parcelas = (parcelas || []).map((p) => {
+      let valorPago = Number(p.valor_pago || 0);
+      const valor = Number(p.valor_parcela || 0);
+      let status = p.status || "pendente";
+      // Corrigir inconsistência legada: status pago com valor pago 0
+      if (status === "pago" && valorPago + 0.009 < valor) {
+        valorPago = valor;
+      }
+      const dataPagamento =
+        lastPayDateByParcela[String(p.id)] ||
+        (status === "pago" || valorPago > 0 ? "" : "");
+      return {
+        id: p.id,
+        numero: p.numero_parcela,
+        vencimento: p.vencimento || "",
+        valor,
+        valorPago,
+        dataPagamento,
+        status,
+        formaPagamentoId: p.forma_pagamento_id ? String(p.forma_pagamento_id) : "",
+        observacoes: p.observacoes || ""
+      };
+    });
     if (!edit.parcelas.length) {
       edit.parcelas = [
         {
@@ -1017,6 +1089,7 @@ export function installComprasModule(ctx) {
           vencimento: formatDateInput(new Date()),
           valor: Number(conta.valor_original || 0),
           valorPago: 0,
+          dataPagamento: "",
           status: "pendente",
           formaPagamentoId: "",
           observacoes: ""
@@ -1057,6 +1130,7 @@ export function installComprasModule(ctx) {
       vencimento: addDaysYmd(last?.vencimento || formatDateInput(new Date()), 30),
       valor: 0,
       valorPago: 0,
+      dataPagamento: "",
       status: "pendente",
       formaPagamentoId: last?.formaPagamentoId || "",
       observacoes: ""
@@ -1092,8 +1166,19 @@ export function installComprasModule(ctx) {
     for (const p of edit.parcelas) {
       if (!p.vencimento) throw new Error("Todas as parcelas precisam de vencimento.");
       if (!(Number(p.valor) >= 0)) throw new Error("Valor de parcela inválido.");
+      // Normaliza pago ANTES dos totais (status pago sem valor pago preenchido)
+      if (String(p.status) === "pago") {
+        p.valorPago = Number(p.valor || 0);
+        if (!p.dataPagamento) p.dataPagamento = formatDateInput(new Date());
+      }
       if (Number(p.valorPago || 0) - Number(p.valor || 0) > 0.009) {
         throw new Error("Valor pago não pode ser maior que o valor da parcela.");
+      }
+      if (
+        (String(p.status) === "pago" || Number(p.valorPago || 0) > 0.009) &&
+        !String(p.dataPagamento || "").trim()
+      ) {
+        throw new Error("Informe a data de pagamento das parcelas pagas/parciais.");
       }
     }
 
@@ -1133,37 +1218,64 @@ export function installComprasModule(ctx) {
 
     for (let i = 0; i < edit.parcelas.length; i += 1) {
       const p = edit.parcelas[i];
+      let status = p.status || "pendente";
+      let valorPago = Number(Number(p.valorPago || 0).toFixed(2));
+      const valorParcela = Number(Number(p.valor || 0).toFixed(2));
+
+      // Status "pago" SEMPRE quita a parcela e exige valor pago completo
+      if (status === "pago") {
+        valorPago = valorParcela;
+        if (!p.dataPagamento) p.dataPagamento = formatDateInput(new Date());
+      } else if (valorPago + 0.009 >= valorParcela && valorParcela > 0 && status !== "cancelado") {
+        status = "pago";
+        valorPago = valorParcela;
+        if (!p.dataPagamento) p.dataPagamento = formatDateInput(new Date());
+      } else if (valorPago > 0 && status !== "cancelado") {
+        status = "parcial";
+        if (!p.dataPagamento) p.dataPagamento = formatDateInput(new Date());
+      } else if (status !== "cancelado") {
+        status = "pendente";
+        valorPago = 0;
+      }
+
       const payload = {
         empresa_id: state().empresaId,
         conta_pagar_id: edit.contaId,
         numero_parcela: i + 1,
         vencimento: p.vencimento || null,
-        valor_parcela: Number(Number(p.valor || 0).toFixed(2)),
-        valor_pago: Number(Number(p.valorPago || 0).toFixed(2)),
-        status: p.status || "pendente",
+        valor_parcela: valorParcela,
+        valor_pago: valorPago,
+        status,
         forma_pagamento_id: p.formaPagamentoId ? Number(p.formaPagamentoId) : null,
         observacoes: p.observacoes || null
       };
 
-      // Normaliza status pela quitação
-      if (payload.valor_pago + 0.009 >= payload.valor_parcela && payload.valor_parcela > 0) {
-        payload.status = "pago";
-        payload.valor_pago = payload.valor_parcela;
-      } else if (payload.valor_pago > 0 && payload.status !== "cancelado") {
-        payload.status = "parcial";
-      }
-
-      if (p.id) {
+      let parcelaId = p.id ? Number(p.id) : null;
+      if (parcelaId) {
         const { error } = await sb()
           .from("contas_pagar_parcelas")
           .update(payload)
-          .eq("id", p.id)
+          .eq("id", parcelaId)
           .eq("empresa_id", state().empresaId);
         if (error) throw error;
       } else {
-        const { error } = await sb().from("contas_pagar_parcelas").insert(payload);
+        const { data: inserted, error } = await sb()
+          .from("contas_pagar_parcelas")
+          .insert(payload)
+          .select("id")
+          .single();
         if (error) throw error;
+        parcelaId = inserted?.id ? Number(inserted.id) : null;
+        p.id = parcelaId;
       }
+
+      // Sincroniza baixa real (data_pagamento) — alimenta o card "Pagas no mês"
+      await syncParcelaPagamentoRecord(parcelaId, {
+        valorPago,
+        dataPagamento: p.dataPagamento || "",
+        formaPagamentoId: p.formaPagamentoId || "",
+        status
+      });
     }
 
     closeContaPagarEditModal();
@@ -2562,6 +2674,12 @@ export function installComprasModule(ctx) {
         if (!p) return;
         if (field === "valor" || field === "valorPago") p[field] = Math.max(0, Number(t.value || 0));
         else p[field] = t.value;
+        // Se digitou valor pago e não tem data, assume hoje
+        if (field === "valorPago" && Number(p.valorPago || 0) > 0 && !p.dataPagamento) {
+          p.dataPagamento = formatDateInput(new Date());
+          const dateInput = row.querySelector('[data-cp-parcela-field="dataPagamento"]');
+          if (dateInput) dateInput.value = p.dataPagamento;
+        }
         renderContaPagarEditTotals();
       });
       e.contaPagarEditParcelasList.addEventListener("change", (ev) => {
@@ -2575,6 +2693,25 @@ export function installComprasModule(ctx) {
         const p = edit.parcelas[idx];
         if (!p) return;
         p[field] = t.value;
+
+        // Ao marcar como pago: preenche valor pago e data de pagamento
+        if (field === "status" && t.value === "pago") {
+          applyPagoDefaultsToParcela(p);
+          const valorInput = row.querySelector('[data-cp-parcela-field="valorPago"]');
+          const dateInput = row.querySelector('[data-cp-parcela-field="dataPagamento"]');
+          if (valorInput) valorInput.value = Number(p.valorPago || 0).toFixed(2);
+          if (dateInput) dateInput.value = p.dataPagamento || "";
+        }
+        if (field === "status" && (t.value === "pendente" || t.value === "cancelado")) {
+          if (t.value === "pendente") {
+            p.valorPago = 0;
+            p.dataPagamento = "";
+            const valorInput = row.querySelector('[data-cp-parcela-field="valorPago"]');
+            const dateInput = row.querySelector('[data-cp-parcela-field="dataPagamento"]');
+            if (valorInput) valorInput.value = "0.00";
+            if (dateInput) dateInput.value = "";
+          }
+        }
         renderContaPagarEditTotals();
       });
       e.contaPagarEditParcelasList.addEventListener("click", (ev) => {

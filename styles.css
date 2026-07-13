@@ -3278,6 +3278,14 @@ textarea:focus {
   }
 }
 
+/* Linha de parcela no modal de edição de título */
+.conta-pagar-parcela-row {
+  display: grid;
+  grid-template-columns: auto repeat(auto-fit, minmax(7.5rem, 1fr)) auto;
+  gap: 0.5rem 0.65rem;
+  align-items: end;
+}
+
 /* ===== Contas a Pagar (tabela principal) ===== */
 .contas-pagar-table-wrap {
   overflow-x: auto;
