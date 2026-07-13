@@ -1,5 +1,8 @@
+import { installComprasModule } from "./compras.js";
+
 let supabaseClient;
 let saasName = "LB ERP SaaS";
+let comprasModule = null;
 
 function isConfigUsable(config) {
   if (!config || !config.SUPABASE_URL || !config.SUPABASE_ANON_KEY) {
@@ -444,6 +447,55 @@ const els = {
   estoqueMovimentoSaldoInfo: document.getElementById("estoqueMovimentoSaldoInfo"),
   produtoEstoqueInput: document.getElementById("produtoEstoqueInput"),
   produtoEstoqueHint: document.getElementById("produtoEstoqueHint"),
+  // Compras
+  comprasSectionSubtitle: document.getElementById("comprasSectionSubtitle"),
+  comprasViewButtons: Array.from(document.querySelectorAll("[data-compras-view]")),
+  comprasNotasView: document.getElementById("comprasNotasView"),
+  comprasFornecedoresView: document.getElementById("comprasFornecedoresView"),
+  comprasPagarView: document.getElementById("comprasPagarView"),
+  comprasKpiNotas: document.getElementById("comprasKpiNotas"),
+  comprasKpiRascunho: document.getElementById("comprasKpiRascunho"),
+  comprasKpiMes: document.getElementById("comprasKpiMes"),
+  comprasKpiAberto: document.getElementById("comprasKpiAberto"),
+  comprasKpiVencidas: document.getElementById("comprasKpiVencidas"),
+  comprasKpiFornecedores: document.getElementById("comprasKpiFornecedores"),
+  comprasNotasTable: document.getElementById("comprasNotasTable"),
+  comprasFornecedoresTable: document.getElementById("comprasFornecedoresTable"),
+  comprasPagarTable: document.getElementById("comprasPagarTable"),
+  comprasNotaBusca: document.getElementById("comprasNotaBusca"),
+  comprasNotaStatus: document.getElementById("comprasNotaStatus"),
+  comprasFornBusca: document.getElementById("comprasFornBusca"),
+  comprasPagarBusca: document.getElementById("comprasPagarBusca"),
+  comprasPagarStatus: document.getElementById("comprasPagarStatus"),
+  openNotaEntradaBtn: document.getElementById("openNotaEntradaBtn"),
+  openFornecedorBtn: document.getElementById("openFornecedorBtn"),
+  fornecedorModal: document.getElementById("fornecedorModal"),
+  closeFornecedorModalBtn: document.getElementById("closeFornecedorModalBtn"),
+  fornecedorForm: document.getElementById("fornecedorForm"),
+  fornecedorModalTitle: document.getElementById("fornecedorModalTitle"),
+  notaEntradaModal: document.getElementById("notaEntradaModal"),
+  closeNotaEntradaModalBtn: document.getElementById("closeNotaEntradaModalBtn"),
+  notaEntradaModalTitle: document.getElementById("notaEntradaModalTitle"),
+  notaEntradaFornecedor: document.getElementById("notaEntradaFornecedor"),
+  notaEntradaNumero: document.getElementById("notaEntradaNumero"),
+  notaEntradaSerie: document.getElementById("notaEntradaSerie"),
+  notaEntradaChave: document.getElementById("notaEntradaChave"),
+  notaEntradaEmissao: document.getElementById("notaEntradaEmissao"),
+  notaEntradaData: document.getElementById("notaEntradaData"),
+  notaEntradaDesconto: document.getElementById("notaEntradaDesconto"),
+  notaEntradaFrete: document.getElementById("notaEntradaFrete"),
+  notaEntradaOutras: document.getElementById("notaEntradaOutras"),
+  notaEntradaParcelas: document.getElementById("notaEntradaParcelas"),
+  notaEntradaVenc: document.getElementById("notaEntradaVenc"),
+  notaEntradaIntervalo: document.getElementById("notaEntradaIntervalo"),
+  notaEntradaFormaPagamento: document.getElementById("notaEntradaFormaPagamento"),
+  notaEntradaObs: document.getElementById("notaEntradaObs"),
+  notaEntradaItensGrid: document.getElementById("notaEntradaItensGrid"),
+  notaEntradaAddItemBtn: document.getElementById("notaEntradaAddItemBtn"),
+  notaEntradaSubtotal: document.getElementById("notaEntradaSubtotal"),
+  notaEntradaTotal: document.getElementById("notaEntradaTotal"),
+  notaEntradaSaveBtn: document.getElementById("notaEntradaSaveBtn"),
+  notaEntradaLancarBtn: document.getElementById("notaEntradaLancarBtn"),
   orcamentoAbertoValue: document.getElementById("orcamentoAbertoValue"),
   refreshBtn: document.getElementById("refreshBtn"),
   changePasswordBtn: document.getElementById("changePasswordBtn"),
@@ -8013,7 +8065,29 @@ async function handleSession(session) {
   return handleSession._loadingPromise;
 }
 
+function initComprasModule() {
+  if (comprasModule) return comprasModule;
+  comprasModule = installComprasModule({
+    getState: () => state,
+    getEls: () => els,
+    getSupabase: () => supabaseClient,
+    helpers: {
+      moeda,
+      escapeHtml,
+      showToast,
+      formatDateInput,
+      registrarEstoqueMovimento,
+      ensureProdutosLoaded,
+      loadFormasPagamento
+    }
+  });
+  comprasModule.ensureStateDefaults();
+  comprasModule.attachComprasEvents();
+  return comprasModule;
+}
+
 function attachEvents() {
+  initComprasModule();
   els.refreshBtn.addEventListener("click", refreshAll);
   els.loginForm.addEventListener("submit", async (event) => {
     try {
@@ -8078,6 +8152,8 @@ function attachEvents() {
           renderProdutosTable();
         } else if (sectionName === "estoque") {
           await ensureEstoqueLoaded();
+        } else if (sectionName === "compras") {
+          if (comprasModule) await comprasModule.ensureComprasLoaded();
         } else if (sectionName === "orcamentos") {
           await ensureOrcamentosLoaded();
           renderOrcamentosTable();

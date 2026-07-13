@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712n" />
+    <link rel="stylesheet" href="styles.css?v=20260712o" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -51,6 +51,7 @@
         <button class="tab" data-section="clientes">Clientes</button>
         <button class="tab" data-section="pedidos">Pedidos</button>
         <button class="tab" data-section="financeiro">Contas a Receber</button>
+        <button class="tab" data-section="compras">Compras</button>
         <button class="tab" data-section="orcamentos">Orcamentos</button>
         <button class="tab" data-section="despesas">Despesas</button>
         <button class="tab" data-section="produtos">Produtos</button>
@@ -322,6 +323,121 @@
               </thead>
               <tbody id="orcamentosTable"></tbody>
             </table>
+          </div>
+        </section>
+
+        <section id="section-compras" class="card app-section hidden">
+          <div class="section-head">
+            <div>
+              <h2>Compras</h2>
+              <p id="comprasSectionSubtitle" class="section-subtitle">
+                Fornecedores, notas de entrada, estoque e contas a pagar.
+              </p>
+            </div>
+            <div class="pedidos-toolbar">
+              <div class="pedidos-view-toggle" role="tablist" aria-label="Visões de compras">
+                <button type="button" class="pedidos-view-toggle-btn active" data-compras-view="notas">Notas</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-compras-view="fornecedores">Fornecedores</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-compras-view="pagar">Contas a pagar</button>
+              </div>
+              <button id="openFornecedorBtn" class="btn btn-ghost" type="button">Novo fornecedor</button>
+              <button id="openNotaEntradaBtn" class="btn" type="button">Nova nota</button>
+            </div>
+          </div>
+
+          <div class="metric-grid relatorio-grid estoque-kpi-grid">
+            <article><span>Notas</span><strong id="comprasKpiNotas">0</strong></article>
+            <article><span>Rascunhos</span><strong id="comprasKpiRascunho">0</strong></article>
+            <article><span>Compras no mês</span><strong id="comprasKpiMes">R$ 0,00</strong></article>
+            <article><span>A pagar (aberto)</span><strong id="comprasKpiAberto">R$ 0,00</strong></article>
+            <article><span>Parcelas vencidas</span><strong id="comprasKpiVencidas">0</strong></article>
+            <article><span>Fornecedores ativos</span><strong id="comprasKpiFornecedores">0</strong></article>
+          </div>
+
+          <div id="comprasNotasView" class="compras-view">
+            <div class="estoque-filters">
+              <label>Buscar<input id="comprasNotaBusca" type="search" placeholder="NF ou fornecedor" /></label>
+              <label>Status
+                <select id="comprasNotaStatus">
+                  <option value="">Todos</option>
+                  <option value="rascunho">Rascunho</option>
+                  <option value="lancada">Lançada</option>
+                  <option value="cancelada">Cancelada</option>
+                </select>
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>NF</th>
+                    <th>Fornecedor</th>
+                    <th>Entrada</th>
+                    <th>Status</th>
+                    <th>Total</th>
+                    <th>Estoque</th>
+                    <th>Financeiro</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="comprasNotasTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="comprasFornecedoresView" class="compras-view hidden">
+            <div class="estoque-filters">
+              <label>Buscar<input id="comprasFornBusca" type="search" placeholder="Nome, CNPJ, cidade" /></label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Documento</th>
+                    <th>Telefone</th>
+                    <th>E-mail</th>
+                    <th>Cidade/UF</th>
+                    <th>Ativo</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="comprasFornecedoresTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="comprasPagarView" class="compras-view hidden">
+            <div class="estoque-filters">
+              <label>Buscar<input id="comprasPagarBusca" type="search" placeholder="Título ou fornecedor" /></label>
+              <label>Status
+                <select id="comprasPagarStatus">
+                  <option value="">Todos</option>
+                  <option value="pendente">Pendente</option>
+                  <option value="parcial">Parcial</option>
+                  <option value="pago">Pago</option>
+                  <option value="cancelado">Cancelado</option>
+                </select>
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Título</th>
+                    <th>Fornecedor</th>
+                    <th>Parc.</th>
+                    <th>Vencimento</th>
+                    <th>Valor</th>
+                    <th>Saldo</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="comprasPagarTable"></tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -1323,6 +1439,88 @@
       </div>
     </div>
 
+    <div id="fornecedorModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="fornecedorModalTitle">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="fornecedorModalTitle">Novo fornecedor</h3>
+            <p class="modal-subtitle">Cadastre quem vende para a empresa.</p>
+          </div>
+          <button id="closeFornecedorModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+        <form id="fornecedorForm" class="estoque-movimento-form">
+          <label>Nome<input name="nome" required placeholder="Razão social ou nome" /></label>
+          <label>CNPJ/CPF<input name="documento" placeholder="00.000.000/0000-00" /></label>
+          <label>Telefone<input name="telefone" /></label>
+          <label>E-mail<input name="email" type="email" /></label>
+          <label>Cidade<input name="cidade" /></label>
+          <label>UF<input name="uf" maxlength="2" placeholder="SP" /></label>
+          <label>Observações<textarea name="observacoes" rows="2"></textarea></label>
+          <label>Ativo
+            <select name="ativo">
+              <option value="sim">Sim</option>
+              <option value="nao">Não</option>
+            </select>
+          </label>
+          <div class="documento-modal-footer">
+            <button type="submit" class="btn">Salvar fornecedor</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="notaEntradaModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="notaEntradaModalTitle">
+      <div class="modal-card modal-produto-card modal-nota-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="notaEntradaModalTitle">Nova nota de entrada</h3>
+            <p class="modal-subtitle">Itens, frete, parcelas e, ao lançar, estoque + contas a pagar.</p>
+          </div>
+          <button id="closeNotaEntradaModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+        <div class="nota-entrada-form">
+          <div class="nota-entrada-grid">
+            <label>Fornecedor<select id="notaEntradaFornecedor" required></select></label>
+            <label>Nº NF<input id="notaEntradaNumero" placeholder="12345" /></label>
+            <label>Série<input id="notaEntradaSerie" placeholder="1" /></label>
+            <label>Chave de acesso<input id="notaEntradaChave" placeholder="44 dígitos (opcional)" /></label>
+            <label>Emissão<input id="notaEntradaEmissao" type="date" /></label>
+            <label>Entrada<input id="notaEntradaData" type="date" /></label>
+            <label>Desconto (R$)<input id="notaEntradaDesconto" type="number" min="0" step="0.01" value="0" /></label>
+            <label>Frete (R$)<input id="notaEntradaFrete" type="number" min="0" step="0.01" value="0" /></label>
+            <label>Outras despesas (R$)<input id="notaEntradaOutras" type="number" min="0" step="0.01" value="0" /></label>
+            <label>Parcelas<input id="notaEntradaParcelas" type="number" min="1" step="1" value="1" /></label>
+            <label>1º vencimento<input id="notaEntradaVenc" type="date" /></label>
+            <label>Intervalo (dias)<input id="notaEntradaIntervalo" type="number" min="1" step="1" value="30" /></label>
+            <label>Forma de pagamento<select id="notaEntradaFormaPagamento"></select></label>
+            <label class="nota-entrada-full">Observações<textarea id="notaEntradaObs" rows="2"></textarea></label>
+          </div>
+
+          <div class="documento-items-panel-head" style="margin-top: 1rem">
+            <div>
+              <h4>Itens da nota</h4>
+              <span class="documento-items-hint">Marque Estoque e Custo para atualizar o catálogo ao lançar.</span>
+            </div>
+            <button id="notaEntradaAddItemBtn" class="btn btn-ghost" type="button">+ Item</button>
+          </div>
+          <div id="notaEntradaItensGrid" class="nota-itens-grid"></div>
+
+          <div class="documento-modal-footer" style="margin-top: 1rem">
+            <div>
+              <span class="summary-label">Produtos</span>
+              <strong id="notaEntradaSubtotal">R$ 0,00</strong>
+              <span class="summary-label" style="margin-left: 1rem">Total</span>
+              <strong id="notaEntradaTotal">R$ 0,00</strong>
+            </div>
+            <div class="estoque-actions">
+              <button id="notaEntradaSaveBtn" type="button" class="btn btn-ghost">Salvar rascunho</button>
+              <button id="notaEntradaLancarBtn" type="button" class="btn">Salvar e lançar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="estoqueMovimentoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="estoqueMovimentoModalTitle">
       <div class="modal-card">
         <div class="modal-head">
@@ -1398,6 +1596,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260712n"></script>
+    <script type="module" src="app.js?v=20260712o"></script>
   </body>
 </html>
