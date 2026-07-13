@@ -188,48 +188,57 @@ h3 {
   max-width: 62ch;
 }
 
-/* Header de Pedidos: botões em posições estáveis (não “pulam” ao trocar a visão) */
+/*
+  Header de Pedidos em grid fixo:
+  [ título .......... | De/Até + Novo Pedido ]
+  [ Pedidos | Produtos | Sintético | Analítico ]
+  Datas ficam SEMPRE na linha de cima com o botão Novo Pedido.
+*/
 .pedidos-section-header {
   display: grid;
-  gap: 0.85rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title actions"
+    "nav nav";
+  gap: 0.75rem 1rem;
+  align-items: start;
   min-width: 0;
-}
-
-.pedidos-section-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.85rem;
-  flex-wrap: wrap;
 }
 
 .pedidos-section-title {
+  grid-area: title;
   min-width: 0;
-  flex: 1 1 14rem;
 }
 
 .pedidos-section-actions {
+  grid-area: actions;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: flex-end;
-  gap: 0.65rem;
-  flex: 0 1 auto;
+  gap: 0.55rem 0.65rem;
   min-width: 0;
 }
 
 .pedidos-new-btn {
   flex: 0 0 auto;
   white-space: nowrap;
+  align-self: flex-end;
 }
 
 .pedidos-nav {
+  grid-area: nav;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
   gap: 0.55rem;
   min-width: 0;
+}
+
+/* compat: se ainda existir wrapper antigo no cache */
+.pedidos-section-top {
+  display: contents;
 }
 
 .pedidos-toolbar {
@@ -1373,9 +1382,12 @@ table thead input {
 }
 
 @media (max-width: 720px) {
-  .pedidos-section-top {
-    flex-direction: column;
-    align-items: stretch;
+  .pedidos-section-header {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "title"
+      "actions"
+      "nav";
   }
 
   .pedidos-section-actions {
@@ -1392,7 +1404,6 @@ table thead input {
     gap: 0.45rem;
   }
 
-  /* No mobile o pill principal ocupa a linha, mas só o necessário dos 2 botões */
   .pedidos-view-toggle--main {
     width: 100%;
     max-width: 100%;
