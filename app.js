@@ -140,6 +140,7 @@ const state = {
   pedidosFaturamentoTotal: 0,
   pedidosSearchMode: false,
   pedidosSearchLoading: false,
+  novoDocumentoSaving: false,
   clientesLoaded: false,
   produtosLoaded: false,
   contasReceberLoaded: false,
@@ -3790,153 +3791,180 @@ function generateDocumentoOrcamentoPdf() {
 
 async function saveNovoDocumento(event) {
   event.preventDefault();
-  const draft = state.novoDocumentoModal;
-  const isEdit = Boolean(draft.documentoId);
-  const formData = new FormData(els.novoDocumentoForm);
-  const clienteIdRaw = Number(formData.get("cliente_id"));
-  const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
-  const status = String(formData.get("status") || draft.status || "aberto");
-  const observacoes = String(formData.get("observacoes") || "").trim();
-  const dataEmissaoInput = String(formData.get("data_emissao") || draft.dataEmissao || "").trim();
-  const itens = getDocumentoItensPayload();
-  const pagamentoState = getNovoDocumentoPagamentoState();
+  // Trava sincrona: clique duplo / Enter repetido nao pode abrir 2 inserts em paralelo.
+  if (state.novoDocumentoSaving) return;
+  state.novoDocumentoSaving = true;
 
-  if (!itens.length) {
-    throw new Error("Adicione ao menos um item antes de salvar.");
+  const submitBtn = els.novoDocumentoSubmitBtn;
+  const submitLabelOriginal = submitBtn?.textContent || "Salvar";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Salvando...";
   }
 
-  const dataEmissaoIso = dataEmissaoInput
-    ? new Date(`${dataEmissaoInput}T12:00:00`).toISOString()
-    : new Date().toISOString();
+  try {
+    const draft = state.novoDocumentoModal;
+    const isEdit = Boolean(draft.documentoId);
+    const formData = new FormData(els.novoDocumentoForm);
+    const clienteIdRaw = Number(formData.get("cliente_id"));
+    const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
+    const status = String(formData.get("status") || draft.status || "aberto");
+    const observacoes = String(formData.get("observacoes") || "").trim();
+    const dataEmissaoInput = String(formData.get("data_emissao") || draft.dataEmissao || "").trim();
+    const itens = getDocumentoItensPayload();
+    const pagamentoState = getNovoDocumentoPagamentoState();
 
-  const subtotal = itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
-  const rawPayloadBase = draft.rawPayloadBase && typeof draft.rawPayloadBase === "object"
-    ? { ...draft.rawPayloadBase }
-    : {};
-  const rawPayload = {
-    ...rawPayloadBase,
-    source: "novo-documento-modal",
-    itens: itens.length,
-    pagamento: pagamentoState
-  };
-  // Snapshot da calculadora (historico da decisao comercial no pedido/orcamento).
-  if (draft.precoFormacaoAplicada) {
-    rawPayload.preco_formacao = draft.precoFormacaoAplicada;
-  }
-  // Preserva foto legada se so temos a URL resolvida no draft.
-  if (!rawPayload.foto_url && draft.fotoUrl) {
-    rawPayload.foto_url = draft.fotoUrl;
-  }
+    if (!itens.length) {
+      throw new Error("Adicione ao menos um item antes de salvar.");
+    }
 
-  const documentoPayload = {
-    empresa_id: state.empresaId,
-    tipo_documento: draft.tipo,
-    origem: "manual",
-    cliente_id: clienteId,
-    status,
-    subtotal,
-    desconto: 0,
-    total: subtotal,
-    observacoes: observacoes || null,
-    raw_payload: rawPayload,
-    data_emissao: dataEmissaoIso
-  };
+    const dataEmissaoIso = dataEmissaoInput
+      ? new Date(`${dataEmissaoInput}T12:00:00`).toISOString()
+      : new Date().toISOString();
 
-  let documentoId = draft.documentoId;
-
-  if (documentoId) {
-    const { error: documentoUpdateError } = await supabaseClient
-      .from("documentos_venda")
-      .update(documentoPayload)
-      .eq("empresa_id", state.empresaId)
-      .eq("id", documentoId)
-      .eq("tipo_documento", draft.tipo);
-
-    if (documentoUpdateError) throw documentoUpdateError;
-
-    const { error: deleteItensError } = await supabaseClient
-      .from("documento_venda_itens")
-      .delete()
-      .eq("empresa_id", state.empresaId)
-      .eq("documento_id", documentoId);
-
-    if (deleteItensError) throw deleteItensError;
-  } else {
-    const { data: documentoCriado, error: documentoError } = await supabaseClient
-      .from("documentos_venda")
-      .insert(documentoPayload)
-      .select("id")
-      .single();
-
-    if (documentoError) throw documentoError;
-    documentoId = documentoCriado.id;
-  }
-
-  const itensPayload = itens.map((item) => ({
-    empresa_id: state.empresaId,
-    documento_id: documentoId,
-    produto_id: item.produtoId,
-    descricao_item: item.descricao,
-    quantidade: item.quantidade,
-    valor_unitario: item.valorUnitario,
-    valor_total: item.quantidade * item.valorUnitario,
-    raw_payload: {
+    const subtotal = itens.reduce((sum, item) => sum + Number(item.quantidade || 0) * Number(item.valorUnitario || 0), 0);
+    const rawPayloadBase = draft.rawPayloadBase && typeof draft.rawPayloadBase === "object"
+      ? { ...draft.rawPayloadBase }
+      : {};
+    const rawPayload = {
+      ...rawPayloadBase,
       source: "novo-documento-modal",
-      produto_id: item.produtoId,
-      descricao: item.descricao
+      itens: itens.length,
+      pagamento: pagamentoState
+    };
+    // Snapshot da calculadora (historico da decisao comercial no pedido/orcamento).
+    if (draft.precoFormacaoAplicada) {
+      rawPayload.preco_formacao = draft.precoFormacaoAplicada;
     }
-  }));
-
-  const { error: itensError } = await supabaseClient.from("documento_venda_itens").insert(itensPayload);
-  if (itensError) throw itensError;
-
-  const parcelasEditadas = Array.isArray(draft.parcelasEditadas) && draft.parcelasEditadas.length
-    ? draft.parcelasEditadas
-    : null;
-
-  if (!isEdit) {
-    try {
-      await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
-    } catch (financeError) {
-      await supabaseClient.from("documento_venda_itens").delete().eq("empresa_id", state.empresaId).eq("documento_id", documentoId);
-      await supabaseClient.from("documentos_venda").delete().eq("empresa_id", state.empresaId).eq("id", documentoId);
-      throw financeError;
+    // Preserva foto legada se so temos a URL resolvida no draft.
+    if (!rawPayload.foto_url && draft.fotoUrl) {
+      rawPayload.foto_url = draft.fotoUrl;
     }
-  } else if (parcelasEditadas) {
-    const snapshotOriginal = draft.parcelasOriginaisSnapshot || null;
-    const snapshotAtual = JSON.stringify(parcelasEditadas);
-    if (snapshotOriginal && snapshotOriginal === snapshotAtual) {
-      // Parcelas nao foram alteradas nesta edicao, mantem o financeiro atual.
+
+    const documentoPayload = {
+      empresa_id: state.empresaId,
+      tipo_documento: draft.tipo,
+      origem: "manual",
+      cliente_id: clienteId,
+      status,
+      subtotal,
+      desconto: 0,
+      total: subtotal,
+      observacoes: observacoes || null,
+      raw_payload: rawPayload,
+      data_emissao: dataEmissaoIso
+    };
+
+    let documentoId = draft.documentoId;
+
+    if (documentoId) {
+      const { error: documentoUpdateError } = await supabaseClient
+        .from("documentos_venda")
+        .update(documentoPayload)
+        .eq("empresa_id", state.empresaId)
+        .eq("id", documentoId)
+        .eq("tipo_documento", draft.tipo);
+
+      if (documentoUpdateError) throw documentoUpdateError;
+
+      const { error: deleteItensError } = await supabaseClient
+        .from("documento_venda_itens")
+        .delete()
+        .eq("empresa_id", state.empresaId)
+        .eq("documento_id", documentoId);
+
+      if (deleteItensError) throw deleteItensError;
     } else {
-      const confirmar = window.confirm(
-        "Voce editou as parcelas deste pedido.\n\nAo salvar, as parcelas e recebimentos anteriores deste pedido serao SUBSTITUIDOS pelos novos titulos. Deseja continuar?"
-      );
-      if (!confirmar) {
-        throw new Error("Salvamento cancelado pelo usuario.");
+      const { data: documentoCriado, error: documentoError } = await supabaseClient
+        .from("documentos_venda")
+        .insert(documentoPayload)
+        .select("id")
+        .single();
+
+      if (documentoError) throw documentoError;
+      documentoId = documentoCriado.id;
+      // Marca cedo no draft para qualquer reentrada nao criar outro documento.
+      draft.documentoId = documentoId;
+    }
+
+    const itensPayload = itens.map((item) => ({
+      empresa_id: state.empresaId,
+      documento_id: documentoId,
+      produto_id: item.produtoId,
+      descricao_item: item.descricao,
+      quantidade: item.quantidade,
+      valor_unitario: item.valorUnitario,
+      valor_total: item.quantidade * item.valorUnitario,
+      raw_payload: {
+        source: "novo-documento-modal",
+        produto_id: item.produtoId,
+        descricao: item.descricao
       }
-      // Apaga o financeiro anterior e recria com os novos titulos.
-      await deleteDocumentoFinanceiro(documentoId);
-      await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
+    }));
+
+    const { error: itensError } = await supabaseClient.from("documento_venda_itens").insert(itensPayload);
+    if (itensError) throw itensError;
+
+    const parcelasEditadas = Array.isArray(draft.parcelasEditadas) && draft.parcelasEditadas.length
+      ? draft.parcelasEditadas
+      : null;
+
+    if (!isEdit) {
+      try {
+        await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
+      } catch (financeError) {
+        await supabaseClient.from("documento_venda_itens").delete().eq("empresa_id", state.empresaId).eq("documento_id", documentoId);
+        await supabaseClient.from("documentos_venda").delete().eq("empresa_id", state.empresaId).eq("id", documentoId);
+        draft.documentoId = null;
+        throw financeError;
+      }
+    } else if (parcelasEditadas) {
+      const snapshotOriginal = draft.parcelasOriginaisSnapshot || null;
+      const snapshotAtual = JSON.stringify(parcelasEditadas);
+      if (snapshotOriginal && snapshotOriginal === snapshotAtual) {
+        // Parcelas nao foram alteradas nesta edicao, mantem o financeiro atual.
+      } else {
+        const confirmar = window.confirm(
+          "Voce editou as parcelas deste pedido.\n\nAo salvar, as parcelas e recebimentos anteriores deste pedido serao SUBSTITUIDOS pelos novos titulos. Deseja continuar?"
+        );
+        if (!confirmar) {
+          throw new Error("Salvamento cancelado pelo usuario.");
+        }
+        // Apaga o financeiro anterior e recria com os novos titulos.
+        await deleteDocumentoFinanceiro(documentoId);
+        await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
+      }
+    }
+
+    // Baixa/estorno de estoque para pedidos (status fechado/cancelado/reaberto).
+    if (draft.tipo === "pedido") {
+      try {
+        await syncEstoquePedido(documentoId, status, itens);
+      } catch (estoqueError) {
+        console.error("Falha ao sincronizar estoque do pedido", estoqueError);
+        showToast(`Pedido salvo, mas estoque falhou: ${estoqueError.message}`, "error");
+      }
+    }
+
+    closeNovoDocumentoModal();
+    state.novoDocumentoModal = createDocumentoDraft("pedido");
+    if (els.novoDocumentoClienteSearch) {
+      els.novoDocumentoClienteSearch.value = "";
+    }
+    showToast(draft.tipo === "orcamento" ? (isEdit ? "Orcamento atualizado" : "Orcamento salvo") : (isEdit ? "Pedido atualizado" : "Pedido salvo"));
+    await refreshAll();
+  } finally {
+    state.novoDocumentoSaving = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      if (els.novoDocumentoModal && !els.novoDocumentoModal.classList.contains("hidden")) {
+        const config = getDocumentoModalConfig(state.novoDocumentoModal.tipo);
+        submitBtn.textContent = config?.submitLabel || submitLabelOriginal;
+      } else {
+        submitBtn.textContent = submitLabelOriginal;
+      }
     }
   }
-
-  // Baixa/estorno de estoque para pedidos (status fechado/cancelado/reaberto).
-  if (draft.tipo === "pedido") {
-    try {
-      await syncEstoquePedido(documentoId, status, itens);
-    } catch (estoqueError) {
-      console.error("Falha ao sincronizar estoque do pedido", estoqueError);
-      showToast(`Pedido salvo, mas estoque falhou: ${estoqueError.message}`, "error");
-    }
-  }
-
-  closeNovoDocumentoModal();
-  state.novoDocumentoModal = createDocumentoDraft("pedido");
-  if (els.novoDocumentoClienteSearch) {
-    els.novoDocumentoClienteSearch.value = "";
-  }
-  showToast(draft.tipo === "orcamento" ? (isEdit ? "Orcamento atualizado" : "Orcamento salvo") : (isEdit ? "Pedido atualizado" : "Pedido salvo"));
-  await refreshAll();
 }
 
 async function saveNovoClienteRapido(event) {
