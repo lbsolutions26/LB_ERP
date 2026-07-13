@@ -2799,3 +2799,10 @@ textarea:focus {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+tr.is-clickable-row {
+  cursor: pointer;
+}
+tr.is-clickable-row:hover {
+  background: #f7f3ea;
+}

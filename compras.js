@@ -97,9 +97,18 @@ export function installComprasModule(ctx) {
     return rows;
   }
 
-  function renderParcelasIntoTable(tableEl, rows, { showOrigem = true } = {}) {
+  function formatEmissaoDisplay(value) {
+    if (!value) return "–";
+    try {
+      return formatDateInput(new Date(value));
+    } catch (_e) {
+      return String(value).slice(0, 10);
+    }
+  }
+
+  function renderParcelasIntoTable(tableEl, rows, { showOrigem = true, showEmissao = false } = {}) {
     if (!tableEl) return;
-    const colSpan = showOrigem ? 9 : 8;
+    const colSpan = 8 + (showOrigem ? 1 : 0) + (showEmissao ? 1 : 0);
     if (!rows.length) {
       tableEl.innerHTML = `<tr><td colspan="${colSpan}">Nenhuma parcela a pagar.</td></tr>`;
       return;
@@ -117,19 +126,21 @@ export function installComprasModule(ctx) {
           (r.conta?.origem === "despesa_manual" ? r.conta?.observacoes || r.conta?.numero_titulo : null) ||
           "–";
         return `
-        <tr>
+        <tr class="is-clickable-row" data-edit-conta-pagar="${r.conta_pagar_id}" title="Clique para editar o título">
           <td>${escapeHtml(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`)}</td>
           <td>${escapeHtml(fornecedorTxt)}</td>
           ${showOrigem ? `<td>${escapeHtml(origemLabel(r.conta?.origem))}</td>` : ""}
+          ${showEmissao ? `<td>${escapeHtml(formatEmissaoDisplay(r.conta?.emissao))}</td>` : ""}
           <td>${escapeHtml(r.numero_parcela)}</td>
           <td>${escapeHtml(r.vencimento || "–")}${vencida ? ' <span class="estoque-status estoque-status--zerado">vencida</span>' : ""}</td>
           <td>${moeda.format(r.valor_parcela || 0)}</td>
           <td>${moeda.format(saldo)}</td>
           <td><span class="estoque-status ${r.status === "pago" ? "estoque-status--ok" : "estoque-status--reposicao"}">${escapeHtml(r.status)}</span></td>
-          <td class="estoque-actions">
+          <td class="estoque-actions" data-stop-row-edit="1">
+            <button type="button" class="btn btn-ghost" data-edit-conta-pagar="${r.conta_pagar_id}">Editar</button>
             ${r.status !== "pago" && r.status !== "cancelado"
               ? `<button type="button" class="btn" data-pagar-parcela="${r.id}">Pagar</button>`
-              : "–"}
+              : ""}
           </td>
         </tr>`;
       })
@@ -619,7 +630,7 @@ export function installComprasModule(ctx) {
       status: state().compras.filters.pagarStatus,
       onlyNota: true
     });
-    renderParcelasIntoTable(e.comprasPagarTable, rowsCompras, { showOrigem: true });
+    renderParcelasIntoTable(e.comprasPagarTable, rowsCompras, { showOrigem: true, showEmissao: false });
 
     // Caixa único: aba Contas a Pagar
     const rowsDespesas = getParcelasPagarRows({
@@ -627,7 +638,7 @@ export function installComprasModule(ctx) {
       status: state().compras.filters.despesasStatus,
       origem: state().compras.filters.despesasOrigem
     });
-    renderParcelasIntoTable(e.despesasPagarTable, rowsDespesas, { showOrigem: true });
+    renderParcelasIntoTable(e.despesasPagarTable, rowsDespesas, { showOrigem: true, showEmissao: true });
     renderDespesasKpis();
   }
 
@@ -652,8 +663,11 @@ export function installComprasModule(ctx) {
     e.despesaForm.reset();
     fillFornecedorSelect(e.despesaFornecedorSelect, "", "Sem fornecedor / avulso");
     fillFormaPagamentoSelect(e.despesaFormaPagamento, "");
+    const hoje = formatDateInput(new Date());
+    const emissao = e.despesaForm.elements.namedItem("emissao");
+    if (emissao && "value" in emissao) emissao.value = hoje;
     const venc = e.despesaForm.elements.namedItem("vencimento");
-    if (venc && "value" in venc) venc.value = formatDateInput(new Date());
+    if (venc && "value" in venc) venc.value = hoje;
     const parc = e.despesaForm.elements.namedItem("parcelas");
     if (parc && "value" in parc) parc.value = "1";
     const intervalo = e.despesaForm.elements.namedItem("intervalo_dias");
@@ -675,6 +689,7 @@ export function installComprasModule(ctx) {
     const nParcelas = Math.max(1, Math.trunc(Number(formData.get("parcelas") || 1)));
     const intervalo = Math.max(1, Math.trunc(Number(formData.get("intervalo_dias") || 30)));
     const vencimento = String(formData.get("vencimento") || "").trim();
+    const emissao = String(formData.get("emissao") || "").trim() || formatDateInput(new Date());
     const fornecedorId = String(formData.get("fornecedor_id") || "").trim();
     const formaId = String(formData.get("forma_pagamento_id") || "").trim();
     const categoria = String(formData.get("categoria") || "").trim();
@@ -701,7 +716,7 @@ export function installComprasModule(ctx) {
         fornecedor_id: fornecedorId ? Number(fornecedorId) : null,
         origem: "despesa_manual",
         numero_titulo: `DESP-${Date.now().toString().slice(-8)}`,
-        emissao: new Date().toISOString(),
+        emissao: new Date(`${emissao}T12:00:00`).toISOString(),
         valor_original: Number(valor.toFixed(2)),
         valor_aberto: jaPago ? 0 : Number(valor.toFixed(2)),
         status: jaPago ? "pago" : "aberto",
@@ -753,6 +768,328 @@ export function installComprasModule(ctx) {
     state().compras.loaded = false;
     await ensureComprasLoaded({ force: true });
     showToast(`Despesa ${conta.numero_titulo} lançada em Contas a Pagar`);
+  }
+
+  /* ---------- Editar / excluir conta a pagar ---------- */
+
+  function ensureContaPagarEditState() {
+    if (!state().contaPagarEdit) {
+      state().contaPagarEdit = { contaId: null, parcelas: [], removedIds: [] };
+    }
+    return state().contaPagarEdit;
+  }
+
+  function closeContaPagarEditModal() {
+    const e = els();
+    if (e.contaPagarEditModal) e.contaPagarEditModal.classList.add("hidden");
+    state().contaPagarEdit = { contaId: null, parcelas: [], removedIds: [] };
+  }
+
+  function renderContaPagarEditTotals() {
+    const e = els();
+    const edit = ensureContaPagarEditState();
+    const total = (edit.parcelas || []).reduce((s, p) => s + Number(p.valor || 0), 0);
+    const pago = (edit.parcelas || []).reduce((s, p) => s + Number(p.valorPago || 0), 0);
+    if (e.contaPagarEditTotals) {
+      e.contaPagarEditTotals.textContent = `${edit.parcelas.length} parcela(s) • total ${moeda.format(total)} • pago ${moeda.format(pago)} • saldo ${moeda.format(Math.max(0, total - pago))}`;
+    }
+  }
+
+  function renderContaPagarEditParcelas() {
+    const e = els();
+    if (!e.contaPagarEditParcelasList) return;
+    const edit = ensureContaPagarEditState();
+    const formasHtml = ['<option value="">Selecione</option>'];
+    for (const forma of state().formasPagamento || []) {
+      formasHtml.push(`<option value="${forma.id}">${escapeHtml(forma.nome)}</option>`);
+    }
+
+    e.contaPagarEditParcelasList.innerHTML = (edit.parcelas || [])
+      .map(
+        (p, index) => `
+      <div class="documento-payment-parcela-row" data-cp-parcela-index="${index}">
+        <div class="parcela-numero">#${p.numero || index + 1}</div>
+        <label>Vencimento
+          <input type="date" data-cp-parcela-field="vencimento" value="${escapeHtml(p.vencimento || "")}" />
+        </label>
+        <label>Valor
+          <input type="number" min="0" step="0.01" data-cp-parcela-field="valor" value="${Number(p.valor || 0).toFixed(2)}" />
+        </label>
+        <label>Valor pago
+          <input type="number" min="0" step="0.01" data-cp-parcela-field="valorPago" value="${Number(p.valorPago || 0).toFixed(2)}" />
+        </label>
+        <label>Forma
+          <select data-cp-parcela-field="formaPagamentoId">${formasHtml.join("")}</select>
+        </label>
+        <label>Status
+          <select data-cp-parcela-field="status">
+            <option value="pendente">Pendente</option>
+            <option value="parcial">Parcial</option>
+            <option value="pago">Pago</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+        </label>
+        <button type="button" class="btn btn-ghost" data-remove-cp-parcela="${index}" ${edit.parcelas.length <= 1 ? "disabled" : ""}>Remover</button>
+      </div>`
+      )
+      .join("");
+
+    e.contaPagarEditParcelasList.querySelectorAll("[data-cp-parcela-index]").forEach((row) => {
+      const idx = Number(row.getAttribute("data-cp-parcela-index"));
+      const p = edit.parcelas[idx];
+      if (!p) return;
+      const forma = row.querySelector('[data-cp-parcela-field="formaPagamentoId"]');
+      if (forma) forma.value = p.formaPagamentoId || "";
+      const status = row.querySelector('[data-cp-parcela-field="status"]');
+      if (status) status.value = p.status || "pendente";
+    });
+
+    renderContaPagarEditTotals();
+  }
+
+  async function openContaPagarEditModal(contaId) {
+    ensureStateDefaults();
+    const e = els();
+    if (!e.contaPagarEditModal) return;
+
+    await ensureComprasLoaded();
+
+    const { data: conta, error } = await sb()
+      .from("contas_pagar")
+      .select(
+        "id, nota_entrada_id, fornecedor_id, origem, numero_titulo, emissao, valor_original, valor_aberto, status, observacoes, fornecedor:fornecedores(id, nome)"
+      )
+      .eq("empresa_id", state().empresaId)
+      .eq("id", contaId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!conta) throw new Error("Título não encontrado");
+
+    const { data: parcelas, error: pErr } = await sb()
+      .from("contas_pagar_parcelas")
+      .select("id, numero_parcela, vencimento, valor_parcela, valor_pago, status, forma_pagamento_id, observacoes")
+      .eq("empresa_id", state().empresaId)
+      .eq("conta_pagar_id", contaId)
+      .order("numero_parcela", { ascending: true });
+    if (pErr) throw pErr;
+
+    const edit = ensureContaPagarEditState();
+    edit.contaId = conta.id;
+    edit.origem = conta.origem;
+    edit.notaEntradaId = conta.nota_entrada_id;
+    edit.removedIds = [];
+    edit.parcelas = (parcelas || []).map((p) => ({
+      id: p.id,
+      numero: p.numero_parcela,
+      vencimento: p.vencimento || "",
+      valor: Number(p.valor_parcela || 0),
+      valorPago: Number(p.valor_pago || 0),
+      status: p.status || "pendente",
+      formaPagamentoId: p.forma_pagamento_id ? String(p.forma_pagamento_id) : "",
+      observacoes: p.observacoes || ""
+    }));
+    if (!edit.parcelas.length) {
+      edit.parcelas = [
+        {
+          id: null,
+          numero: 1,
+          vencimento: formatDateInput(new Date()),
+          valor: Number(conta.valor_original || 0),
+          valorPago: 0,
+          status: "pendente",
+          formaPagamentoId: "",
+          observacoes: ""
+        }
+      ];
+    }
+
+    if (e.contaPagarEditId) e.contaPagarEditId.value = String(conta.id);
+    if (e.contaPagarEditTitulo) e.contaPagarEditTitulo.value = conta.numero_titulo || `CP-${conta.id}`;
+    fillFornecedorSelect(e.contaPagarEditFornecedor, conta.fornecedor_id || "", "Sem fornecedor / avulso");
+    if (e.contaPagarEditEmissao) {
+      e.contaPagarEditEmissao.value = conta.emissao
+        ? formatDateInput(new Date(conta.emissao))
+        : formatDateInput(new Date());
+    }
+    if (e.contaPagarEditOrigem) e.contaPagarEditOrigem.value = origemLabel(conta.origem);
+    if (e.contaPagarEditObs) e.contaPagarEditObs.value = conta.observacoes || "";
+    if (e.contaPagarEditModalTitle) {
+      e.contaPagarEditModalTitle.textContent = `Editar ${conta.numero_titulo || `CP-${conta.id}`}`;
+    }
+    if (e.contaPagarEditModalSubtitle) {
+      e.contaPagarEditModalSubtitle.textContent =
+        conta.origem === "nota_entrada"
+          ? "Título de NF de compra — emissão e parcelas editáveis."
+          : "Despesa / título manual — emissão e parcelas editáveis.";
+    }
+
+    renderContaPagarEditParcelas();
+    e.contaPagarEditModal.classList.remove("hidden");
+  }
+
+  function addContaPagarEditParcela() {
+    const edit = ensureContaPagarEditState();
+    const last = edit.parcelas[edit.parcelas.length - 1];
+    edit.parcelas.push({
+      id: null,
+      numero: edit.parcelas.length + 1,
+      vencimento: addDaysYmd(last?.vencimento || formatDateInput(new Date()), 30),
+      valor: 0,
+      valorPago: 0,
+      status: "pendente",
+      formaPagamentoId: last?.formaPagamentoId || "",
+      observacoes: ""
+    });
+    renderContaPagarEditParcelas();
+  }
+
+  function removeContaPagarEditParcela(index) {
+    const edit = ensureContaPagarEditState();
+    if (edit.parcelas.length <= 1) return;
+    const [removed] = edit.parcelas.splice(index, 1);
+    if (removed?.id) edit.removedIds.push(removed.id);
+    edit.parcelas.forEach((p, i) => {
+      p.numero = i + 1;
+    });
+    renderContaPagarEditParcelas();
+  }
+
+  async function saveContaPagarEdit(event) {
+    event.preventDefault();
+    const e = els();
+    const edit = ensureContaPagarEditState();
+    if (!edit.contaId) throw new Error("Título não carregado");
+
+    const titulo = String(e.contaPagarEditTitulo?.value || "").trim();
+    const emissao = String(e.contaPagarEditEmissao?.value || "").trim();
+    const fornecedorId = String(e.contaPagarEditFornecedor?.value || "").trim();
+    const obs = String(e.contaPagarEditObs?.value || "").trim();
+    if (!titulo) throw new Error("Informe o título.");
+    if (!emissao) throw new Error("Informe a data de emissão.");
+    if (!edit.parcelas.length) throw new Error("Informe ao menos uma parcela.");
+
+    for (const p of edit.parcelas) {
+      if (!p.vencimento) throw new Error("Todas as parcelas precisam de vencimento.");
+      if (!(Number(p.valor) >= 0)) throw new Error("Valor de parcela inválido.");
+      if (Number(p.valorPago || 0) - Number(p.valor || 0) > 0.009) {
+        throw new Error("Valor pago não pode ser maior que o valor da parcela.");
+      }
+    }
+
+    const total = edit.parcelas.reduce((s, p) => s + Number(p.valor || 0), 0);
+    const pago = edit.parcelas.reduce((s, p) => s + Number(p.valorPago || 0), 0);
+    const aberto = Math.max(0, total - pago);
+    let statusConta = "aberto";
+    if (aberto <= 0.009) statusConta = "pago";
+    else if (pago > 0) statusConta = "parcial";
+    if (edit.parcelas.every((p) => p.status === "cancelado")) statusConta = "cancelado";
+
+    const { error: updContaErr } = await sb()
+      .from("contas_pagar")
+      .update({
+        numero_titulo: titulo,
+        fornecedor_id: fornecedorId ? Number(fornecedorId) : null,
+        emissao: new Date(`${emissao}T12:00:00`).toISOString(),
+        valor_original: Number(total.toFixed(2)),
+        valor_aberto: Number(aberto.toFixed(2)),
+        status: statusConta,
+        observacoes: obs || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", edit.contaId)
+      .eq("empresa_id", state().empresaId);
+    if (updContaErr) throw updContaErr;
+
+    // Remove parcelas marcadas
+    for (const id of edit.removedIds || []) {
+      await sb().from("pagamentos").delete().eq("empresa_id", state().empresaId).eq("parcela_id", id);
+      await sb()
+        .from("contas_pagar_parcelas")
+        .delete()
+        .eq("empresa_id", state().empresaId)
+        .eq("id", id);
+    }
+
+    for (let i = 0; i < edit.parcelas.length; i += 1) {
+      const p = edit.parcelas[i];
+      const payload = {
+        empresa_id: state().empresaId,
+        conta_pagar_id: edit.contaId,
+        numero_parcela: i + 1,
+        vencimento: p.vencimento || null,
+        valor_parcela: Number(Number(p.valor || 0).toFixed(2)),
+        valor_pago: Number(Number(p.valorPago || 0).toFixed(2)),
+        status: p.status || "pendente",
+        forma_pagamento_id: p.formaPagamentoId ? Number(p.formaPagamentoId) : null,
+        observacoes: p.observacoes || null
+      };
+
+      // Normaliza status pela quitação
+      if (payload.valor_pago + 0.009 >= payload.valor_parcela && payload.valor_parcela > 0) {
+        payload.status = "pago";
+        payload.valor_pago = payload.valor_parcela;
+      } else if (payload.valor_pago > 0 && payload.status !== "cancelado") {
+        payload.status = "parcial";
+      }
+
+      if (p.id) {
+        const { error } = await sb()
+          .from("contas_pagar_parcelas")
+          .update(payload)
+          .eq("id", p.id)
+          .eq("empresa_id", state().empresaId);
+        if (error) throw error;
+      } else {
+        const { error } = await sb().from("contas_pagar_parcelas").insert(payload);
+        if (error) throw error;
+      }
+    }
+
+    closeContaPagarEditModal();
+    state().compras.loaded = false;
+    await ensureComprasLoaded({ force: true });
+    showToast("Título atualizado");
+  }
+
+  async function deleteContaPagarEdit() {
+    const edit = ensureContaPagarEditState();
+    if (!edit.contaId) return;
+
+    const msg =
+      edit.origem === "nota_entrada"
+        ? "Excluir este título gerado por NF?\n\nAs parcelas e pagamentos serão removidos. A NF em si permanece (você pode cancelá-la em Compras se quiser estornar estoque)."
+        : "Excluir este título e todas as parcelas/pagamentos?";
+    if (!window.confirm(msg)) return;
+
+    const parcelaIds = (edit.parcelas || []).map((p) => p.id).filter(Boolean);
+    for (const id of [...parcelaIds, ...(edit.removedIds || [])]) {
+      await sb().from("pagamentos").delete().eq("empresa_id", state().empresaId).eq("parcela_id", id);
+    }
+    await sb()
+      .from("contas_pagar_parcelas")
+      .delete()
+      .eq("empresa_id", state().empresaId)
+      .eq("conta_pagar_id", edit.contaId);
+    const { error } = await sb()
+      .from("contas_pagar")
+      .delete()
+      .eq("empresa_id", state().empresaId)
+      .eq("id", edit.contaId);
+    if (error) throw error;
+
+    // Se veio de NF, marca financeiro como não aplicado para permitir reprocessar se necessário
+    if (edit.notaEntradaId) {
+      await sb()
+        .from("notas_entrada")
+        .update({ financeiro_aplicado: false, updated_at: new Date().toISOString() })
+        .eq("empresa_id", state().empresaId)
+        .eq("id", edit.notaEntradaId);
+    }
+
+    closeContaPagarEditModal();
+    state().compras.loaded = false;
+    await ensureComprasLoaded({ force: true });
+    showToast("Título excluído");
   }
 
   /* ---------- Fornecedor modal ---------- */
@@ -1777,10 +2114,90 @@ export function installComprasModule(ctx) {
       });
     }
 
+    if (e.closeContaPagarEditModalBtn) {
+      e.closeContaPagarEditModalBtn.addEventListener("click", closeContaPagarEditModal);
+    }
+    if (e.contaPagarEditModal) {
+      e.contaPagarEditModal.addEventListener("click", (ev) => {
+        if (ev.target === e.contaPagarEditModal) closeContaPagarEditModal();
+      });
+    }
+    if (e.contaPagarEditForm) {
+      e.contaPagarEditForm.addEventListener("submit", async (ev) => {
+        try {
+          await saveContaPagarEdit(ev);
+        } catch (err) {
+          showToast(`Erro ao salvar título: ${err.message}`, "error");
+        }
+      });
+    }
+    if (e.contaPagarEditDeleteBtn) {
+      e.contaPagarEditDeleteBtn.addEventListener("click", async () => {
+        try {
+          await deleteContaPagarEdit();
+        } catch (err) {
+          showToast(`Erro ao excluir: ${err.message}`, "error");
+        }
+      });
+    }
+    if (e.contaPagarEditAddParcelaBtn) {
+      e.contaPagarEditAddParcelaBtn.addEventListener("click", () => addContaPagarEditParcela());
+    }
+    if (e.contaPagarEditParcelasList) {
+      e.contaPagarEditParcelasList.addEventListener("input", (ev) => {
+        const t = ev.target;
+        if (!(t instanceof HTMLElement)) return;
+        const row = t.closest("[data-cp-parcela-index]");
+        const field = t.getAttribute("data-cp-parcela-field");
+        if (!row || !field) return;
+        const idx = Number(row.getAttribute("data-cp-parcela-index"));
+        const edit = ensureContaPagarEditState();
+        const p = edit.parcelas[idx];
+        if (!p) return;
+        if (field === "valor" || field === "valorPago") p[field] = Math.max(0, Number(t.value || 0));
+        else p[field] = t.value;
+        renderContaPagarEditTotals();
+      });
+      e.contaPagarEditParcelasList.addEventListener("change", (ev) => {
+        const t = ev.target;
+        if (!(t instanceof HTMLElement)) return;
+        const row = t.closest("[data-cp-parcela-index]");
+        const field = t.getAttribute("data-cp-parcela-field");
+        if (!row || !field) return;
+        const idx = Number(row.getAttribute("data-cp-parcela-index"));
+        const edit = ensureContaPagarEditState();
+        const p = edit.parcelas[idx];
+        if (!p) return;
+        p[field] = t.value;
+        renderContaPagarEditTotals();
+      });
+      e.contaPagarEditParcelasList.addEventListener("click", (ev) => {
+        const btn = ev.target?.closest?.("[data-remove-cp-parcela]");
+        if (!btn) return;
+        removeContaPagarEditParcela(Number(btn.getAttribute("data-remove-cp-parcela")));
+      });
+    }
+
     // Clicks nas tabelas
     document.addEventListener("click", async (ev) => {
       const t = ev.target;
       if (!(t instanceof HTMLElement)) return;
+
+      // Clique na linha de conta a pagar (exceto botões de ação)
+      if (!t.closest("[data-stop-row-edit]") && !t.closest("button") && !t.closest("a") && !t.closest("input") && !t.closest("select")) {
+        const row = t.closest("[data-edit-conta-pagar]");
+        if (row && (e.despesasPagarTable?.contains(row) || e.comprasPagarTable?.contains(row))) {
+          const id = row.getAttribute("data-edit-conta-pagar");
+          if (id) {
+            try {
+              await openContaPagarEditModal(Number(id));
+            } catch (err) {
+              showToast(err.message || String(err), "error");
+            }
+            return;
+          }
+        }
+      }
 
       const handlers = [
         ["data-edit-fornecedor", async (id) => openFornecedorModal(Number(id))],
@@ -1811,12 +2228,15 @@ export function installComprasModule(ctx) {
         ],
         ["data-cancelar-nota", async (id) => cancelarNota(Number(id))],
         ["data-del-nota", async (id) => deleteNota(Number(id))],
-        ["data-pagar-parcela", async (id) => pagarParcela(Number(id))]
+        ["data-pagar-parcela", async (id) => pagarParcela(Number(id))],
+        ["data-edit-conta-pagar", async (id) => openContaPagarEditModal(Number(id))]
       ];
 
       for (const [attr, fn] of handlers) {
         const el = t.closest(`[${attr}]`);
         if (!el) continue;
+        // data-edit-conta-pagar no TR já tratado acima; no botão Editar passa aqui
+        if (attr === "data-edit-conta-pagar" && el.tagName === "TR") continue;
         const id = el.getAttribute(attr);
         if (!id) continue;
         try {

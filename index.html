@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260712q" />
+    <link rel="stylesheet" href="styles.css?v=20260712r" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -494,6 +494,7 @@
                   <th>Título</th>
                   <th>Fornecedor / desc.</th>
                   <th>Origem</th>
+                  <th>Emissão</th>
                   <th>Parc.</th>
                   <th>Vencimento</th>
                   <th>Valor</th>
@@ -1486,6 +1487,7 @@
           </label>
           <label>Categoria<input name="categoria" placeholder="Ex.: Utilidades, Marketing" /></label>
           <label>Valor total (R$)<input name="valor" type="number" min="0.01" step="0.01" required /></label>
+          <label>Data de emissão<input name="emissao" id="despesaEmissao" type="date" required /></label>
           <label>Parcelas<input name="parcelas" type="number" min="1" step="1" value="1" /></label>
           <label>1º vencimento<input name="vencimento" type="date" required /></label>
           <label>Intervalo (dias)<input name="intervalo_dias" type="number" min="1" step="1" value="30" /></label>
@@ -1497,6 +1499,47 @@
           </label>
           <div class="documento-modal-footer">
             <button type="submit" class="btn">Salvar despesa</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="contaPagarEditModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="contaPagarEditModalTitle">
+      <div class="modal-card modal-produto-card modal-nota-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="contaPagarEditModalTitle">Editar conta a pagar</h3>
+            <p id="contaPagarEditModalSubtitle" class="modal-subtitle">Ajuste emissão, vencimentos, valores e parcelas.</p>
+          </div>
+          <button id="closeContaPagarEditModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+        <form id="contaPagarEditForm" class="nota-entrada-form">
+          <input type="hidden" id="contaPagarEditId" />
+          <div class="nota-entrada-grid">
+            <label>Título / número<input id="contaPagarEditTitulo" required /></label>
+            <label>Fornecedor<select id="contaPagarEditFornecedor"></select></label>
+            <label>Data de emissão<input id="contaPagarEditEmissao" type="date" required /></label>
+            <label>Origem<input id="contaPagarEditOrigem" type="text" readonly /></label>
+            <label class="nota-entrada-full">Descrição / observações<textarea id="contaPagarEditObs" rows="2"></textarea></label>
+          </div>
+
+          <div class="documento-items-panel-head" style="margin-top: 1rem">
+            <div>
+              <h4>Parcelas</h4>
+              <span class="documento-items-hint">Vencimento e valor de cada parcela são editáveis.</span>
+            </div>
+            <button id="contaPagarEditAddParcelaBtn" type="button" class="btn btn-ghost">+ Parcela</button>
+          </div>
+          <div id="contaPagarEditParcelasList" class="documento-payment-parcelas-list"></div>
+          <div class="documento-payment-parcelas-footer" style="margin-top: 0.5rem">
+            <span id="contaPagarEditTotals" class="documento-items-hint"></span>
+          </div>
+
+          <div class="documento-modal-footer" style="margin-top: 1rem">
+            <button id="contaPagarEditDeleteBtn" type="button" class="btn btn-ghost" style="color:#a11b2f">Excluir título</button>
+            <div class="estoque-actions">
+              <button type="submit" class="btn">Salvar alterações</button>
+            </div>
           </div>
         </form>
       </div>
