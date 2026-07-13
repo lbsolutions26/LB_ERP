@@ -5404,25 +5404,32 @@ function renderEstoqueSaldosTable() {
   }
 
   els.estoqueSaldosTable.innerHTML = rows
-    .map(({ produto, reservado, saldo, disponivel, status, valor }) => `
+    .map(({ produto, reservado, saldo, disponivel, status, valor }) => {
+      const id = escapeHtml(produto.id);
+      const actions = renderRowActionsMenu(
+        [
+          { label: "Entrada", attrs: `data-estoque-mov="entrada" data-produto-id="${id}"`, finance: true },
+          { label: "Saida", attrs: `data-estoque-mov="saida" data-produto-id="${id}"` },
+          { label: "Ajuste", attrs: `data-estoque-mov="ajuste" data-produto-id="${id}"` }
+        ],
+        { label: `Movimentos de ${produto.nome || "produto"}` }
+      );
+      return `
       <tr>
-        <td>${escapeHtml(produto.nome)}</td>
+        <td class="pedido-actions-cell">${actions}</td>
+        <td class="estoque-saldos-produto">${escapeHtml(produto.nome)}</td>
         <td>${escapeHtml(produto.categoria || "-")}</td>
         <td>${formatAbcBadge(produto.classe_abc)}</td>
-        <td>${escapeHtml(saldo)}</td>
-        <td>${escapeHtml(reservado)}</td>
-        <td>${escapeHtml(Number(disponivel.toFixed(2)))}</td>
-        <td>${escapeHtml(produto.ponto_pedido ?? 0)}</td>
-        <td>${produto.estoque_maximo == null ? "–" : escapeHtml(produto.estoque_maximo)}</td>
+        <td class="estoque-num">${escapeHtml(saldo)}</td>
+        <td class="estoque-num">${escapeHtml(reservado)}</td>
+        <td class="estoque-num">${escapeHtml(Number(disponivel.toFixed(2)))}</td>
+        <td class="estoque-num">${escapeHtml(produto.ponto_pedido ?? 0)}</td>
+        <td class="estoque-num">${produto.estoque_maximo == null ? "–" : escapeHtml(produto.estoque_maximo)}</td>
         <td>${formatEstoqueStatusBadge(status)}</td>
-        <td>${moeda.format(valor)}</td>
-        <td class="estoque-actions">
-          <button type="button" class="btn btn-ghost" data-estoque-mov="entrada" data-produto-id="${produto.id}">Entrada</button>
-          <button type="button" class="btn btn-ghost" data-estoque-mov="saida" data-produto-id="${produto.id}">Saída</button>
-          <button type="button" class="btn btn-ghost" data-estoque-mov="ajuste" data-produto-id="${produto.id}">Ajuste</button>
-        </td>
+        <td class="estoque-num">${moeda.format(valor)}</td>
       </tr>
-    `)
+    `;
+    })
     .join("");
 }
 
