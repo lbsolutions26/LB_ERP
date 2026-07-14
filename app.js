@@ -270,6 +270,12 @@ const els = {
   novoDocumentoModalSubtitle: document.getElementById("novoDocumentoModalSubtitle"),
   novoDocumentoFotoWrap: document.getElementById("novoDocumentoFotoWrap"),
   novoDocumentoFoto: document.getElementById("novoDocumentoFoto"),
+  novoDocumentoFotoHint: document.getElementById("novoDocumentoFotoHint"),
+  novoDocumentoFotoCameraBtn: document.getElementById("novoDocumentoFotoCameraBtn"),
+  novoDocumentoFotoGaleriaBtn: document.getElementById("novoDocumentoFotoGaleriaBtn"),
+  novoDocumentoFotoRemoverBtn: document.getElementById("novoDocumentoFotoRemoverBtn"),
+  novoDocumentoFotoCameraInput: document.getElementById("novoDocumentoFotoCameraInput"),
+  novoDocumentoFotoGaleriaInput: document.getElementById("novoDocumentoFotoGaleriaInput"),
   novoDocumentoClienteSearch: document.getElementById("novoDocumentoClienteSearch"),
   novoDocumentoClienteId: document.getElementById("novoDocumentoClienteId"),
   novoDocumentoClienteTrigger: document.getElementById("novoDocumentoClienteTrigger"),
@@ -2809,24 +2815,223 @@ function renderNovoDocumentoPedidoFoto() {
   const img = els.novoDocumentoFoto;
   if (!wrap || !img) return;
 
-  const url = resolveProdutoImageUrl(state.novoDocumentoModal.fotoUrl || "");
-  if (!url) {
+  // Foto do pedido: só faz sentido no tipo pedido
+  if (state.novoDocumentoModal.tipo !== "pedido") {
     wrap.classList.add("hidden");
-    img.removeAttribute("src");
-    delete img.dataset.imagePreview;
-    delete img.dataset.imageTitle;
     return;
   }
 
+  wrap.classList.remove("hidden");
+  const url = resolveProdutoImageUrl(state.novoDocumentoModal.fotoUrl || "");
   const title = state.novoDocumentoModal.documentoId
     ? `Pedido #${state.novoDocumentoModal.documentoId}`
     : "Foto do pedido";
-  img.src = url;
-  img.alt = title;
-  img.dataset.imagePreview = url;
-  img.dataset.imageTitle = title;
-  img.classList.add("is-clickable");
-  wrap.classList.remove("hidden");
+
+  if (url) {
+    img.src = url;
+    img.alt = title;
+    img.dataset.imagePreview = url;
+    img.dataset.imageTitle = title;
+    img.classList.add("is-clickable");
+    img.classList.remove("hidden");
+    if (els.novoDocumentoFotoHint) {
+      els.novoDocumentoFotoHint.textContent = "Toque na foto para ampliar";
+    }
+    els.novoDocumentoFotoRemoverBtn?.classList.remove("hidden");
+  } else {
+    img.removeAttribute("src");
+    delete img.dataset.imagePreview;
+    delete img.dataset.imageTitle;
+    img.classList.add("hidden");
+    if (els.novoDocumentoFotoHint) {
+      els.novoDocumentoFotoHint.textContent = "Tire uma foto ou escolha da galeria";
+    }
+    els.novoDocumentoFotoRemoverBtn?.classList.add("hidden");
+  }
+}
+
+/**
+ * Reduz e converte a imagem para JPEG (acelera upload no celular).
+ */
+function compressImageFile(file, { maxSide = 1600, quality = 0.82 } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!(file instanceof Blob)) {
+      reject(new Error("Arquivo de imagem inválido"));
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        if (!w || !h) {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file);
+          return;
+        }
+        const scale = Math.min(1, maxSide / Math.max(w, h));
+        const tw = Math.max(1, Math.round(w * scale));
+        const th = Math.max(1, Math.round(h * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = tw;
+        canvas.height = th;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, tw, th);
+        canvas.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(objectUrl);
+            if (!(blob instanceof Blob)) {
+              resolve(file);
+              return;
+            }
+            resolve(
+              new File([blob], "pedido-foto.jpg", {
+                type: "image/jpeg",
+                lastModified: Date.now()
+              })
+            );
+          },
+          "image/jpeg",
+          quality
+        );
+      } catch (err) {
+        URL.revokeObjectURL(objectUrl);
+        resolve(file);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+    img.src = objectUrl;
+  });
+}
+
+async function uploadPedidoFotoFile(file) {
+  if (!supabaseClient) throw new Error("Supabase não configurado");
+  if (!state.empresaId) throw new Error("Empresa não selecionada");
+  if (!(file instanceof File) && !(file instanceof Blob)) {
+    throw new Error("Selecione uma imagem válida");
+  }
+
+  const compressed = await compressImageFile(file);
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+  const rand = Math.random().toString(36).slice(2, 8);
+  const objectPath = `${state.empresaId}/${stamp}-${rand}.jpg`;
+
+  const { error } = await supabaseClient.storage
+    .from("pedido-images")
+    .upload(objectPath, compressed, {
+      contentType: "image/jpeg",
+      upsert: true,
+      cacheControl: "3600"
+    });
+
+  if (error) {
+    throw new Error(error.message || "Falha ao enviar a foto");
+  }
+
+  // Guarda caminho estável no payload; a URL pública é resolvida na exibição
+  return `pedido-images/${objectPath}`;
+}
+
+async function handleNovoDocumentoFotoSelected(fileList) {
+  const file = fileList?.[0];
+  if (!file) return;
+  if (!String(file.type || "").startsWith("image/")) {
+    showToast("Selecione um arquivo de imagem.", "error");
+    return;
+  }
+
+  const cameraBtn = els.novoDocumentoFotoCameraBtn;
+  const galeriaBtn = els.novoDocumentoFotoGaleriaBtn;
+  const labels = {
+    camera: cameraBtn?.textContent || "Câmera",
+    galeria: galeriaBtn?.textContent || "Galeria"
+  };
+  if (cameraBtn) {
+    cameraBtn.disabled = true;
+    cameraBtn.textContent = "Enviando...";
+  }
+  if (galeriaBtn) {
+    galeriaBtn.disabled = true;
+    galeriaBtn.textContent = "Enviando...";
+  }
+
+  try {
+    const pathOrUrl = await uploadPedidoFotoFile(file);
+    state.novoDocumentoModal.fotoUrl = pathOrUrl;
+    // Se o pedido já está salvo, grava a foto no raw_payload na hora
+    if (state.novoDocumentoModal.documentoId) {
+      const rawBase =
+        state.novoDocumentoModal.rawPayloadBase && typeof state.novoDocumentoModal.rawPayloadBase === "object"
+          ? { ...state.novoDocumentoModal.rawPayloadBase }
+          : {};
+      rawBase.foto_url = pathOrUrl;
+      state.novoDocumentoModal.rawPayloadBase = rawBase;
+      const { error } = await supabaseClient
+        .from("documentos")
+        .update({ raw_payload: rawBase })
+        .eq("id", state.novoDocumentoModal.documentoId)
+        .eq("empresa_id", state.empresaId);
+      if (error) throw error;
+    }
+    renderNovoDocumentoPedidoFoto();
+    showToast("Foto do pedido salva");
+  } catch (error) {
+    console.warn("Falha ao enviar foto do pedido", error);
+    showToast(`Erro ao enviar foto: ${error.message || "falha desconhecida"}`, "error");
+  } finally {
+    if (cameraBtn) {
+      cameraBtn.disabled = false;
+      cameraBtn.textContent = labels.camera;
+    }
+    if (galeriaBtn) {
+      galeriaBtn.disabled = false;
+      galeriaBtn.textContent = labels.galeria;
+    }
+    if (els.novoDocumentoFotoCameraInput) els.novoDocumentoFotoCameraInput.value = "";
+    if (els.novoDocumentoFotoGaleriaInput) els.novoDocumentoFotoGaleriaInput.value = "";
+  }
+}
+
+async function removeNovoDocumentoFoto() {
+  if (!state.novoDocumentoModal.fotoUrl) return;
+  if (!window.confirm("Remover a foto deste pedido?")) return;
+
+  state.novoDocumentoModal.fotoUrl = "";
+  if (state.novoDocumentoModal.rawPayloadBase && typeof state.novoDocumentoModal.rawPayloadBase === "object") {
+    delete state.novoDocumentoModal.rawPayloadBase.foto_url;
+  }
+
+  if (state.novoDocumentoModal.documentoId && supabaseClient) {
+    try {
+      const rawBase =
+        state.novoDocumentoModal.rawPayloadBase && typeof state.novoDocumentoModal.rawPayloadBase === "object"
+          ? { ...state.novoDocumentoModal.rawPayloadBase }
+          : {};
+      delete rawBase.foto_url;
+      state.novoDocumentoModal.rawPayloadBase = rawBase;
+      const { error } = await supabaseClient
+        .from("documentos")
+        .update({ raw_payload: rawBase })
+        .eq("id", state.novoDocumentoModal.documentoId)
+        .eq("empresa_id", state.empresaId);
+      if (error) throw error;
+    } catch (error) {
+      showToast(`Erro ao remover foto: ${error.message}`, "error");
+      return;
+    }
+  }
+
+  renderNovoDocumentoPedidoFoto();
+  showToast("Foto removida");
 }
 
 function renderNovoDocumentoModal() {
@@ -5029,9 +5234,11 @@ async function saveNovoDocumento(event) {
     if (draft.precoFormacaoAplicada) {
       rawPayload.preco_formacao = draft.precoFormacaoAplicada;
     }
-    // Preserva foto legada se so temos a URL resolvida no draft.
-    if (!rawPayload.foto_url && draft.fotoUrl) {
+    // Foto do pedido (câmera/galeria ou legado)
+    if (draft.fotoUrl) {
       rawPayload.foto_url = draft.fotoUrl;
+    } else {
+      delete rawPayload.foto_url;
     }
 
     const documentoPayload = {
@@ -10839,6 +11046,34 @@ function attachEvents() {
     els.novoDocumentoPdfBtn.addEventListener("click", () => {
       generateDocumentoOrcamentoPdf().catch((error) => {
         showToast(`Erro ao gerar PDF: ${error.message}`, "error");
+      });
+    });
+  }
+
+  if (els.novoDocumentoFotoCameraBtn && els.novoDocumentoFotoCameraInput) {
+    els.novoDocumentoFotoCameraBtn.addEventListener("click", () => {
+      els.novoDocumentoFotoCameraInput.click();
+    });
+    els.novoDocumentoFotoCameraInput.addEventListener("change", () => {
+      handleNovoDocumentoFotoSelected(els.novoDocumentoFotoCameraInput.files).catch((error) => {
+        showToast(`Erro ao enviar foto: ${error.message}`, "error");
+      });
+    });
+  }
+  if (els.novoDocumentoFotoGaleriaBtn && els.novoDocumentoFotoGaleriaInput) {
+    els.novoDocumentoFotoGaleriaBtn.addEventListener("click", () => {
+      els.novoDocumentoFotoGaleriaInput.click();
+    });
+    els.novoDocumentoFotoGaleriaInput.addEventListener("change", () => {
+      handleNovoDocumentoFotoSelected(els.novoDocumentoFotoGaleriaInput.files).catch((error) => {
+        showToast(`Erro ao enviar foto: ${error.message}`, "error");
+      });
+    });
+  }
+  if (els.novoDocumentoFotoRemoverBtn) {
+    els.novoDocumentoFotoRemoverBtn.addEventListener("click", () => {
+      removeNovoDocumentoFoto().catch((error) => {
+        showToast(`Erro ao remover foto: ${error.message}`, "error");
       });
     });
   }

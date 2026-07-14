@@ -2549,7 +2549,8 @@ img.produto-combo-thumb.is-broken {
   background: rgba(255, 255, 255, 0.72);
   display: grid;
   gap: 0.55rem;
-  justify-items: start;
+  justify-items: stretch;
+  width: 100%;
 }
 
 .documento-pedido-foto {
@@ -2576,6 +2577,36 @@ img.produto-combo-thumb.is-broken {
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+.documento-pedido-foto-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.documento-foto-btn {
+  flex: 1 1 auto;
+  min-height: 2.4rem;
+  font-weight: 700;
+  font-size: 0.88rem;
+  border: 1px solid rgba(22, 93, 89, 0.22);
+  background: #eef7f5;
+  color: #0f4744;
+}
+
+.documento-foto-btn:hover {
+  background: #dcefec;
+}
+
+.documento-foto-btn--danger {
+  background: #f8ecec;
+  border-color: rgba(140, 40, 40, 0.22);
+  color: #7a2a2a;
+}
+
+.documento-foto-btn--danger:hover {
+  background: #f3e0e0;
 }
 
 .summary-label {
