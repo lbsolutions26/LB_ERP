@@ -2819,17 +2819,19 @@ function renderNovoDocumentoPedidoFoto() {
   const img = els.novoDocumentoFoto;
   if (!wrap || !img) return;
 
-  // Foto do pedido: só faz sentido no tipo pedido
-  if (state.novoDocumentoModal.tipo !== "pedido") {
-    wrap.classList.add("hidden");
-    return;
-  }
-
+  // Foto disponível em pedido e orçamento (mesmo modal).
   wrap.classList.remove("hidden");
+  const isOrcamento = state.novoDocumentoModal.tipo === "orcamento";
+  const tipoLabel = isOrcamento ? "Orçamento" : "Pedido";
   const url = resolveProdutoImageUrl(state.novoDocumentoModal.fotoUrl || "");
   const title = state.novoDocumentoModal.documentoId
-    ? `Pedido #${state.novoDocumentoModal.documentoId}`
-    : "Foto do pedido";
+    ? `${tipoLabel} #${state.novoDocumentoModal.documentoId}`
+    : `Foto do ${tipoLabel.toLowerCase()}`;
+
+  const fotoTitleEl = wrap.querySelector(".documento-pedido-foto-meta strong");
+  if (fotoTitleEl) {
+    fotoTitleEl.textContent = `Foto do ${tipoLabel.toLowerCase()}`;
+  }
 
   if (url) {
     img.src = url;
@@ -2987,9 +2989,9 @@ async function handleNovoDocumentoFotoSelected(fileList) {
       if (error) throw error;
     }
     renderNovoDocumentoPedidoFoto();
-    showToast("Foto do pedido salva");
+    showToast("Foto salva");
   } catch (error) {
-    console.warn("Falha ao enviar foto do pedido", error);
+    console.warn("Falha ao enviar foto do documento", error);
     showToast(`Erro ao enviar foto: ${error.message || "falha desconhecida"}`, "error");
   } finally {
     if (cameraBtn) {
@@ -3007,7 +3009,7 @@ async function handleNovoDocumentoFotoSelected(fileList) {
 
 async function removeNovoDocumentoFoto() {
   if (!state.novoDocumentoModal.fotoUrl) return;
-  if (!window.confirm("Remover a foto deste pedido?")) return;
+  if (!window.confirm("Remover a foto deste documento?")) return;
 
   state.novoDocumentoModal.fotoUrl = "";
   if (state.novoDocumentoModal.rawPayloadBase && typeof state.novoDocumentoModal.rawPayloadBase === "object") {
@@ -3047,8 +3049,9 @@ function renderNovoDocumentoModal() {
     els.novoDocumentoModalTitle.textContent = isEdit ? config.titulo.replace("Novo", "Editar") : config.titulo;
   }
   if (els.novoDocumentoModalSubtitle) {
+    const tipoLabel = state.novoDocumentoModal.tipo === "orcamento" ? "orçamento" : "pedido";
     els.novoDocumentoModalSubtitle.textContent = isEdit && state.novoDocumentoModal.fotoUrl
-      ? "Edite os dados do pedido. A foto do pedido aparece no resumo ao lado."
+      ? `Edite os dados do ${tipoLabel}. A foto aparece no resumo ao lado.`
       : config.subtitulo;
   }
   if (els.novoDocumentoObservacoes) {
@@ -3060,11 +3063,15 @@ function renderNovoDocumentoModal() {
 
   fillBicicletaForm(state.novoDocumentoModal.bicicleta);
   if (els.novoDocumentoBicicletaSection) {
-    // Campos da bike fazem sentido no pedido (servico/oficina); some no orcamento.
-    els.novoDocumentoBicicletaSection.classList.toggle(
-      "hidden",
-      state.novoDocumentoModal.tipo !== "pedido"
-    );
+    // Bicicleta disponível em pedido e orçamento (oficina / proposta comercial).
+    els.novoDocumentoBicicletaSection.classList.remove("hidden");
+    const bikeHint = els.novoDocumentoBicicletaSection.querySelector(".documento-items-hint");
+    if (bikeHint) {
+      bikeHint.textContent =
+        state.novoDocumentoModal.tipo === "orcamento"
+          ? "Dados da bike do cliente neste orçamento."
+          : "Dados da bike do cliente neste pedido.";
+    }
   }
 
   renderNovoDocumentoClienteSelect();
@@ -5228,10 +5235,10 @@ async function saveNovoDocumento(event) {
       itens: itens.length,
       pagamento: pagamentoState
     };
-    // Dados da bicicleta no pedido (oficina/servico).
-    if (draft.tipo === "pedido" && isBicicletaFilled(bicicleta)) {
+    // Dados da bicicleta (pedido e orçamento — oficina/proposta).
+    if (isBicicletaFilled(bicicleta)) {
       rawPayload.bicicleta = bicicleta;
-    } else if (draft.tipo === "pedido") {
+    } else {
       delete rawPayload.bicicleta;
     }
     // Snapshot da calculadora (historico da decisao comercial no pedido/orcamento).
@@ -5618,7 +5625,7 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
   }
   if (els.itensDocumentoModalSubtitle) {
     const bike = createBicicletaDraft(documentoData?.raw_payload?.bicicleta || null);
-    if (tipoDocumento === "pedido" && isBicicletaFilled(bike)) {
+    if (isBicicletaFilled(bike)) {
       const parts = [
         bike.marca && `Marca: ${bike.marca}`,
         bike.modelo && `Modelo: ${bike.modelo}`,
