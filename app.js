@@ -2976,7 +2976,7 @@ async function handleNovoDocumentoFotoSelected(fileList) {
       rawBase.foto_url = pathOrUrl;
       state.novoDocumentoModal.rawPayloadBase = rawBase;
       const { error } = await supabaseClient
-        .from("documentos")
+        .from("documentos_venda")
         .update({ raw_payload: rawBase })
         .eq("id", state.novoDocumentoModal.documentoId)
         .eq("empresa_id", state.empresaId);
@@ -3019,7 +3019,7 @@ async function removeNovoDocumentoFoto() {
       delete rawBase.foto_url;
       state.novoDocumentoModal.rawPayloadBase = rawBase;
       const { error } = await supabaseClient
-        .from("documentos")
+        .from("documentos_venda")
         .update({ raw_payload: rawBase })
         .eq("id", state.novoDocumentoModal.documentoId)
         .eq("empresa_id", state.empresaId);
