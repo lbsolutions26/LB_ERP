@@ -3693,6 +3693,37 @@ tr.is-clickable-row:hover {
   z-index: 45;
 }
 
+/* Contas a pagar: badge pessoal x empresa */
+.gasto-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.gasto-badge--pessoal {
+  background: #f3e8ff;
+  color: #6b21a8;
+  border: 1px solid rgba(107, 33, 168, 0.2);
+}
+
+.despesa-classificacao-block {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.despesa-classificacao-toggle {
+  width: 100%;
+  justify-content: stretch;
+}
+
+.despesa-classificacao-toggle .pedidos-view-toggle-btn {
+  flex: 1 1 0;
+}
+
 /* Exportador de PDF: prévia + Enviar / Baixar */
 .pdf-viewer-overlay {
   padding: 0.5rem;

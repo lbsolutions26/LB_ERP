@@ -78,6 +78,7 @@ export function installComprasModule(ctx) {
           despesasStatus: "",
           despesasBusca: "",
           despesasOrigem: "",
+          despesasEscopo: "todos",
           despesasCols: defaultDespesasColFilters()
         }
       };
@@ -85,6 +86,9 @@ export function installComprasModule(ctx) {
     if (!s.compras.filters) s.compras.filters = {};
     if (!s.compras.filters.despesasCols) {
       s.compras.filters.despesasCols = defaultDespesasColFilters();
+    }
+    if (!s.compras.filters.despesasEscopo) {
+      s.compras.filters.despesasEscopo = "todos";
     }
     if (!Array.isArray(s.compras.pagamentos)) s.compras.pagamentos = [];
     if (!s.notaEntradaModal) {
@@ -98,14 +102,49 @@ export function installComprasModule(ctx) {
   function origemLabel(origem) {
     const o = String(origem || "");
     if (o === "nota_entrada") return "NF / Compras";
-    if (o === "despesa_manual") return "Despesa";
+    if (o === "despesa_manual") return "Despesa empresa";
+    if (o === "despesa_pessoal") return "Despesa pessoal";
     return o || "–";
+  }
+
+  function isDespesaPessoalOrigem(origem) {
+    return String(origem || "") === "despesa_pessoal";
+  }
+
+  function isDespesaEmpresaOrigem(origem) {
+    const o = String(origem || "");
+    return o !== "despesa_pessoal";
+  }
+
+  /** Extrai nome do responsável de observações no formato [Pessoal: Nome] ... */
+  function parseResponsavelFromObs(obs) {
+    const raw = String(obs || "");
+    const m = raw.match(/^\[Pessoal(?::\s*([^\]]+))?\]\s*/i);
+    if (!m) return { responsavel: "", texto: raw };
+    return {
+      responsavel: String(m[1] || "").trim(),
+      texto: raw.slice(m[0].length).trim()
+    };
+  }
+
+  function buildObservacoesDespesa({ classificacao, responsavel, descricao, categoria, observacoes }) {
+    const parts = [];
+    if (descricao) parts.push(String(descricao).trim());
+    if (categoria) parts.push(`Cat.: ${String(categoria).trim()}`);
+    if (observacoes) parts.push(String(observacoes).trim());
+    const body = parts.filter(Boolean).join(" | ");
+    if (classificacao === "pessoal") {
+      const nome = String(responsavel || "").trim();
+      return nome ? `[Pessoal: ${nome}] ${body}`.trim() : `[Pessoal] ${body}`.trim();
+    }
+    return body || null;
   }
 
   function getParcelasPagarRows(options = {}) {
     const busca = String(options.busca ?? "").toLowerCase();
     const statusF = options.status || "";
     const origemF = options.origem || "";
+    const escopo = options.escopo || ""; // todos | empresa | pessoal
     const onlyNota = Boolean(options.onlyNota);
     const contasById = Object.fromEntries((state().compras.contas || []).map((c) => [String(c.id), c]));
     let rows = (state().compras.parcelas || []).map((p) => ({
@@ -114,6 +153,11 @@ export function installComprasModule(ctx) {
     }));
     if (onlyNota) {
       rows = rows.filter((r) => r.conta?.origem === "nota_entrada" || r.conta?.nota_entrada_id);
+    }
+    if (escopo === "pessoal") {
+      rows = rows.filter((r) => isDespesaPessoalOrigem(r.conta?.origem));
+    } else if (escopo === "empresa") {
+      rows = rows.filter((r) => isDespesaEmpresaOrigem(r.conta?.origem));
     }
     if (origemF) {
       rows = rows.filter((r) => String(r.conta?.origem || "") === origemF);
@@ -159,9 +203,14 @@ export function installComprasModule(ctx) {
     const f = state().compras.filters.despesasCols || {};
     return rows.filter((r) => {
       const titulo = String(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`).toLowerCase();
+      const parsedObs = parseResponsavelFromObs(r.conta?.observacoes);
       const fornecedor = String(
         r.conta?.fornecedor?.nome ||
-          (r.conta?.origem === "despesa_manual" ? r.conta?.observacoes || r.conta?.numero_titulo : "") ||
+          (isDespesaPessoalOrigem(r.conta?.origem)
+            ? parsedObs.responsavel || parsedObs.texto || r.conta?.numero_titulo
+            : r.conta?.origem === "despesa_manual"
+              ? parsedObs.texto || r.conta?.observacoes || r.conta?.numero_titulo
+              : "") ||
           ""
       ).toLowerCase();
       const origem = String(r.conta?.origem || "");
@@ -199,9 +248,15 @@ export function installComprasModule(ctx) {
           r.status !== "cancelado" &&
           r.vencimento &&
           new Date(`${String(r.vencimento).slice(0, 10)}T12:00:00`) < new Date(new Date().toDateString());
+        const parsedObs = parseResponsavelFromObs(r.conta?.observacoes);
+        const isPessoal = isDespesaPessoalOrigem(r.conta?.origem);
         const fornecedorTxt =
           r.conta?.fornecedor?.nome ||
-          (r.conta?.origem === "despesa_manual" ? r.conta?.observacoes || r.conta?.numero_titulo : null) ||
+          (isPessoal
+            ? parsedObs.responsavel || parsedObs.texto || r.conta?.numero_titulo
+            : r.conta?.origem === "despesa_manual"
+              ? parsedObs.texto || r.conta?.observacoes || r.conta?.numero_titulo
+              : null) ||
           "–";
         const contaId = escapeHtml(r.conta_pagar_id);
         const parcelaId = escapeHtml(r.id);
@@ -209,13 +264,16 @@ export function installComprasModule(ctx) {
         if (r.status !== "pago" && r.status !== "cancelado") {
           menuItems.push({ label: "Pagar", attrs: `data-pagar-parcela="${parcelaId}"`, finance: true });
         }
+        const origemBadge = isPessoal
+          ? `<span class="gasto-badge gasto-badge--pessoal">${escapeHtml(origemLabel(r.conta?.origem))}</span>`
+          : escapeHtml(origemLabel(r.conta?.origem));
         return `
         <tr class="is-clickable-row" data-edit-conta-pagar="${contaId}" title="Clique para editar o título">
           <td class="pedido-actions-cell" data-stop-row-edit="1">${rowActions(menuItems, "Acoes do titulo")}</td>
           <td><span class="estoque-status ${r.status === "pago" ? "estoque-status--ok" : "estoque-status--reposicao"}">${escapeHtml(r.status)}</span></td>
           <td>${escapeHtml(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`)}</td>
           <td class="contas-pagar-col-fornecedor" title="${escapeHtml(fornecedorTxt)}">${escapeHtml(fornecedorTxt)}</td>
-          ${showOrigem ? `<td>${escapeHtml(origemLabel(r.conta?.origem))}</td>` : ""}
+          ${showOrigem ? `<td>${origemBadge}</td>` : ""}
           ${showEmissao ? `<td>${escapeHtml(formatEmissaoDisplay(r.conta?.emissao))}</td>` : ""}
           <td>${escapeHtml(r.numero_parcela)}</td>
           <td>${escapeHtml(formatDateBr(r.vencimento))}${vencida ? ' <span class="estoque-status estoque-status--zerado">vencida</span>' : ""}</td>
@@ -226,9 +284,39 @@ export function installComprasModule(ctx) {
       .join("");
   }
 
+  function getDespesasEscopoAtivo() {
+    ensureStateDefaults();
+    const escopo = String(state().compras.filters.despesasEscopo || "todos");
+    return escopo === "empresa" || escopo === "pessoal" ? escopo : "todos";
+  }
+
+  function setDespesasEscopo(escopo) {
+    ensureStateDefaults();
+    const next = escopo === "empresa" || escopo === "pessoal" ? escopo : "todos";
+    state().compras.filters.despesasEscopo = next;
+    document.querySelectorAll("[data-despesas-escopo]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-despesas-escopo") === next);
+    });
+    const e = els();
+    if (e.despesasSectionSubtitle) {
+      if (next === "pessoal") {
+        e.despesasSectionSubtitle.textContent =
+          "Somente gastos pessoais / de outras pessoas. Não entram no resultado da empresa no dashboard.";
+      } else if (next === "empresa") {
+        e.despesasSectionSubtitle.textContent =
+          "Somente saídas da empresa (NFs e despesas empresariais).";
+      } else {
+        e.despesasSectionSubtitle.textContent =
+          "Mesma tela para gastos da empresa e pessoais. Use o filtro para separar e o seletor ao lançar.";
+      }
+    }
+    renderContasPagarTable();
+  }
+
   function renderDespesasKpis() {
     const e = els();
-    const rows = getParcelasPagarRows({});
+    const escopo = getDespesasEscopoAtivo();
+    const rows = getParcelasPagarRows({ escopo: escopo === "todos" ? "" : escopo });
     const now = new Date();
     const today = new Date(now.toDateString());
     const week = new Date(today);
@@ -237,6 +325,9 @@ export function installComprasModule(ctx) {
     let vencidas = 0;
     let semana = 0;
     let pagasMes = 0;
+
+    // IDs de parcelas no escopo atual (para filtrar pagamentos do mês)
+    const parcelaIdsEscopo = new Set(rows.map((r) => String(r.id)));
 
     // Em aberto / vencidas / a vencer: usam VENCIMENTO (compromissos ainda em aberto)
     for (const r of rows) {
@@ -253,9 +344,10 @@ export function installComprasModule(ctx) {
       }
     }
 
-    // Pagas no mês: usa DATA REAL DE PAGAMENTO (tabela pagamentos), não vencimento/emissão
+    // Pagas no mês: usa DATA REAL DE PAGAMENTO (tabela pagamentos), no escopo filtrado
     for (const p of state().compras.pagamentos || []) {
       if (!p?.data_pagamento) continue;
+      if (escopo !== "todos" && !parcelaIdsEscopo.has(String(p.parcela_id))) continue;
       const d = new Date(`${String(p.data_pagamento).slice(0, 10)}T12:00:00`);
       if (Number.isNaN(d.getTime())) continue;
       if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
@@ -750,13 +842,15 @@ export function installComprasModule(ctx) {
     });
     renderParcelasIntoTable(e.comprasPagarTable, rowsCompras, { showOrigem: true, showEmissao: false });
 
-    // Caixa único: aba Contas a Pagar (filtros de coluna no cabeçalho)
+    // Caixa único: aba Contas a Pagar (filtros de coluna no cabeçalho + escopo empresa/pessoal)
     const cols = state().compras.filters.despesasCols || {};
+    const escopo = getDespesasEscopoAtivo();
     let rowsDespesas = getParcelasPagarRows({
       busca: state().compras.filters.despesasBusca,
       // status/origem do cabeçalho têm prioridade; fallback nos selects antigos se existirem
       status: cols.status || state().compras.filters.despesasStatus || "",
-      origem: cols.origem || state().compras.filters.despesasOrigem || ""
+      origem: cols.origem || state().compras.filters.despesasOrigem || "",
+      escopo: escopo === "todos" ? "" : escopo
     });
     rowsDespesas = applyDespesasColumnFilters(rowsDespesas);
     renderParcelasIntoTable(e.despesasPagarTable, rowsDespesas, { showOrigem: true, showEmissao: true });
@@ -777,6 +871,19 @@ export function installComprasModule(ctx) {
     renderContasPagarTable();
   }
 
+  function setDespesaClassificacaoUi(classificacao) {
+    const e = els();
+    const next = classificacao === "pessoal" ? "pessoal" : "empresa";
+    const hidden = e.despesaForm?.elements?.namedItem("classificacao");
+    if (hidden && "value" in hidden) hidden.value = next;
+    if (e.despesaClassificacao) e.despesaClassificacao.value = next;
+    document.querySelectorAll("[data-despesa-classificacao]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-despesa-classificacao") === next);
+    });
+    const wrap = document.getElementById("despesaResponsavelWrap");
+    if (wrap) wrap.classList.toggle("hidden", next !== "pessoal");
+  }
+
   function openDespesaModal() {
     ensureStateDefaults();
     const e = els();
@@ -793,6 +900,9 @@ export function installComprasModule(ctx) {
     if (parc && "value" in parc) parc.value = "1";
     const intervalo = e.despesaForm.elements.namedItem("intervalo_dias");
     if (intervalo && "value" in intervalo) intervalo.value = "30";
+    // Prefill: se a lista está filtrada em Pessoais, já abre como pessoal
+    const escopo = getDespesasEscopoAtivo();
+    setDespesaClassificacaoUi(escopo === "pessoal" ? "pessoal" : "empresa");
     e.despesaModal.classList.remove("hidden");
   }
 
@@ -815,6 +925,8 @@ export function installComprasModule(ctx) {
     const formaId = String(formData.get("forma_pagamento_id") || "").trim();
     const categoria = String(formData.get("categoria") || "").trim();
     const observacoes = String(formData.get("observacoes") || "").trim();
+    const responsavel = String(formData.get("responsavel") || "").trim();
+    const classificacao = String(formData.get("classificacao") || "empresa") === "pessoal" ? "pessoal" : "empresa";
     const jaPago = Boolean(formData.get("ja_pago"));
 
     if (!descricao) throw new Error("Informe a descrição.");
@@ -825,9 +937,15 @@ export function installComprasModule(ctx) {
     const cents = Math.round(valor * 100);
     const base = Math.floor(cents / nParcelas);
     const resto = cents - base * nParcelas;
-    const obsParts = [descricao];
-    if (categoria) obsParts.push(`Cat.: ${categoria}`);
-    if (observacoes) obsParts.push(observacoes);
+    const origem = classificacao === "pessoal" ? "despesa_pessoal" : "despesa_manual";
+    const obsFinal = buildObservacoesDespesa({
+      classificacao,
+      responsavel,
+      descricao,
+      categoria,
+      observacoes
+    });
+    const prefixoTitulo = classificacao === "pessoal" ? "PESS" : "DESP";
 
     const { data: conta, error: contaErr } = await sb()
       .from("contas_pagar")
@@ -835,13 +953,13 @@ export function installComprasModule(ctx) {
         empresa_id: state().empresaId,
         nota_entrada_id: null,
         fornecedor_id: fornecedorId ? Number(fornecedorId) : null,
-        origem: "despesa_manual",
-        numero_titulo: `DESP-${Date.now().toString().slice(-8)}`,
+        origem,
+        numero_titulo: `${prefixoTitulo}-${Date.now().toString().slice(-8)}`,
         emissao: new Date(`${emissao}T12:00:00`).toISOString(),
         valor_original: Number(valor.toFixed(2)),
         valor_aberto: jaPago ? 0 : Number(valor.toFixed(2)),
         status: jaPago ? "pago" : "aberto",
-        observacoes: obsParts.join(" | ")
+        observacoes: obsFinal
       })
       .select("id, numero_titulo")
       .single();
@@ -888,7 +1006,11 @@ export function installComprasModule(ctx) {
     closeDespesaModal();
     state().compras.loaded = false;
     await ensureComprasLoaded({ force: true });
-    showToast(`Despesa ${conta.numero_titulo} lançada em Contas a Pagar`);
+    showToast(
+      classificacao === "pessoal"
+        ? `Gasto pessoal ${conta.numero_titulo} lançado`
+        : `Despesa ${conta.numero_titulo} lançada em Contas a Pagar`
+    );
   }
 
   /* ---------- Editar / excluir conta a pagar ---------- */
@@ -1106,16 +1228,41 @@ export function installComprasModule(ctx) {
         : formatDateInput(new Date());
     }
     if (e.contaPagarEditOrigem) e.contaPagarEditOrigem.value = origemLabel(conta.origem);
-    if (e.contaPagarEditObs) e.contaPagarEditObs.value = conta.observacoes || "";
+    const isNota = conta.origem === "nota_entrada" || Boolean(conta.nota_entrada_id);
+    const isPessoal = isDespesaPessoalOrigem(conta.origem);
+    const parsedObs = parseResponsavelFromObs(conta.observacoes);
+    const classWrap = document.getElementById("contaPagarEditClassificacaoWrap");
+    const respWrap = document.getElementById("contaPagarEditResponsavelWrap");
+    const classSelect = document.getElementById("contaPagarEditClassificacao");
+    const respInput = document.getElementById("contaPagarEditResponsavel");
+    if (classWrap) classWrap.classList.toggle("hidden", isNota);
+    if (respWrap) respWrap.classList.toggle("hidden", isNota || !isPessoal);
+    if (classSelect) {
+      classSelect.value = isPessoal ? "pessoal" : "empresa";
+      classSelect.disabled = isNota;
+      classSelect.onchange = () => {
+        const pessoal = classSelect.value === "pessoal";
+        if (respWrap) respWrap.classList.toggle("hidden", !pessoal);
+      };
+    }
+    if (respInput) respInput.value = parsedObs.responsavel || "";
+    if (e.contaPagarEditObs) {
+      // Na edição, mostra o texto sem o marcador [Pessoal: ...]
+      e.contaPagarEditObs.value = isNota ? conta.observacoes || "" : parsedObs.texto || "";
+    }
     if (e.contaPagarEditModalTitle) {
       e.contaPagarEditModalTitle.textContent = `Editar ${conta.numero_titulo || `CP-${conta.id}`}`;
     }
     if (e.contaPagarEditModalSubtitle) {
-      e.contaPagarEditModalSubtitle.textContent =
-        conta.origem === "nota_entrada"
-          ? "Título de NF de compra — emissão e parcelas editáveis."
-          : "Despesa / título manual — emissão e parcelas editáveis.";
+      e.contaPagarEditModalSubtitle.textContent = isNota
+        ? "Título de NF de compra — emissão e parcelas editáveis."
+        : isPessoal
+          ? "Gasto pessoal — pode reclassificar como empresa se quiser."
+          : "Despesa da empresa — pode reclassificar como pessoal se quiser.";
     }
+
+    edit.origemOriginal = conta.origem || "despesa_manual";
+    edit.isNota = isNota;
 
     renderContaPagarEditParcelas();
     e.contaPagarEditModal.classList.remove("hidden");
@@ -1158,7 +1305,7 @@ export function installComprasModule(ctx) {
     const titulo = String(e.contaPagarEditTitulo?.value || "").trim();
     const emissao = String(e.contaPagarEditEmissao?.value || "").trim();
     const fornecedorId = String(e.contaPagarEditFornecedor?.value || "").trim();
-    const obs = String(e.contaPagarEditObs?.value || "").trim();
+    const obsRaw = String(e.contaPagarEditObs?.value || "").trim();
     if (!titulo) throw new Error("Informe o título.");
     if (!emissao) throw new Error("Informe a data de emissão.");
     if (!edit.parcelas.length) throw new Error("Informe ao menos uma parcela.");
@@ -1190,16 +1337,35 @@ export function installComprasModule(ctx) {
     else if (pago > 0) statusConta = "parcial";
     if (edit.parcelas.every((p) => p.status === "cancelado")) statusConta = "cancelado";
 
+    // Classificação (só despesas manuais/pessoais; NF permanece nota_entrada)
+    let origemUpdate = edit.origemOriginal || "despesa_manual";
+    let obsFinal = obsRaw || null;
+    if (!edit.isNota) {
+      const classSelect = document.getElementById("contaPagarEditClassificacao");
+      const respInput = document.getElementById("contaPagarEditResponsavel");
+      const classificacao = classSelect?.value === "pessoal" ? "pessoal" : "empresa";
+      const responsavel = String(respInput?.value || "").trim();
+      origemUpdate = classificacao === "pessoal" ? "despesa_pessoal" : "despesa_manual";
+      if (classificacao === "pessoal") {
+        obsFinal = responsavel
+          ? `[Pessoal: ${responsavel}] ${obsRaw}`.trim()
+          : `[Pessoal] ${obsRaw}`.trim();
+      } else {
+        obsFinal = obsRaw || null;
+      }
+    }
+
     const { error: updContaErr } = await sb()
       .from("contas_pagar")
       .update({
         numero_titulo: titulo,
         fornecedor_id: fornecedorId ? Number(fornecedorId) : null,
+        origem: origemUpdate,
         emissao: new Date(`${emissao}T12:00:00`).toISOString(),
         valor_original: Number(total.toFixed(2)),
         valor_aberto: Number(aberto.toFixed(2)),
         status: statusConta,
-        observacoes: obs || null,
+        observacoes: obsFinal,
         updated_at: new Date().toISOString()
       })
       .eq("id", edit.contaId)
@@ -2599,6 +2765,22 @@ export function installComprasModule(ctx) {
         }
       });
     }
+
+    // Filtro Todos / Empresa / Pessoais
+    document.querySelectorAll("[data-despesas-escopo]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setDespesasEscopo(btn.getAttribute("data-despesas-escopo") || "todos");
+      });
+    });
+    // Sync visual inicial do toggle
+    setDespesasEscopo(getDespesasEscopoAtivo());
+
+    // Classificação Empresa / Pessoal no modal de nova despesa
+    document.querySelectorAll("[data-despesa-classificacao]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setDespesaClassificacaoUi(btn.getAttribute("data-despesa-classificacao") || "empresa");
+      });
+    });
     if (e.despesasPagarBusca) {
       e.despesasPagarBusca.addEventListener("input", () => {
         state().compras.filters.despesasBusca = e.despesasPagarBusca.value || "";

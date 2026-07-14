@@ -570,10 +570,15 @@
             <div>
               <h2>Contas a Pagar</h2>
               <p id="despesasSectionSubtitle" class="section-subtitle">
-                Caixa único de saídas: títulos de NF de compra e despesas manuais. Quem paga vê tudo aqui.
+                Mesma tela para gastos da empresa e pessoais. Use o filtro para separar e o seletor ao lançar.
               </p>
             </div>
             <div class="pedidos-toolbar">
+              <div class="pedidos-view-toggle" role="tablist" aria-label="Escopo das contas a pagar">
+                <button type="button" class="pedidos-view-toggle-btn active" data-despesas-escopo="todos">Todos</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-despesas-escopo="empresa">Empresa</button>
+                <button type="button" class="pedidos-view-toggle-btn" data-despesas-escopo="pessoal">Pessoais</button>
+              </div>
               <button id="openDespesaModalBtn" class="btn" type="button">Nova despesa</button>
             </div>
           </div>
@@ -582,7 +587,7 @@
             <article><span>Em aberto</span><strong id="despesasKpiAberto">R$ 0,00</strong></article>
             <article><span>Vencidas</span><strong id="despesasKpiVencidas">0</strong></article>
             <article><span>A vencer (7 dias)</span><strong id="despesasKpiSemana">R$ 0,00</strong></article>
-            <article title="Soma dos pagamentos com data de baixa no mês corrente"><span>Pagas no mês</span><strong id="despesasKpiPagasMes">R$ 0,00</strong></article>
+            <article title="Soma dos pagamentos com data de baixa no mês corrente (no escopo selecionado)"><span>Pagas no mês</span><strong id="despesasKpiPagasMes">R$ 0,00</strong></article>
           </div>
 
           <div class="table-wrap contas-pagar-table-wrap">
@@ -617,7 +622,8 @@
                     <select data-despesas-col-filter="origem">
                       <option value="">Todas</option>
                       <option value="nota_entrada">NF / Compras</option>
-                      <option value="despesa_manual">Despesa</option>
+                      <option value="despesa_manual">Despesa empresa</option>
+                      <option value="despesa_pessoal">Despesa pessoal</option>
                     </select>
                   </th>
                   <th><input data-despesas-col-filter="emissao" type="search" placeholder="dd/mm/aaaa" /></th>
@@ -1770,11 +1776,23 @@
         <div class="modal-head">
           <div>
             <h3 id="despesaModalTitle">Nova despesa</h3>
-            <p class="modal-subtitle">Gera título em Contas a Pagar (mesmo caixa das NFs de compra).</p>
+            <p class="modal-subtitle">Escolha se é gasto da empresa ou pessoal — fica na mesma lista de Contas a Pagar.</p>
           </div>
           <button id="closeDespesaModalBtn" class="btn btn-ghost" type="button">Fechar</button>
         </div>
         <form id="despesaForm" class="estoque-movimento-form">
+          <div class="despesa-classificacao-block">
+            <span class="documento-field-label">De quem é o gasto?</span>
+            <div class="pedidos-view-toggle despesa-classificacao-toggle" role="radiogroup" aria-label="Classificação do gasto">
+              <button type="button" class="pedidos-view-toggle-btn active" data-despesa-classificacao="empresa">Empresa</button>
+              <button type="button" class="pedidos-view-toggle-btn" data-despesa-classificacao="pessoal">Pessoal</button>
+            </div>
+            <input type="hidden" name="classificacao" id="despesaClassificacao" value="empresa" />
+          </div>
+          <label id="despesaResponsavelWrap" class="hidden">
+            Responsável / pessoa
+            <input name="responsavel" id="despesaResponsavel" placeholder="Ex.: João, sócio, eu..." />
+          </label>
           <label>Descrição / histórico<input name="descricao" required placeholder="Ex.: Aluguel, energia, frete avulso" /></label>
           <label>Fornecedor
             <div class="fornecedor-combo" data-fornecedor-combo="despesa">
@@ -1836,6 +1854,17 @@
             </label>
             <label>Data de emissão<input id="contaPagarEditEmissao" type="date" required /></label>
             <label>Origem<input id="contaPagarEditOrigem" type="text" readonly /></label>
+            <label id="contaPagarEditClassificacaoWrap">
+              Classificação
+              <select id="contaPagarEditClassificacao">
+                <option value="empresa">Empresa</option>
+                <option value="pessoal">Pessoal</option>
+              </select>
+            </label>
+            <label id="contaPagarEditResponsavelWrap" class="hidden">
+              Responsável / pessoa
+              <input id="contaPagarEditResponsavel" placeholder="Ex.: João, sócio..." />
+            </label>
             <label class="nota-entrada-full">Descrição / observações<textarea id="contaPagarEditObs" rows="2"></textarea></label>
           </div>
 

@@ -389,6 +389,8 @@ const els = {
   despesasKpiSemana: document.getElementById("despesasKpiSemana"),
   despesasKpiPagasMes: document.getElementById("despesasKpiPagasMes"),
   despesasSectionSubtitle: document.getElementById("despesasSectionSubtitle"),
+  despesaClassificacao: document.getElementById("despesaClassificacao"),
+  despesaResponsavel: document.getElementById("despesaResponsavel"),
   contaPagarEditModal: document.getElementById("contaPagarEditModal"),
   closeContaPagarEditModalBtn: document.getElementById("closeContaPagarEditModalBtn"),
   contaPagarEditForm: document.getElementById("contaPagarEditForm"),
@@ -399,6 +401,8 @@ const els = {
   contaPagarEditFornecedor: document.getElementById("contaPagarEditFornecedor"),
   contaPagarEditEmissao: document.getElementById("contaPagarEditEmissao"),
   contaPagarEditOrigem: document.getElementById("contaPagarEditOrigem"),
+  contaPagarEditClassificacao: document.getElementById("contaPagarEditClassificacao"),
+  contaPagarEditResponsavel: document.getElementById("contaPagarEditResponsavel"),
   contaPagarEditObs: document.getElementById("contaPagarEditObs"),
   contaPagarEditParcelasList: document.getElementById("contaPagarEditParcelasList"),
   contaPagarEditTotals: document.getElementById("contaPagarEditTotals"),
@@ -6197,7 +6201,7 @@ async function loadDashboardContasPagarMes() {
     const { data, error } = await fetchAllSupabaseRows(() =>
       supabaseClient
         .from("contas_pagar_parcelas")
-        .select("id, valor_parcela, valor_pago, status, vencimento")
+        .select("id, valor_parcela, valor_pago, status, vencimento, conta_pagar:contas_pagar(origem)")
         .eq("empresa_id", state.empresaId)
         .gte("vencimento", start)
         .lte("vencimento", end)
@@ -6218,6 +6222,9 @@ async function loadDashboardContasPagarMes() {
     let count = 0;
 
     for (const row of data || []) {
+      // Gastos pessoais não entram no resultado da empresa
+      const origem = row.conta_pagar?.origem || row.conta_pagar?.[0]?.origem || "";
+      if (String(origem) === "despesa_pessoal") continue;
       const status = String(row.status || "").toLowerCase();
       if (status === "cancelado") continue;
       const valorParcela = Math.max(0, Number(row.valor_parcela || 0));
