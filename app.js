@@ -4110,6 +4110,24 @@ function closePdfViewerModal() {
  * Abre o PDF direto na tela (iframe), sem pedir "salvar em..." primeiro.
  * No celular: visualiza na hora + botão opcional "Enviar" (WhatsApp etc.).
  */
+function openPdfInNewTab(url) {
+  const opened = window.open(url, "_blank", "noopener");
+  if (opened) return true;
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    // Sem download: tenta abrir no visualizador nativo do celular
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function openPdfViewerModal({ blob, fileName, title, shareText }) {
   closePdfViewerModal();
 
@@ -4118,17 +4136,23 @@ function openPdfViewerModal({ blob, fileName, title, shareText }) {
       ? blob
       : new Blob([blob], { type: "application/pdf" });
   const url = URL.createObjectURL(pdfBlob);
-  const file = new File([pdfBlob], fileName || "documento.pdf", { type: "application/pdf" });
-  const canShare =
-    typeof navigator.canShare === "function" &&
-    typeof navigator.share === "function" &&
-    (() => {
-      try {
-        return navigator.canShare({ files: [file] });
-      } catch (_) {
-        return false;
-      }
-    })();
+  const safeName = String(fileName || "documento.pdf").replace(/[^\w.\-() ]+/g, "_");
+  const file = new File([pdfBlob], safeName.endsWith(".pdf") ? safeName : `${safeName}.pdf`, {
+    type: "application/pdf"
+  });
+
+  const hasShareApi = typeof navigator.share === "function";
+  let canShareFiles = false;
+  if (hasShareApi) {
+    try {
+      canShareFiles =
+        typeof navigator.canShare !== "function" ||
+        navigator.canShare({ files: [file] });
+    } catch (_) {
+      canShareFiles = false;
+    }
+  }
+  const mobile = isMobileDevice();
 
   const overlay = document.createElement("div");
   overlay.id = "pdfViewerOverlay";
@@ -4143,23 +4167,38 @@ function openPdfViewerModal({ blob, fileName, title, shareText }) {
       <div class="modal-head pdf-viewer-head">
         <div>
           <h2 class="pdf-viewer-title">${escapeHtml(title || "PDF")}</h2>
-          <p class="modal-subtitle pdf-viewer-subtitle">PDF aberto direto — não precisa salvar antes</p>
+          <p class="modal-subtitle pdf-viewer-subtitle">${
+            mobile
+              ? "No celular use Enviar (WhatsApp) ou Abrir visualizador"
+              : "PDF aberto direto — não precisa salvar antes"
+          }</p>
         </div>
         <div class="modal-head-actions pdf-viewer-actions">
           ${
-            canShare
+            hasShareApi && canShareFiles
               ? `<button type="button" class="btn btn-primary" data-pdf-action="share">Enviar</button>`
               : ""
           }
-          <button type="button" class="btn btn-ghost" data-pdf-action="open-tab">Nova aba</button>
+          <button type="button" class="btn ${mobile ? "btn-primary" : "btn-ghost"}" data-pdf-action="open-tab">${
+            mobile ? "Abrir" : "Nova aba"
+          }</button>
           <button type="button" class="btn btn-ghost" data-pdf-action="close">Fechar</button>
         </div>
       </div>
       <div class="pdf-viewer-frame-wrap">
-        <iframe class="pdf-viewer-frame" title="PDF" src="${url}"></iframe>
-        <div class="pdf-viewer-fallback" hidden>
-          <p>Se o PDF não aparecer abaixo, use <strong>Nova aba</strong> ou <strong>Enviar</strong>.</p>
-        </div>
+        ${
+          mobile
+            ? `<div class="pdf-viewer-fallback">
+                <p><strong>PDF pronto.</strong> Toque em <strong>Abrir</strong> para ver no visualizador do celular${
+                  hasShareApi && canShareFiles ? " ou <strong>Enviar</strong> para WhatsApp" : ""
+                }.</p>
+              </div>
+              <iframe class="pdf-viewer-frame" title="PDF" src="${url}" style="min-height:45vh;"></iframe>`
+            : `<iframe class="pdf-viewer-frame" title="PDF" src="${url}"></iframe>
+               <div class="pdf-viewer-fallback" hidden>
+                 <p>Se o PDF não aparecer, use <strong>Nova aba</strong> ou <strong>Enviar</strong>.</p>
+               </div>`
+        }
       </div>
     </div>
   `;
@@ -4173,16 +4212,8 @@ function openPdfViewerModal({ blob, fileName, title, shareText }) {
   overlay.querySelector('[data-pdf-action="close"]')?.addEventListener("click", close);
 
   overlay.querySelector('[data-pdf-action="open-tab"]')?.addEventListener("click", () => {
-    // Sem atributo download: o navegador/celular tenta abrir o visualizador, não "Salvar como".
-    const opened = window.open(url, "_blank", "noopener");
-    if (!opened) {
-      const a = document.createElement("a");
-      a.href = url;
-      a.target = "_blank";
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+    if (!openPdfInNewTab(url)) {
+      showToast("Permita pop-ups para abrir o PDF.", "error");
     }
   });
 
@@ -4196,26 +4227,23 @@ function openPdfViewerModal({ blob, fileName, title, shareText }) {
       showToast("PDF enviado");
     } catch (err) {
       if (err?.name === "AbortError") return;
-      showToast("Não foi possível compartilhar neste aparelho.", "error");
+      // Fallback: tenta abrir no visualizador nativo
+      if (openPdfInNewTab(url)) {
+        showToast("Abra o menu do visualizador para compartilhar.");
+      } else {
+        showToast("Não foi possível compartilhar neste aparelho.", "error");
+      }
     }
   });
 
   document.body.appendChild(overlay);
 
-  // Em alguns iOS o iframe de PDF fica em branco — mostra dica e tenta abrir em nova aba.
-  const isIOS =
-    /iPad|iPhone|iPod/i.test(navigator.userAgent || "") ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  if (isIOS) {
-    const fallback = overlay.querySelector(".pdf-viewer-fallback");
-    if (fallback) fallback.hidden = false;
-    // Tenta abrir no visualizador nativo sem download forçado
+  if (mobile) {
+    // No mobile o iframe costuma falhar — abre o visualizador nativo logo após o toque do usuário
     window.setTimeout(() => {
-      const opened = window.open(url, "_blank", "noopener");
-      if (opened) {
-        showToast("PDF aberto no visualizador");
-      }
-    }, 80);
+      openPdfInNewTab(url);
+      showToast("PDF gerado — use Abrir ou Enviar se a aba não abriu");
+    }, 120);
   } else {
     showToast("PDF aberto");
   }
@@ -4223,65 +4251,452 @@ function openPdfViewerModal({ blob, fileName, title, shareText }) {
   return true;
 }
 
-let html2pdfLoadPromise = null;
+let pdfMakeLoadPromise = null;
 
-async function ensureHtml2PdfLoaded() {
-  if (typeof window.html2pdf === "function") return window.html2pdf;
-  if (html2pdfLoadPromise) {
-    await html2pdfLoadPromise;
-    if (typeof window.html2pdf === "function") return window.html2pdf;
-  }
-
-  html2pdfLoadPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[data-html2pdf="1"]');
+function loadScriptOnce(src, dataKey) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-pdf-lib="${dataKey}"]`);
     if (existing) {
-      if (typeof window.html2pdf === "function") {
+      if (existing.dataset.loaded === "1") {
         resolve();
         return;
       }
       existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Falha ao carregar gerador de PDF")), { once: true });
+      existing.addEventListener("error", () => reject(new Error(`Falha ao carregar ${dataKey}`)), { once: true });
       return;
     }
     const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.src = src;
     script.async = true;
-    script.dataset.html2pdf = "1";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Falha ao carregar gerador de PDF"));
+    script.dataset.pdfLib = dataKey;
+    script.onload = () => {
+      script.dataset.loaded = "1";
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`Falha ao carregar ${dataKey}`));
     document.head.appendChild(script);
-  });
-
-  try {
-    await html2pdfLoadPromise;
-  } catch (err) {
-    html2pdfLoadPromise = null;
-    throw err;
-  }
-
-  if (typeof window.html2pdf !== "function") {
-    html2pdfLoadPromise = null;
-    throw new Error("Gerador de PDF indisponível");
-  }
-  return window.html2pdf;
-}
-
-/** Pré-carrega o gerador de PDF em background (ex.: ao abrir o modal). */
-function preloadHtml2Pdf() {
-  ensureHtml2PdfLoaded().catch(() => {
-    /* silencioso: gera sob demanda se falhar */
   });
 }
 
 /**
- * Gera PDF real e abre direto na tela (sem salvar primeiro).
- * No celular: visualizador embutido + Enviar (WhatsApp etc.) se o aparelho permitir.
+ * pdfmake gera PDF por especificação (sem html2canvas).
+ * Funciona bem no mobile e suporta acentos (Roboto).
+ */
+async function ensurePdfMakeLoaded() {
+  if (window.pdfMake?.createPdf) return window.pdfMake;
+  if (pdfMakeLoadPromise) {
+    await pdfMakeLoadPromise;
+    if (window.pdfMake?.createPdf) return window.pdfMake;
+  }
+
+  pdfMakeLoadPromise = (async () => {
+    await loadScriptOnce(
+      "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.12/pdfmake.min.js",
+      "pdfmake"
+    );
+    await loadScriptOnce(
+      "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.12/vfs_fonts.min.js",
+      "pdfmake-vfs"
+    );
+    // vfs_fonts costuma expor pdfMake.vfs ou window.pdfMake.vfs
+    if (window.pdfMake && !window.pdfMake.vfs && window.pdfMake.virtualfs) {
+      window.pdfMake.vfs = window.pdfMake.virtualfs;
+    }
+  })();
+
+  try {
+    await pdfMakeLoadPromise;
+  } catch (err) {
+    pdfMakeLoadPromise = null;
+    throw err;
+  }
+
+  if (!window.pdfMake?.createPdf) {
+    pdfMakeLoadPromise = null;
+    throw new Error("Gerador de PDF indisponível");
+  }
+  return window.pdfMake;
+}
+
+/** Pré-carrega o gerador de PDF em background (ex.: ao abrir o modal). */
+function preloadHtml2Pdf() {
+  ensurePdfMakeLoaded().catch(() => {
+    /* silencioso: gera sob demanda se falhar */
+  });
+}
+
+function isMobileDevice() {
+  return (
+    window.matchMedia?.("(max-width: 900px)")?.matches ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "") ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function buildDocumentoPdfDefinition(payload) {
+  const {
+    empresaNome,
+    cliente,
+    dataEmissaoLabel,
+    numeroRef,
+    itens,
+    subtotal,
+    observacoes,
+    pagamentoTexto,
+    bicicleta,
+    docLabel,
+    geradoEm
+  } = payload;
+
+  const tipoLabel = docLabel || "Orçamento";
+  const clienteNome = String(cliente?.nome || "Cliente não informado").trim();
+  const clienteTel = String(cliente?.telefone || "").trim();
+  const clienteEmail = String(cliente?.email || "").trim();
+  const brand = "#165d59";
+  const brandDark = "#0f4744";
+  const muted = "#5f5a50";
+  const line = "#ddd2c0";
+  const softBg = "#fbf8f2";
+
+  const clienteLines = [
+    { text: clienteNome, bold: true, fontSize: 11, color: "#1f1e1a" }
+  ];
+  if (clienteTel) clienteLines.push({ text: `Tel.: ${clienteTel}`, fontSize: 9, color: muted, margin: [0, 2, 0, 0] });
+  if (clienteEmail) clienteLines.push({ text: `E-mail: ${clienteEmail}`, fontSize: 9, color: muted, margin: [0, 2, 0, 0] });
+
+  const condicoesLines = [
+    {
+      text: pagamentoTexto || "Condições comerciais a combinar.",
+      fontSize: 10,
+      color: "#1f1e1a"
+    },
+    {
+      text: "Documento gerado para análise e aprovação.",
+      fontSize: 9,
+      color: muted,
+      margin: [0, 4, 0, 0]
+    }
+  ];
+
+  const tableBody = [
+    [
+      { text: "#", style: "th", alignment: "center" },
+      { text: "Descrição", style: "th" },
+      { text: "Qtd", style: "th", alignment: "right" },
+      { text: "Valor unit.", style: "th", alignment: "right" },
+      { text: "Total", style: "th", alignment: "right" }
+    ]
+  ];
+
+  (itens || []).forEach((item, index) => {
+    const qtd = Number(item.quantidade || 0);
+    const unit = Number(item.valorUnitario || 0);
+    const total = qtd * unit;
+    const zebra = index % 2 === 1;
+    const cellBg = zebra ? "#faf7f1" : "#ffffff";
+    tableBody.push([
+      { text: String(index + 1), alignment: "center", fontSize: 9, color: muted, fillColor: cellBg },
+      { text: String(item.descricao || "Item"), fontSize: 9, color: "#1f1e1a", fillColor: cellBg },
+      { text: formatQtyForPdf(qtd), alignment: "right", fontSize: 9, color: "#1f1e1a", fillColor: cellBg },
+      { text: moeda.format(unit), alignment: "right", fontSize: 9, color: "#1f1e1a", fillColor: cellBg },
+      { text: moeda.format(total), alignment: "right", fontSize: 9, color: "#1f1e1a", fillColor: cellBg }
+    ]);
+  });
+
+  if ((itens || []).length === 0) {
+    tableBody.push([
+      { text: "Nenhum item informado.", colSpan: 5, alignment: "center", fontSize: 9, color: muted, margin: [0, 6, 0, 6] },
+      {},
+      {},
+      {},
+      {}
+    ]);
+  }
+
+  const content = [
+    {
+      columns: [
+        {
+          width: "*",
+          stack: [
+            { text: String(empresaNome || "Empresa"), fontSize: 18, bold: true, color: brandDark },
+            { text: `${tipoLabel} para o cliente`, fontSize: 10, color: muted, margin: [0, 4, 0, 0] }
+          ]
+        },
+        {
+          width: 150,
+          alignment: "right",
+          stack: [
+            {
+              table: {
+                widths: ["*"],
+                body: [[{
+                  text: tipoLabel.toUpperCase(),
+                  fontSize: 9,
+                  bold: true,
+                  color: "#ffffff",
+                  fillColor: brand,
+                  alignment: "center",
+                  margin: [4, 3, 4, 3]
+                }]]
+              },
+              layout: "noBorders",
+              margin: [0, 0, 0, 6]
+            },
+            { text: "Referência", fontSize: 8, color: muted },
+            { text: String(numeroRef || "-"), fontSize: 11, bold: true, color: "#1f1e1a", margin: [0, 1, 0, 6] },
+            { text: "Emissão", fontSize: 8, color: muted },
+            { text: String(dataEmissaoLabel || "-"), fontSize: 11, bold: true, color: "#1f1e1a", margin: [0, 1, 0, 0] }
+          ]
+        }
+      ],
+      margin: [0, 0, 0, 8]
+    },
+    {
+      canvas: [{ type: "line", x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 2, lineColor: brand }],
+      margin: [0, 0, 0, 14]
+    },
+    {
+      columns: [
+        {
+          width: "*",
+          table: {
+            widths: ["*"],
+            body: [[{
+              stack: [
+                { text: "CLIENTE", fontSize: 9, bold: true, color: brand, margin: [0, 0, 0, 6] },
+                ...clienteLines
+              ],
+              fillColor: softBg
+            }]]
+          },
+          layout: {
+            hLineWidth: () => 1,
+            vLineWidth: () => 1,
+            hLineColor: () => line,
+            vLineColor: () => line,
+            paddingLeft: () => 8,
+            paddingRight: () => 8,
+            paddingTop: () => 8,
+            paddingBottom: () => 8
+          }
+        },
+        {
+          width: "*",
+          table: {
+            widths: ["*"],
+            body: [[{
+              stack: [
+                { text: "CONDIÇÕES", fontSize: 9, bold: true, color: brand, margin: [0, 0, 0, 6] },
+                ...condicoesLines
+              ],
+              fillColor: softBg
+            }]]
+          },
+          layout: {
+            hLineWidth: () => 1,
+            vLineWidth: () => 1,
+            hLineColor: () => line,
+            vLineColor: () => line,
+            paddingLeft: () => 8,
+            paddingRight: () => 8,
+            paddingTop: () => 8,
+            paddingBottom: () => 8
+          }
+        }
+      ],
+      columnGap: 10,
+      margin: [0, 0, 0, 12]
+    }
+  ];
+
+  if (bicicleta && (bicicleta.marca || bicicleta.modelo || bicicleta.tamanhoAro || bicicleta.cor || bicicleta.acessorios)) {
+    const bikeLines = [
+      bicicleta.marca ? `Marca: ${bicicleta.marca}` : "",
+      bicicleta.modelo ? `Modelo: ${bicicleta.modelo}` : "",
+      bicicleta.tamanhoAro ? `Aro: ${bicicleta.tamanhoAro}` : "",
+      bicicleta.cor ? `Cor: ${bicicleta.cor}` : "",
+      bicicleta.acessorios ? `Acessórios: ${bicicleta.acessorios}` : ""
+    ].filter(Boolean);
+
+    content.push({
+      table: {
+        widths: ["*"],
+        body: [[{
+          stack: [
+            { text: "BICICLETA", fontSize: 9, bold: true, color: brand, margin: [0, 0, 0, 6] },
+            { text: bikeLines.join("\n"), fontSize: 10, color: "#1f1e1a" }
+          ],
+          fillColor: softBg
+        }]]
+      },
+      layout: {
+        hLineWidth: () => 1,
+        vLineWidth: () => 1,
+        hLineColor: () => line,
+        vLineColor: () => line,
+        paddingLeft: () => 10,
+        paddingRight: () => 10,
+        paddingTop: () => 8,
+        paddingBottom: () => 8
+      },
+      margin: [0, 0, 0, 12]
+    });
+  }
+
+  content.push({
+    table: {
+      headerRows: 1,
+      widths: [22, "*", 40, 70, 70],
+      body: tableBody
+    },
+    layout: {
+      hLineWidth: (i, node) => (i === 0 || i === 1 || i === node.table.body.length ? 0.8 : 0.4),
+      vLineWidth: () => 0,
+      hLineColor: (i) => (i <= 1 ? brand : "#e8dfd0"),
+      paddingLeft: () => 6,
+      paddingRight: () => 6,
+      paddingTop: () => 6,
+      paddingBottom: () => 6,
+      fillColor: (rowIndex) => (rowIndex === 0 ? brand : null)
+    },
+    margin: [0, 0, 0, 12]
+  });
+
+  content.push({
+    columns: [
+      { width: "*", text: "" },
+      {
+        width: 200,
+        table: {
+          widths: ["*", "auto"],
+          body: [[
+            { text: "Total", bold: true, color: "#ffffff", fontSize: 12 },
+            { text: moeda.format(subtotal || 0), bold: true, color: "#ffffff", fontSize: 12, alignment: "right" }
+          ]]
+        },
+        layout: {
+          hLineWidth: () => 0,
+          vLineWidth: () => 0,
+          paddingLeft: () => 12,
+          paddingRight: () => 12,
+          paddingTop: () => 10,
+          paddingBottom: () => 10,
+          fillColor: () => brand
+        }
+      }
+    ],
+    margin: [0, 0, 0, 16]
+  });
+
+  if (observacoes) {
+    content.push({
+      stack: [
+        { text: "OBSERVAÇÕES", fontSize: 9, bold: true, color: brand, margin: [0, 0, 0, 4] },
+        { text: String(observacoes), fontSize: 10, color: "#3b372f" }
+      ],
+      margin: [0, 0, 0, 18]
+    });
+  }
+
+  content.push({
+    columns: [
+      {
+        width: "*",
+        stack: [
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 220, y2: 0, lineWidth: 0.8, lineColor: "#9f9687" }], margin: [0, 24, 0, 6] },
+          { text: "Assinatura do cliente", alignment: "center", fontSize: 9, color: muted },
+          { text: "Data: ____/____/________", alignment: "center", fontSize: 9, color: muted, margin: [0, 4, 0, 0] }
+        ]
+      },
+      {
+        width: "*",
+        stack: [
+          { canvas: [{ type: "line", x1: 0, y1: 0, x2: 220, y2: 0, lineWidth: 0.8, lineColor: "#9f9687" }], margin: [0, 24, 0, 6] },
+          { text: "Assinatura da empresa", alignment: "center", fontSize: 9, color: muted },
+          { text: String(empresaNome || ""), alignment: "center", fontSize: 9, color: muted, margin: [0, 4, 0, 0] }
+        ]
+      }
+    ],
+    columnGap: 24,
+    margin: [0, 8, 0, 20]
+  });
+
+  content.push({
+    text: `Gerado em ${geradoEm || ""} · Documento não fiscal · Válido para aprovação comercial`,
+    alignment: "center",
+    fontSize: 8,
+    color: "#7a7468"
+  });
+
+  return {
+    pageSize: "A4",
+    pageMargins: [36, 36, 36, 40],
+    defaultStyle: {
+      font: "Roboto",
+      fontSize: 10,
+      color: "#1f1e1a"
+    },
+    styles: {
+      th: {
+        bold: true,
+        fontSize: 9,
+        color: "#ffffff"
+      }
+    },
+    content
+  };
+}
+
+function createPdfBlobFromDefinition(docDefinition) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (err, blob) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (err) reject(err);
+      else resolve(blob);
+    };
+
+    const timer = setTimeout(() => {
+      finish(new Error("Tempo esgotado ao montar o PDF no aparelho"));
+    }, 20000);
+
+    try {
+      const pdfMakeApi = window.pdfMake || window.pdfmake;
+      if (!pdfMakeApi?.createPdf) {
+        finish(new Error("Gerador de PDF não carregou"));
+        return;
+      }
+      const pdf = pdfMakeApi.createPdf(docDefinition);
+      pdf.getBlob((blob) => {
+        if (!(blob instanceof Blob) || blob.size < 200) {
+          finish(new Error("PDF gerado está vazio ou inválido"));
+          return;
+        }
+        // Garante MIME correto no mobile (alguns browsers devolvem application/octet-stream)
+        if (blob.type && blob.type !== "application/pdf") {
+          finish(null, new Blob([blob], { type: "application/pdf" }));
+          return;
+        }
+        finish(null, blob);
+      });
+    } catch (err) {
+      finish(err instanceof Error ? err : new Error(String(err || "Erro ao gerar PDF")));
+    }
+  });
+}
+
+/**
+ * Gera PDF real (pdfmake) e abre direto na tela.
+ * No celular: visualizador + Enviar (WhatsApp etc.) se o aparelho permitir.
  */
 async function generateDocumentoOrcamentoPdf() {
   syncNovoDocumentoDraftFromForm();
 
-  const itensRaw = getDocumentoItensPayload();
-  if (!itensRaw.length) {
+  const itens = getDocumentoItensPayload();
+  if (!itens.length) {
     showToast("Adicione ao menos um item antes de gerar o PDF.", "error");
     return;
   }
@@ -4302,13 +4717,11 @@ async function generateDocumentoOrcamentoPdf() {
   let subtotal = 0;
   let isPedido = false;
   let bicicleta = null;
-  let itens = itensRaw;
   let pdfPayload = null;
 
   try {
-    // Biblioteca + cliente em paralelo para reduzir espera percebida
     const [, resolvedCliente] = await Promise.all([
-      ensureHtml2PdfLoaded(),
+      ensurePdfMakeLoaded(),
       resolveClienteForPdf()
     ]);
 
@@ -4321,10 +4734,6 @@ async function generateDocumentoOrcamentoPdf() {
       showToast("Cliente sem nome cadastrado. Atualize o cadastro e tente de novo.", "error");
       return;
     }
-
-    // Miniaturas embutidas (data URL) — evita PDF em branco por CORS e acelera o canvas
-    if (btn) btn.textContent = "Preparando...";
-    itens = await prepareItensForPdf(itensRaw);
 
     const dataEmissao = state.novoDocumentoModal.dataEmissao || formatDateInput(new Date());
     const dataEmissaoDate = parseDateInput(dataEmissao) || new Date();
@@ -4365,91 +4774,18 @@ async function generateDocumentoOrcamentoPdf() {
       autoPrint: false
     };
 
-    const html = buildOrcamentoPdfHtml(pdfPayload);
-    const parser = new DOMParser();
-    const parsed = parser.parseFromString(html, "text/html");
-    const sheet = parsed.querySelector(".sheet");
-    if (!sheet) throw new Error("Falha ao montar o documento");
+    if (btn) btn.textContent = "Montando PDF...";
+    const definition = buildDocumentoPdfDefinition(pdfPayload);
+    const blob = await createPdfBlobFromDefinition(definition);
 
-    // Host quase invisível MAS no viewport (left:-10000px gera PDF em branco no html2canvas)
-    const host = document.createElement("div");
-    host.setAttribute("aria-hidden", "true");
-    host.style.cssText = [
-      "position:fixed",
-      "left:0",
-      "top:0",
-      "width:794px",
-      "opacity:0.01",
-      "pointer-events:none",
-      "z-index:-1",
-      "background:#fff",
-      "overflow:hidden"
-    ].join(";");
-    const styleNodes = parsed.querySelectorAll("style");
-    styleNodes.forEach((st) => host.appendChild(st.cloneNode(true)));
-    host.appendChild(sheet.cloneNode(true));
-    host.querySelectorAll(".no-print").forEach((el) => el.remove());
-    document.body.appendChild(host);
-
-    try {
-      const target = host.querySelector(".sheet") || host;
-      await waitForElementImages(target, 2000);
-
-      // Escala menor no celular = bem mais rápido, ainda legível em A4
-      const isMobile = window.matchMedia?.("(max-width: 900px)")?.matches
-        || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
-      const scale = isMobile ? 1.25 : 1.5;
-
-      if (btn) btn.textContent = "Gerando PDF...";
-
-      const opt = {
-        margin: [8, 8, 8, 8],
-        filename: fileName,
-        image: { type: "jpeg", quality: 0.92 },
-        html2canvas: {
-          scale,
-          useCORS: true,
-          allowTaint: false,
-          logging: false,
-          backgroundColor: "#ffffff",
-          scrollX: 0,
-          scrollY: 0,
-          windowWidth: 794,
-          onclone(clonedDoc) {
-            const clonedSheet = clonedDoc.querySelector(".sheet");
-            if (clonedSheet) {
-              clonedSheet.style.width = "700px";
-              clonedSheet.style.color = "#1f1e1a";
-              clonedSheet.style.background = "#fff";
-              clonedSheet.style.fontFamily = "Arial, Helvetica, sans-serif";
-            }
-          }
-        },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["css", "legacy"] }
-      };
-
-      const blob = await window
-        .html2pdf()
-        .set(opt)
-        .from(target)
-        .outputPdf("blob");
-
-      if (!(blob instanceof Blob) || blob.size < 500) {
-        throw new Error("PDF gerado está vazio ou inválido");
-      }
-
-      openPdfViewerModal({
-        blob,
-        fileName,
-        title: `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef}`,
-        shareText
-      });
-    } finally {
-      host.remove();
-    }
+    openPdfViewerModal({
+      blob,
+      fileName,
+      title: `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef}`,
+      shareText
+    });
   } catch (error) {
-    console.warn("Falha ao gerar PDF nativo, usando prévia HTML", error);
+    console.warn("Falha ao gerar PDF, usando prévia HTML", error);
     const fallbackPayload = pdfPayload || {
       empresaNome: state.empresaNome || saasName || "Empresa",
       cliente: cliente || { nome: els.novoDocumentoClienteLabel?.textContent || "Cliente" },
@@ -4470,6 +4806,8 @@ async function generateDocumentoOrcamentoPdf() {
     };
     if (openOrcamentoHtmlPreview(buildOrcamentoPdfHtml(fallbackPayload))) {
       showToast("Prévia aberta com os dados do documento. Use Imprimir/Salvar PDF se precisar.");
+    } else {
+      showToast(`Não foi possível gerar o PDF: ${error?.message || "erro desconhecido"}`, "error");
     }
   } finally {
     if (btn) {
