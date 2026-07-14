@@ -378,6 +378,7 @@ const els = {
   despesaModal: document.getElementById("despesaModal"),
   closeDespesaModalBtn: document.getElementById("closeDespesaModalBtn"),
   openDespesaModalBtn: document.getElementById("openDespesaModalBtn"),
+  exportContasPagarExcelBtn: document.getElementById("exportContasPagarExcelBtn"),
   despesaFornecedorSelect: document.getElementById("despesaFornecedorSelect"),
   despesaFormaPagamento: document.getElementById("despesaFormaPagamento"),
   despesasPagarTable: document.getElementById("despesasPagarTable"),

@@ -321,6 +321,8 @@ export function installComprasModule(ctx) {
     const today = new Date(now.toDateString());
     const week = new Date(today);
     week.setDate(week.getDate() + 7);
+    // "Em aberto" = saldo com vencimento até o último dia do mês atual (mês corrente e atrasados).
+    const fimMesAtual = new Date(now.getFullYear(), now.getMonth() + 1, 0, 12, 0, 0);
     let aberto = 0;
     let vencidas = 0;
     let semana = 0;
@@ -333,13 +335,20 @@ export function installComprasModule(ctx) {
     for (const r of rows) {
       const saldo = Math.max(0, Number(r.valor_parcela || 0) - Number(r.valor_pago || 0));
       if (r.status !== "pago" && r.status !== "cancelado") {
-        aberto += saldo;
         if (r.vencimento) {
           const v = new Date(`${String(r.vencimento).slice(0, 10)}T12:00:00`);
           if (!Number.isNaN(v.getTime())) {
+            // Soma só até o fim do mês atual (ex.: em 14/07, inclui até 31/07 e tudo para trás)
+            if (v <= fimMesAtual) aberto += saldo;
             if (v < today) vencidas += 1;
             else if (v <= week) semana += saldo;
+          } else {
+            // Vencimento inválido: ainda assim é compromisso em aberto
+            aberto += saldo;
           }
+        } else {
+          // Sem data de vencimento: considera em aberto (compromisso sem prazo definido)
+          aberto += saldo;
         }
       }
     }
@@ -832,6 +841,160 @@ export function installComprasModule(ctx) {
       .join("");
   }
 
+  /** Linhas da aba Contas a Pagar com os mesmos filtros da tabela (escopo + colunas). */
+  function getContasPagarDespesasFilteredRows() {
+    ensureStateDefaults();
+    const cols = state().compras.filters.despesasCols || {};
+    const escopo = getDespesasEscopoAtivo();
+    let rows = getParcelasPagarRows({
+      busca: state().compras.filters.despesasBusca,
+      status: cols.status || state().compras.filters.despesasStatus || "",
+      origem: cols.origem || state().compras.filters.despesasOrigem || "",
+      escopo: escopo === "todos" ? "" : escopo
+    });
+    return applyDespesasColumnFilters(rows);
+  }
+
+  function getFornecedorDescFromParcela(r) {
+    const parsedObs = parseResponsavelFromObs(r.conta?.observacoes);
+    const isPessoal = isDespesaPessoalOrigem(r.conta?.origem);
+    return (
+      r.conta?.fornecedor?.nome ||
+      (isPessoal
+        ? parsedObs.responsavel || parsedObs.texto || r.conta?.numero_titulo
+        : r.conta?.origem === "despesa_manual"
+          ? parsedObs.texto || r.conta?.observacoes || r.conta?.numero_titulo
+          : null) ||
+      ""
+    );
+  }
+
+  function escapeXml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  /**
+   * Gera arquivo Excel (SpreadsheetML .xls) sem dependências externas.
+   * Abre no Excel, Google Planilhas e LibreOffice.
+   */
+  function downloadExcelSpreadsheet({ fileName, sheetName, headers, rows }) {
+    const safeSheet = String(sheetName || "Planilha")
+      .replace(/[\\/*?:\[\]]/g, " ")
+      .slice(0, 31) || "Planilha";
+
+    const headerCells = headers
+      .map((h) => `<Cell ss:StyleID="Header"><Data ss:Type="String">${escapeXml(h)}</Data></Cell>`)
+      .join("");
+
+    const body = rows
+      .map((row) => {
+        const cells = row
+          .map((cell) => {
+            if (cell && typeof cell === "object" && "type" in cell) {
+              if (cell.type === "Number") {
+                const num = Number(cell.value);
+                const safe = Number.isFinite(num) ? num : 0;
+                return `<Cell ss:StyleID="Money"><Data ss:Type="Number">${safe}</Data></Cell>`;
+              }
+              return `<Cell><Data ss:Type="String">${escapeXml(cell.value)}</Data></Cell>`;
+            }
+            return `<Cell><Data ss:Type="String">${escapeXml(cell)}</Data></Cell>`;
+          })
+          .join("");
+        return `<Row>${cells}</Row>`;
+      })
+      .join("");
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Header">
+   <Font ss:Bold="1"/>
+   <Interior ss:Color="#E8F0EF" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="Money">
+   <NumberFormat ss:Format="#,##0.00"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="${escapeXml(safeSheet)}">
+  <Table>
+   <Row>${headerCells}</Row>
+   ${body}
+  </Table>
+ </Worksheet>
+</Workbook>`;
+
+    const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName.endsWith(".xls") ? fileName : `${fileName}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  function exportContasPagarExcel() {
+    ensureStateDefaults();
+    const rows = getContasPagarDespesasFilteredRows();
+    if (!rows.length) {
+      showToast("Nenhuma parcela para exportar com os filtros atuais.", "error");
+      return;
+    }
+
+    const headers = [
+      "Status",
+      "Título",
+      "Fornecedor / desc.",
+      "Origem",
+      "Emissão",
+      "Parcela",
+      "Vencimento",
+      "Valor",
+      "Saldo",
+      "Pago"
+    ];
+
+    const excelRows = rows.map((r) => {
+      const valor = Number(r.valor_parcela || 0);
+      const pago = Number(r.valor_pago || 0);
+      const saldo = Math.max(0, valor - pago);
+      return [
+        String(r.status || ""),
+        r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`,
+        getFornecedorDescFromParcela(r),
+        origemLabel(r.conta?.origem),
+        formatDateBr(r.conta?.emissao) === "–" ? "" : formatDateBr(r.conta?.emissao),
+        r.numero_parcela ?? "",
+        formatDateBr(r.vencimento) === "–" ? "" : formatDateBr(r.vencimento),
+        { type: "Number", value: valor },
+        { type: "Number", value: saldo },
+        { type: "Number", value: pago }
+      ];
+    });
+
+    const hoje = formatDateInput(new Date());
+    const escopo = getDespesasEscopoAtivo();
+    const escopoSuffix = escopo === "todos" ? "" : `-${escopo}`;
+    downloadExcelSpreadsheet({
+      fileName: `contas-a-pagar${escopoSuffix}-${hoje}.xls`,
+      sheetName: "Contas a Pagar",
+      headers,
+      rows: excelRows
+    });
+    showToast(`Excel exportado (${rows.length} parcela${rows.length === 1 ? "" : "s"})`);
+  }
+
   function renderContasPagarTable() {
     const e = els();
     // Atalho em Compras: só NFs
@@ -843,16 +1006,7 @@ export function installComprasModule(ctx) {
     renderParcelasIntoTable(e.comprasPagarTable, rowsCompras, { showOrigem: true, showEmissao: false });
 
     // Caixa único: aba Contas a Pagar (filtros de coluna no cabeçalho + escopo empresa/pessoal)
-    const cols = state().compras.filters.despesasCols || {};
-    const escopo = getDespesasEscopoAtivo();
-    let rowsDespesas = getParcelasPagarRows({
-      busca: state().compras.filters.despesasBusca,
-      // status/origem do cabeçalho têm prioridade; fallback nos selects antigos se existirem
-      status: cols.status || state().compras.filters.despesasStatus || "",
-      origem: cols.origem || state().compras.filters.despesasOrigem || "",
-      escopo: escopo === "todos" ? "" : escopo
-    });
-    rowsDespesas = applyDespesasColumnFilters(rowsDespesas);
+    const rowsDespesas = getContasPagarDespesasFilteredRows();
     renderParcelasIntoTable(e.despesasPagarTable, rowsDespesas, { showOrigem: true, showEmissao: true });
     renderDespesasKpis();
   }
@@ -2745,6 +2899,16 @@ export function installComprasModule(ctx) {
           openDespesaModal();
         } catch (err) {
           showToast(`Erro: ${err.message}`, "error");
+        }
+      });
+    }
+    if (e.exportContasPagarExcelBtn) {
+      e.exportContasPagarExcelBtn.addEventListener("click", async () => {
+        try {
+          await ensureComprasLoaded();
+          exportContasPagarExcel();
+        } catch (err) {
+          showToast(`Erro ao exportar Excel: ${err.message}`, "error");
         }
       });
     }

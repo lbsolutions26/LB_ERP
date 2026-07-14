@@ -579,12 +579,13 @@
                 <button type="button" class="pedidos-view-toggle-btn" data-despesas-escopo="empresa">Empresa</button>
                 <button type="button" class="pedidos-view-toggle-btn" data-despesas-escopo="pessoal">Pessoais</button>
               </div>
+              <button id="exportContasPagarExcelBtn" class="btn btn-ghost" type="button" title="Exporta a lista filtrada para Excel">Exportar Excel</button>
               <button id="openDespesaModalBtn" class="btn" type="button">Nova despesa</button>
             </div>
           </div>
 
           <div class="metric-grid relatorio-grid estoque-kpi-grid">
-            <article><span>Em aberto</span><strong id="despesasKpiAberto">R$ 0,00</strong></article>
+            <article title="Soma dos saldos em aberto com vencimento até o último dia do mês atual (inclui atrasados de meses anteriores)"><span>Em aberto</span><strong id="despesasKpiAberto">R$ 0,00</strong></article>
             <article><span>Vencidas</span><strong id="despesasKpiVencidas">0</strong></article>
             <article><span>A vencer (7 dias)</span><strong id="despesasKpiSemana">R$ 0,00</strong></article>
             <article title="Soma dos pagamentos com data de baixa no mês corrente (no escopo selecionado)"><span>Pagas no mês</span><strong id="despesasKpiPagasMes">R$ 0,00</strong></article>
