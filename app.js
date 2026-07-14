@@ -4736,11 +4736,29 @@ function createPdfBlobFromDefinition(docDefinition) {
 }
 
 /**
- * Gera PDF real (pdfmake) e abre direto na tela.
- * No celular: visualizador + Enviar (WhatsApp etc.) se o aparelho permitir.
+ * Gera PDF a partir de um pedido/orçamento salvo (lista de ações),
+ * sem abrir o modal de edição e sem sobrescrever o rascunho pelo formulário.
  */
-async function generateDocumentoOrcamentoPdf() {
-  syncNovoDocumentoDraftFromForm();
+async function generateDocumentoPdfById(tipo, documentoId) {
+  const id = Number(documentoId);
+  if (!Number.isFinite(id) || id <= 0) {
+    showToast("Documento inválido para PDF.", "error");
+    return;
+  }
+  showToast("Preparando PDF...");
+  await Promise.all([ensureClientesLoaded(), ensureProdutosLoaded()]);
+  await loadDocumentoForEdit(tipo, id);
+  await generateDocumentoOrcamentoPdf({ skipFormSync: true });
+}
+
+/**
+ * Gera PDF real (pdfmake) e abre a tela de exportação (Enviar / Baixar).
+ * No celular: Enviar PDF → WhatsApp quando o aparelho permitir.
+ */
+async function generateDocumentoOrcamentoPdf(options = {}) {
+  if (!options.skipFormSync) {
+    syncNovoDocumentoDraftFromForm();
+  }
 
   const itens = getDocumentoItensPayload();
   if (!itens.length) {
@@ -4749,10 +4767,10 @@ async function generateDocumentoOrcamentoPdf() {
   }
 
   const btn = els.novoDocumentoPdfBtn;
-  const btnLabel = btn?.textContent || "Abrir PDF";
+  const btnLabel = btn?.textContent || "PDF";
   if (btn) {
     btn.disabled = true;
-    btn.textContent = "Gerando PDF...";
+    btn.textContent = "Gerando...";
   }
 
   let cliente = null;
@@ -5169,6 +5187,7 @@ function renderItensDocumentoTable() {
         const actions = renderRowActionsMenu(
           [
             { label: "Editar", attrs: `data-edit-pedido="${id}"` },
+            { label: "PDF", attrs: `data-pdf-pedido="${id}"` },
             { label: "Itens", attrs: `data-view-pedido-itens="${id}"` }
           ],
           { label: `Acoes do pedido #${id}` }
@@ -7604,6 +7623,7 @@ function renderPedidoRowActionsMenu(pedidoId) {
   return renderRowActionsMenu(
     [
       { label: "Editar", attrs: `data-edit-pedido="${id}"` },
+      { label: "PDF", attrs: `data-pdf-pedido="${id}"` },
       { label: "Receber", attrs: `data-open-recebimento-pedido="${id}"`, finance: true },
       { label: "Itens", attrs: `data-view-pedido-itens="${id}"` },
       { label: "Excluir", attrs: `data-del-pedido="${id}"`, danger: true }
@@ -7642,6 +7662,7 @@ function renderOrcamentoRowActionsMenu(orcamentoId) {
   return renderRowActionsMenu(
     [
       { label: "Editar", attrs: `data-edit-orcamento="${id}"` },
+      { label: "PDF", attrs: `data-pdf-orcamento="${id}"` },
       { label: "Itens", attrs: `data-view-orcamento-itens="${id}"` },
       { label: "Excluir", attrs: `data-del-orcamento="${id}"`, danger: true }
     ],
@@ -11329,6 +11350,18 @@ function attachEvents() {
       }
       const pedidoEditId = getData("data-edit-pedido");
       const orcamentoEditId = getData("data-edit-orcamento");
+      const pedidoPdfId = getData("data-pdf-pedido");
+      const orcamentoPdfId = getData("data-pdf-orcamento");
+      if (pedidoPdfId) {
+        closeAllRowActionMenus();
+        await generateDocumentoPdfById("pedido", Number(pedidoPdfId));
+        return;
+      }
+      if (orcamentoPdfId) {
+        closeAllRowActionMenus();
+        await generateDocumentoPdfById("orcamento", Number(orcamentoPdfId));
+        return;
+      }
       if (pedidoEditId) {
         // Fecha de verdade (nao volta para a lista) ao editar o pedido.
         await closeItensDocumentoModal({ force: true });

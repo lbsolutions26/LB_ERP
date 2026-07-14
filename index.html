@@ -1373,7 +1373,10 @@
             <h3 id="novoDocumentoModalTitle">Novo Pedido</h3>
             <p id="novoDocumentoModalSubtitle" class="modal-subtitle">Monte os itens como um grid e acompanhe o total em tempo real.</p>
           </div>
-          <button id="closeNovoDocumentoModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+          <div class="modal-head-actions modal-documento-head-actions">
+            <button id="novoDocumentoPdfBtn" type="button" class="btn btn-ghost documento-pdf-btn">PDF</button>
+            <button id="closeNovoDocumentoModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+          </div>
         </div>
 
         <form id="novoDocumentoForm" class="documento-modal-form">
@@ -1605,7 +1608,6 @@
               <strong id="novoDocumentoTotal">R$ 0,00</strong>
             </div>
             <div class="documento-modal-footer-actions">
-              <button id="novoDocumentoPdfBtn" type="button" class="btn btn-ghost">Abrir PDF</button>
               <button id="novoDocumentoSubmitBtn" type="submit" class="btn">Salvar Pedido</button>
             </div>
           </div>

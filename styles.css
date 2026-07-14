@@ -1559,6 +1559,36 @@ table thead input {
 
 .modal-documento-card {
   width: min(1120px, 100%);
+  /* Cabeçalho sticky: o scroll fica no card e o head permanece visível */
+  overflow: auto;
+}
+
+.modal-documento-head {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  background: linear-gradient(180deg, var(--bg-soft) 70%, rgba(251, 248, 242, 0.96) 100%);
+  padding: 0.15rem 0 0.75rem;
+  margin: 0 0 0.15rem;
+  border-bottom: 1px solid var(--line);
+  align-items: flex-start;
+}
+
+.modal-documento-head-actions {
+  flex-shrink: 0;
+}
+
+.documento-pdf-btn {
+  min-width: 4.5rem;
+  font-weight: 700;
+  border: 1px solid rgba(22, 93, 89, 0.28);
+  background: #e8f3f1;
+  color: #0f4744;
+}
+
+.documento-pdf-btn:hover {
+  background: #d7ece8;
+  border-color: rgba(22, 93, 89, 0.45);
 }
 
 .modal-produto-card {
