@@ -3891,6 +3891,39 @@ tr.is-clickable-row:hover {
   border: 1px solid rgba(107, 33, 168, 0.2);
 }
 
+.gasto-badge--recorrente {
+  background: #e0f2fe;
+  color: #075985;
+  border: 1px solid rgba(7, 89, 133, 0.22);
+}
+
+.gasto-badge--recorrente-off {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+.conta-pagar-recorrencia-panel {
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--line);
+  background: rgba(224, 242, 254, 0.35);
+  display: grid;
+  gap: 0.65rem;
+}
+
+.conta-pagar-recorrencia-copy strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.conta-pagar-recorrencia-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
 .despesa-classificacao-block {
   display: grid;
   gap: 0.4rem;

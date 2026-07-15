@@ -116,28 +116,137 @@ export function installComprasModule(ctx) {
     return o !== "despesa_pessoal";
   }
 
-  /** Extrai nome do responsável de observações no formato [Pessoal: Nome] ... */
-  function parseResponsavelFromObs(obs) {
-    const raw = String(obs || "");
-    const m = raw.match(/^\[Pessoal(?::\s*([^\]]+))?\]\s*/i);
-    if (!m) return { responsavel: "", texto: raw };
+  /**
+   * Metadados em observações (tags no início):
+   * [Pessoal: Nome] [Recorrente:ativa|dia=10|meses=12] texto livre...
+   */
+  function parseRecorrenteInner(inner) {
+    const result = { ativa: true, dia: null, meses: 12 };
+    if (!inner || !String(inner).trim()) return result;
+    for (const part of String(inner).split("|")) {
+      const p = part.trim().toLowerCase();
+      if (!p) continue;
+      if (p === "inativa" || p === "off" || p === "0") result.ativa = false;
+      else if (p === "ativa" || p === "on" || p === "1") result.ativa = true;
+      else if (p.startsWith("dia=")) {
+        const d = Number(p.slice(4));
+        result.dia = Number.isFinite(d) && d >= 1 && d <= 31 ? d : null;
+      } else if (p.startsWith("meses=")) {
+        const m = Number(p.slice(6));
+        result.meses = Number.isFinite(m) && m >= 1 ? Math.min(36, Math.trunc(m)) : 12;
+      }
+    }
+    return result;
+  }
+
+  function parseContaObsMeta(obs) {
+    let texto = String(obs || "").trim();
+    let responsavel = "";
+    let hasPessoalTag = false;
+    let recorrente = null;
+
+    // Remove tags no início (ordem livre)
+    let guard = 0;
+    while (guard < 8) {
+      guard += 1;
+      let m = texto.match(/^\[Pessoal(?::\s*([^\]]*))?\]\s*/i);
+      if (m) {
+        hasPessoalTag = true;
+        responsavel = String(m[1] || "").trim();
+        texto = texto.slice(m[0].length).trim();
+        continue;
+      }
+      m = texto.match(/^\[Recorrente(?::([^\]]*))?\]\s*/i);
+      if (m) {
+        recorrente = parseRecorrenteInner(m[1]);
+        texto = texto.slice(m[0].length).trim();
+        continue;
+      }
+      break;
+    }
+
     return {
-      responsavel: String(m[1] || "").trim(),
-      texto: raw.slice(m[0].length).trim()
+      responsavel,
+      hasPessoalTag,
+      recorrente,
+      texto,
+      isRecorrente: Boolean(recorrente),
+      recorrenteAtiva: Boolean(recorrente?.ativa)
     };
   }
 
-  function buildObservacoesDespesa({ classificacao, responsavel, descricao, categoria, observacoes }) {
+  /** Extrai nome do responsável de observações no formato [Pessoal: Nome] ... */
+  function parseResponsavelFromObs(obs) {
+    const meta = parseContaObsMeta(obs);
+    return {
+      responsavel: meta.responsavel,
+      texto: meta.texto,
+      recorrente: meta.recorrente
+    };
+  }
+
+  function buildRecorrenteTag(recorrente) {
+    if (!recorrente) return "";
+    const bits = [recorrente.ativa === false ? "inativa" : "ativa"];
+    if (recorrente.dia) bits.push(`dia=${recorrente.dia}`);
+    if (recorrente.meses) bits.push(`meses=${recorrente.meses}`);
+    return `[Recorrente:${bits.join("|")}]`;
+  }
+
+  function buildObservacoesDespesa({
+    classificacao,
+    responsavel,
+    descricao,
+    categoria,
+    observacoes,
+    recorrente = null
+  }) {
     const parts = [];
     if (descricao) parts.push(String(descricao).trim());
     if (categoria) parts.push(`Cat.: ${String(categoria).trim()}`);
     if (observacoes) parts.push(String(observacoes).trim());
     const body = parts.filter(Boolean).join(" | ");
+
+    const tags = [];
     if (classificacao === "pessoal") {
       const nome = String(responsavel || "").trim();
-      return nome ? `[Pessoal: ${nome}] ${body}`.trim() : `[Pessoal] ${body}`.trim();
+      tags.push(nome ? `[Pessoal: ${nome}]` : `[Pessoal]`);
     }
-    return body || null;
+    if (recorrente) {
+      tags.push(buildRecorrenteTag(recorrente));
+    }
+    const prefix = tags.length ? `${tags.join(" ")} ` : "";
+    return (prefix + body).trim() || null;
+  }
+
+  /** Reaplica tags de pessoal/recorrência sobre o texto livre da observação. */
+  function rebuildObservacoesComMeta({ textoLivre, classificacao, responsavel, recorrente }) {
+    const tags = [];
+    if (classificacao === "pessoal") {
+      const nome = String(responsavel || "").trim();
+      tags.push(nome ? `[Pessoal: ${nome}]` : `[Pessoal]`);
+    }
+    if (recorrente) {
+      tags.push(buildRecorrenteTag(recorrente));
+    }
+    const body = String(textoLivre || "").trim();
+    const prefix = tags.length ? `${tags.join(" ")} ` : "";
+    return (prefix + body).trim() || null;
+  }
+
+  function addMonthsYmd(ymd, months) {
+    const base = ymd ? new Date(`${String(ymd).slice(0, 10)}T12:00:00`) : new Date();
+    if (Number.isNaN(base.getTime())) return formatDateInput(new Date());
+    const day = base.getDate();
+    const target = new Date(base.getFullYear(), base.getMonth() + Number(months || 0), 1, 12, 0, 0);
+    const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+    target.setDate(Math.min(day, lastDay));
+    return formatDateInput(target);
+  }
+
+  function endOfCurrentMonthDate() {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth() + 1, 0, 12, 0, 0);
   }
 
   function getParcelasPagarRows(options = {}) {
@@ -264,14 +373,20 @@ export function installComprasModule(ctx) {
         if (r.status !== "pago" && r.status !== "cancelado") {
           menuItems.push({ label: "Pagar", attrs: `data-pagar-parcela="${parcelaId}"`, finance: true });
         }
+        const obsMeta = parseContaObsMeta(r.conta?.observacoes);
         const origemBadge = isPessoal
           ? `<span class="gasto-badge gasto-badge--pessoal">${escapeHtml(origemLabel(r.conta?.origem))}</span>`
           : escapeHtml(origemLabel(r.conta?.origem));
+        const recorrenteBadge = obsMeta.isRecorrente
+          ? obsMeta.recorrenteAtiva
+            ? ` <span class="gasto-badge gasto-badge--recorrente" title="Conta recorrente mensal (ativa)">Recorrente</span>`
+            : ` <span class="gasto-badge gasto-badge--recorrente-off" title="Recorrência encerrada">Recorr. off</span>`
+          : "";
         return `
         <tr class="is-clickable-row" data-edit-conta-pagar="${contaId}" title="Clique para editar o título">
           <td class="pedido-actions-cell" data-stop-row-edit="1">${rowActions(menuItems, "Acoes do titulo")}</td>
           <td><span class="estoque-status ${r.status === "pago" ? "estoque-status--ok" : "estoque-status--reposicao"}">${escapeHtml(r.status)}</span></td>
-          <td>${escapeHtml(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`)}</td>
+          <td>${escapeHtml(r.conta?.numero_titulo || `CP-${r.conta_pagar_id}`)}${recorrenteBadge}</td>
           <td class="contas-pagar-col-fornecedor" title="${escapeHtml(fornecedorTxt)}">${escapeHtml(fornecedorTxt)}</td>
           ${showOrigem ? `<td>${origemBadge}</td>` : ""}
           ${showEmissao ? `<td>${escapeHtml(formatEmissaoDisplay(r.conta?.emissao))}</td>` : ""}
@@ -1038,6 +1153,25 @@ export function installComprasModule(ctx) {
     if (wrap) wrap.classList.toggle("hidden", next !== "pessoal");
   }
 
+  function setDespesaRecorrenteUi(ativo) {
+    const e = els();
+    const checked = Boolean(ativo);
+    const cb = e.despesaForm?.elements?.namedItem("recorrente") || document.getElementById("despesaRecorrente");
+    if (cb && "checked" in cb) cb.checked = checked;
+    const mesesWrap = document.getElementById("despesaRecorrenteMesesWrap");
+    if (mesesWrap) mesesWrap.classList.toggle("hidden", !checked);
+    const parc = e.despesaForm?.elements?.namedItem("parcelas");
+    const intervalo = e.despesaForm?.elements?.namedItem("intervalo_dias");
+    const parcLabel = parc?.closest?.("label");
+    const intervaloLabel = intervalo?.closest?.("label");
+    if (parcLabel) parcLabel.classList.toggle("hidden", checked);
+    if (intervaloLabel) intervaloLabel.classList.toggle("hidden", checked);
+    if (checked) {
+      const mesesEl = e.despesaForm?.elements?.namedItem("meses_recorrencia");
+      if (mesesEl && "value" in mesesEl && !mesesEl.value) mesesEl.value = "12";
+    }
+  }
+
   function openDespesaModal() {
     ensureStateDefaults();
     const e = els();
@@ -1054,6 +1188,9 @@ export function installComprasModule(ctx) {
     if (parc && "value" in parc) parc.value = "1";
     const intervalo = e.despesaForm.elements.namedItem("intervalo_dias");
     if (intervalo && "value" in intervalo) intervalo.value = "30";
+    const mesesEl = e.despesaForm.elements.namedItem("meses_recorrencia");
+    if (mesesEl && "value" in mesesEl) mesesEl.value = "12";
+    setDespesaRecorrenteUi(false);
     // Prefill: se a lista está filtrada em Pessoais, já abre como pessoal
     const escopo = getDespesasEscopoAtivo();
     setDespesaClassificacaoUi(escopo === "pessoal" ? "pessoal" : "empresa");
@@ -1071,8 +1208,6 @@ export function installComprasModule(ctx) {
     const formData = new FormData(e.despesaForm);
     const descricao = String(formData.get("descricao") || "").trim();
     const valor = Number(formData.get("valor") || 0);
-    const nParcelas = Math.max(1, Math.trunc(Number(formData.get("parcelas") || 1)));
-    const intervalo = Math.max(1, Math.trunc(Number(formData.get("intervalo_dias") || 30)));
     const vencimento = String(formData.get("vencimento") || "").trim();
     const emissao = String(formData.get("emissao") || "").trim() || formatDateInput(new Date());
     const fornecedorId = String(formData.get("fornecedor_id") || "").trim();
@@ -1082,24 +1217,44 @@ export function installComprasModule(ctx) {
     const responsavel = String(formData.get("responsavel") || "").trim();
     const classificacao = String(formData.get("classificacao") || "empresa") === "pessoal" ? "pessoal" : "empresa";
     const jaPago = Boolean(formData.get("ja_pago"));
+    const isRecorrente = Boolean(formData.get("recorrente"));
+    const mesesRecorrencia = Math.max(2, Math.min(36, Math.trunc(Number(formData.get("meses_recorrencia") || 12))));
+    const nParcelas = isRecorrente
+      ? mesesRecorrencia
+      : Math.max(1, Math.trunc(Number(formData.get("parcelas") || 1)));
+    const intervalo = Math.max(1, Math.trunc(Number(formData.get("intervalo_dias") || 30)));
 
     if (!descricao) throw new Error("Informe a descrição.");
     if (!(valor > 0)) throw new Error("Informe um valor válido.");
     if (!vencimento) throw new Error("Informe o vencimento.");
+    if (isRecorrente && jaPago) {
+      throw new Error("Conta recorrente não pode ser marcada como 'já pago' na criação. Pague só o mês atual depois.");
+    }
 
     const baseVenc = new Date(`${vencimento}T12:00:00`);
-    const cents = Math.round(valor * 100);
-    const base = Math.floor(cents / nParcelas);
-    const resto = cents - base * nParcelas;
+    if (Number.isNaN(baseVenc.getTime())) throw new Error("Vencimento inválido.");
+    const diaVenc = baseVenc.getDate();
     const origem = classificacao === "pessoal" ? "despesa_pessoal" : "despesa_manual";
+    const recorrenteMeta = isRecorrente
+      ? { ativa: true, dia: diaVenc, meses: mesesRecorrencia }
+      : null;
     const obsFinal = buildObservacoesDespesa({
       classificacao,
       responsavel,
       descricao,
       categoria,
-      observacoes
+      observacoes,
+      recorrente: recorrenteMeta
     });
     const prefixoTitulo = classificacao === "pessoal" ? "PESS" : "DESP";
+
+    // Recorrente: cada mês é uma parcela com o MESMO valor base (usuário ajusta mês a mês).
+    // Não recorrente: rateia o valor total entre as parcelas.
+    const valorMensal = Number(valor.toFixed(2));
+    let valorOriginal = isRecorrente
+      ? Number((valorMensal * nParcelas).toFixed(2))
+      : valorMensal;
+    let valorAberto = valorOriginal;
 
     const { data: conta, error: contaErr } = await sb()
       .from("contas_pagar")
@@ -1110,8 +1265,8 @@ export function installComprasModule(ctx) {
         origem,
         numero_titulo: `${prefixoTitulo}-${Date.now().toString().slice(-8)}`,
         emissao: new Date(`${emissao}T12:00:00`).toISOString(),
-        valor_original: Number(valor.toFixed(2)),
-        valor_aberto: jaPago ? 0 : Number(valor.toFixed(2)),
+        valor_original: Number(valorOriginal.toFixed(2)),
+        valor_aberto: jaPago ? 0 : Number(valorAberto.toFixed(2)),
         status: jaPago ? "pago" : "aberto",
         observacoes: obsFinal
       })
@@ -1120,22 +1275,42 @@ export function installComprasModule(ctx) {
     if (contaErr) throw contaErr;
 
     const parcelasPayload = [];
-    for (let i = 0; i < nParcelas; i += 1) {
-      const valorCents = base + (i < resto ? 1 : 0);
-      const venc = new Date(baseVenc);
-      venc.setDate(venc.getDate() + i * intervalo);
-      const valorParcela = Number((valorCents / 100).toFixed(2));
-      parcelasPayload.push({
-        empresa_id: state().empresaId,
-        conta_pagar_id: conta.id,
-        numero_parcela: i + 1,
-        vencimento: formatDateInput(venc),
-        valor_parcela: valorParcela,
-        valor_pago: jaPago ? valorParcela : 0,
-        status: jaPago ? "pago" : "pendente",
-        forma_pagamento_id: formaId ? Number(formaId) : null,
-        observacoes: descricao
-      });
+    if (isRecorrente) {
+      for (let i = 0; i < nParcelas; i += 1) {
+        const vencYmd = addMonthsYmd(vencimento, i);
+        parcelasPayload.push({
+          empresa_id: state().empresaId,
+          conta_pagar_id: conta.id,
+          numero_parcela: i + 1,
+          vencimento: vencYmd,
+          valor_parcela: valorMensal,
+          valor_pago: 0,
+          status: "pendente",
+          forma_pagamento_id: formaId ? Number(formaId) : null,
+          observacoes: i === 0 ? descricao : `${descricao} (mês ${i + 1})`
+        });
+      }
+    } else {
+      const cents = Math.round(valor * 100);
+      const base = Math.floor(cents / nParcelas);
+      const resto = cents - base * nParcelas;
+      for (let i = 0; i < nParcelas; i += 1) {
+        const valorCents = base + (i < resto ? 1 : 0);
+        const venc = new Date(baseVenc);
+        venc.setDate(venc.getDate() + i * intervalo);
+        const valorParcela = Number((valorCents / 100).toFixed(2));
+        parcelasPayload.push({
+          empresa_id: state().empresaId,
+          conta_pagar_id: conta.id,
+          numero_parcela: i + 1,
+          vencimento: formatDateInput(venc),
+          valor_parcela: valorParcela,
+          valor_pago: jaPago ? valorParcela : 0,
+          status: jaPago ? "pago" : "pendente",
+          forma_pagamento_id: formaId ? Number(formaId) : null,
+          observacoes: descricao
+        });
+      }
     }
 
     const { data: parcelasCriadas, error: pErr } = await sb()
@@ -1160,18 +1335,35 @@ export function installComprasModule(ctx) {
     closeDespesaModal();
     state().compras.loaded = false;
     await ensureComprasLoaded({ force: true });
-    showToast(
-      classificacao === "pessoal"
-        ? `Gasto pessoal ${conta.numero_titulo} lançado`
-        : `Despesa ${conta.numero_titulo} lançada em Contas a Pagar`
-    );
+    if (isRecorrente) {
+      showToast(
+        `Conta recorrente ${conta.numero_titulo}: ${nParcelas} meses gerados. Ajuste o valor de cada mês quando quiser.`
+      );
+    } else {
+      showToast(
+        classificacao === "pessoal"
+          ? `Gasto pessoal ${conta.numero_titulo} lançado`
+          : `Despesa ${conta.numero_titulo} lançada em Contas a Pagar`
+      );
+    }
   }
 
   /* ---------- Editar / excluir conta a pagar ---------- */
 
   function ensureContaPagarEditState() {
     if (!state().contaPagarEdit) {
-      state().contaPagarEdit = { contaId: null, parcelas: [], removedIds: [] };
+      state().contaPagarEdit = {
+        contaId: null,
+        parcelas: [],
+        removedIds: [],
+        recorrente: null
+      };
+    }
+    if (!Array.isArray(state().contaPagarEdit.removedIds)) {
+      state().contaPagarEdit.removedIds = [];
+    }
+    if (!Array.isArray(state().contaPagarEdit.parcelas)) {
+      state().contaPagarEdit.parcelas = [];
     }
     return state().contaPagarEdit;
   }
@@ -1179,7 +1371,162 @@ export function installComprasModule(ctx) {
   function closeContaPagarEditModal() {
     const e = els();
     if (e.contaPagarEditModal) e.contaPagarEditModal.classList.add("hidden");
-    state().contaPagarEdit = { contaId: null, parcelas: [], removedIds: [] };
+    state().contaPagarEdit = {
+      contaId: null,
+      parcelas: [],
+      removedIds: [],
+      recorrente: null
+    };
+  }
+
+  function renderContaPagarEditRecorrenciaUi() {
+    const wrap = document.getElementById("contaPagarEditRecorrencia");
+    const statusEl = document.getElementById("contaPagarEditRecorrenciaStatus");
+    const btnAtivar = document.getElementById("contaPagarEditRecorrenciaAtivar");
+    const btnGerar = document.getElementById("contaPagarEditRecorrenciaGerar");
+    const btnEncerrar = document.getElementById("contaPagarEditRecorrenciaEncerrar");
+    if (!wrap) return;
+
+    const edit = ensureContaPagarEditState();
+    // NF de compra: não usa recorrência de despesa
+    if (edit.isNota) {
+      wrap.classList.add("hidden");
+      return;
+    }
+    wrap.classList.remove("hidden");
+
+    const rec = edit.recorrente;
+    if (statusEl) {
+      if (!rec) {
+        statusEl.textContent =
+          "Não é recorrente. Ative para gerar meses futuros (ex.: energia, aluguel). Depois ajuste só o valor de cada mês.";
+      } else if (rec.ativa) {
+        statusEl.innerHTML = `<span class="gasto-badge gasto-badge--recorrente">Recorrente ativa</span> · dia ${escapeHtml(String(rec.dia || "–"))} · ${escapeHtml(String((edit.parcelas || []).length))} mês(es) na grade`;
+      } else {
+        statusEl.innerHTML = `<span class="gasto-badge gasto-badge--recorrente-off">Recorrência encerrada</span> · histórico de meses anteriores mantido`;
+      }
+    }
+    if (btnAtivar) {
+      btnAtivar.classList.toggle("hidden", Boolean(rec?.ativa));
+      btnAtivar.textContent = rec && !rec.ativa ? "Reativar recorrência (+12 meses)" : "Tornar recorrente (+12 meses)";
+    }
+    if (btnGerar) btnGerar.classList.toggle("hidden", !rec?.ativa);
+    if (btnEncerrar) btnEncerrar.classList.toggle("hidden", !rec?.ativa);
+  }
+
+  function renumberContaPagarEditParcelas() {
+    const edit = ensureContaPagarEditState();
+    edit.parcelas.forEach((p, i) => {
+      p.numero = i + 1;
+    });
+  }
+
+  /** Gera próximos N meses a partir da última parcela (valor padrão = último valor). */
+  function gerarMesesRecorrenciaContaEdit(qtdMeses = 12) {
+    const edit = ensureContaPagarEditState();
+    const n = Math.max(1, Math.min(36, Math.trunc(Number(qtdMeses) || 12)));
+    if (!edit.parcelas.length) {
+      showToast("Inclua ao menos uma parcela antes.", "error");
+      return;
+    }
+    const sorted = [...edit.parcelas].sort((a, b) =>
+      String(a.vencimento || "").localeCompare(String(b.vencimento || ""))
+    );
+    const last = sorted[sorted.length - 1];
+    const valorBase = Number(last.valor || 0);
+    const forma = last.formaPagamentoId || "";
+    let baseVenc = last.vencimento || formatDateInput(new Date());
+
+    for (let i = 1; i <= n; i += 1) {
+      const venc = addMonthsYmd(baseVenc, i);
+      // evita duplicar vencimento já existente
+      if (edit.parcelas.some((p) => String(p.vencimento).slice(0, 10) === venc)) continue;
+      edit.parcelas.push({
+        id: null,
+        numero: edit.parcelas.length + 1,
+        vencimento: venc,
+        valor: valorBase,
+        valorPago: 0,
+        dataPagamento: "",
+        status: "pendente",
+        formaPagamentoId: forma,
+        observacoes: ""
+      });
+    }
+    renumberContaPagarEditParcelas();
+    if (!edit.recorrente) {
+      const dia = Number(String(baseVenc).slice(8, 10)) || null;
+      edit.recorrente = { ativa: true, dia, meses: n };
+    } else {
+      edit.recorrente.ativa = true;
+      if (!edit.recorrente.dia) {
+        edit.recorrente.dia = Number(String(baseVenc).slice(8, 10)) || null;
+      }
+    }
+    renderContaPagarEditParcelas();
+    renderContaPagarEditRecorrenciaUi();
+    showToast(`${n} mês(es) adicionados na grade. Salve para gravar.`);
+  }
+
+  /**
+   * Encerra recorrência: remove só meses FUTUROS sem pagamento.
+   * Meses até o fim do mês atual e qualquer mês pago/parcial permanecem.
+   */
+  function encerrarRecorrenciaContaEdit() {
+    const edit = ensureContaPagarEditState();
+    if (!edit.recorrente?.ativa && !edit.recorrente) {
+      showToast("Esta conta não está como recorrente ativa.", "error");
+      return;
+    }
+    const ok = window.confirm(
+      "Encerrar a recorrência?\n\n" +
+        "• Meses futuros pendentes serão removidos\n" +
+        "• Meses até o fim deste mês e os já pagos permanecem\n" +
+        "• Clique em Salvar alterações para gravar"
+    );
+    if (!ok) return;
+
+    const fimMes = endOfCurrentMonthDate();
+    const keep = [];
+    for (const p of edit.parcelas || []) {
+      const venc = p.vencimento
+        ? new Date(`${String(p.vencimento).slice(0, 10)}T12:00:00`)
+        : null;
+      const isFuture = Boolean(venc && !Number.isNaN(venc.getTime()) && venc > fimMes);
+      const hasPayment =
+        Number(p.valorPago || 0) > 0.009 ||
+        p.status === "pago" ||
+        p.status === "parcial";
+      if (isFuture && !hasPayment) {
+        if (p.id) edit.removedIds.push(p.id);
+        continue;
+      }
+      keep.push(p);
+    }
+    if (!keep.length && edit.parcelas.length) {
+      // segurança: nunca zera tudo
+      keep.push(edit.parcelas[0]);
+    }
+    edit.parcelas = keep;
+    renumberContaPagarEditParcelas();
+    if (edit.recorrente) {
+      edit.recorrente = { ...edit.recorrente, ativa: false };
+    } else {
+      edit.recorrente = { ativa: false, dia: null, meses: 12 };
+    }
+    renderContaPagarEditParcelas();
+    renderContaPagarEditRecorrenciaUi();
+    showToast("Recorrência encerrada na tela. Salve para gravar.");
+  }
+
+  function ativarRecorrenciaContaEdit() {
+    const edit = ensureContaPagarEditState();
+    const ok = window.confirm(
+      "Tornar esta conta recorrente e gerar os próximos 12 meses?\n\n" +
+        "Cada mês entra como parcela. Depois você ajusta só o valor do mês (ex.: conta de luz)."
+    );
+    if (!ok) return;
+    gerarMesesRecorrenciaContaEdit(12);
   }
 
   function renderContaPagarEditTotals() {
@@ -1400,9 +1747,10 @@ export function installComprasModule(ctx) {
       };
     }
     if (respInput) respInput.value = parsedObs.responsavel || "";
+    const obsMeta = parseContaObsMeta(conta.observacoes);
     if (e.contaPagarEditObs) {
-      // Na edição, mostra o texto sem o marcador [Pessoal: ...]
-      e.contaPagarEditObs.value = isNota ? conta.observacoes || "" : parsedObs.texto || "";
+      // Na edição, mostra o texto sem marcadores [Pessoal]/[Recorrente]
+      e.contaPagarEditObs.value = isNota ? conta.observacoes || "" : obsMeta.texto || "";
     }
     if (e.contaPagarEditModalTitle) {
       e.contaPagarEditModalTitle.textContent = `Editar ${conta.numero_titulo || `CP-${conta.id}`}`;
@@ -1417,8 +1765,12 @@ export function installComprasModule(ctx) {
 
     edit.origemOriginal = conta.origem || "despesa_manual";
     edit.isNota = isNota;
+    edit.recorrente = obsMeta.recorrente
+      ? { ...obsMeta.recorrente }
+      : null;
 
     renderContaPagarEditParcelas();
+    renderContaPagarEditRecorrenciaUi();
     e.contaPagarEditModal.classList.remove("hidden");
   }
 
@@ -1492,6 +1844,7 @@ export function installComprasModule(ctx) {
     if (edit.parcelas.every((p) => p.status === "cancelado")) statusConta = "cancelado";
 
     // Classificação (só despesas manuais/pessoais; NF permanece nota_entrada)
+    // + tag de recorrência preservada/atualizada
     let origemUpdate = edit.origemOriginal || "despesa_manual";
     let obsFinal = obsRaw || null;
     if (!edit.isNota) {
@@ -1500,13 +1853,12 @@ export function installComprasModule(ctx) {
       const classificacao = classSelect?.value === "pessoal" ? "pessoal" : "empresa";
       const responsavel = String(respInput?.value || "").trim();
       origemUpdate = classificacao === "pessoal" ? "despesa_pessoal" : "despesa_manual";
-      if (classificacao === "pessoal") {
-        obsFinal = responsavel
-          ? `[Pessoal: ${responsavel}] ${obsRaw}`.trim()
-          : `[Pessoal] ${obsRaw}`.trim();
-      } else {
-        obsFinal = obsRaw || null;
-      }
+      obsFinal = rebuildObservacoesComMeta({
+        textoLivre: obsRaw,
+        classificacao,
+        responsavel,
+        recorrente: edit.recorrente
+      });
     }
 
     const { error: updContaErr } = await sb()
@@ -3006,6 +3358,28 @@ export function installComprasModule(ctx) {
     }
     if (e.contaPagarEditAddParcelaBtn) {
       e.contaPagarEditAddParcelaBtn.addEventListener("click", () => addContaPagarEditParcela());
+    }
+
+    const btnRecAtivar = document.getElementById("contaPagarEditRecorrenciaAtivar");
+    const btnRecGerar = document.getElementById("contaPagarEditRecorrenciaGerar");
+    const btnRecEncerrar = document.getElementById("contaPagarEditRecorrenciaEncerrar");
+    if (btnRecAtivar) {
+      btnRecAtivar.addEventListener("click", () => ativarRecorrenciaContaEdit());
+    }
+    if (btnRecGerar) {
+      btnRecGerar.addEventListener("click", () => {
+        gerarMesesRecorrenciaContaEdit(12);
+      });
+    }
+    if (btnRecEncerrar) {
+      btnRecEncerrar.addEventListener("click", () => encerrarRecorrenciaContaEdit());
+    }
+
+    const despesaRecorrenteCb = document.getElementById("despesaRecorrente");
+    if (despesaRecorrenteCb) {
+      despesaRecorrenteCb.addEventListener("change", () => {
+        setDespesaRecorrenteUi(despesaRecorrenteCb.checked);
+      });
     }
     if (e.contaPagarEditParcelasList) {
       e.contaPagarEditParcelasList.addEventListener("input", (ev) => {

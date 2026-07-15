@@ -1833,6 +1833,15 @@
           <label>Parcelas<input name="parcelas" type="number" min="1" step="1" value="1" /></label>
           <label>1º vencimento<input name="vencimento" type="date" required /></label>
           <label>Intervalo (dias)<input name="intervalo_dias" type="number" min="1" step="1" value="30" /></label>
+          <label class="checkbox-inline" title="Gera um vencimento por mês (ex.: energia, aluguel). Depois você ajusta só o valor de cada mês.">
+            <input type="checkbox" name="recorrente" id="despesaRecorrente" />
+            Conta recorrente (todo mês)
+          </label>
+          <label id="despesaRecorrenteMesesWrap" class="hidden">
+            Quantos meses gerar
+            <input name="meses_recorrencia" id="despesaMesesRecorrencia" type="number" min="2" max="36" step="1" value="12" />
+            <small class="field-hint">Gera um mês por parcela. O valor de cada mês começa igual; ajuste quando a conta chegar.</small>
+          </label>
           <label>Forma de pagamento<select name="forma_pagamento_id" id="despesaFormaPagamento"></select></label>
           <label>Observações<textarea name="observacoes" rows="2"></textarea></label>
           <label class="checkbox-inline">
@@ -1888,10 +1897,22 @@
             <label class="nota-entrada-full">Descrição / observações<textarea id="contaPagarEditObs" rows="2"></textarea></label>
           </div>
 
+          <div id="contaPagarEditRecorrencia" class="conta-pagar-recorrencia-panel hidden">
+            <div class="conta-pagar-recorrencia-copy">
+              <strong>Recorrência mensal</strong>
+              <p id="contaPagarEditRecorrenciaStatus" class="section-subtitle">—</p>
+            </div>
+            <div class="conta-pagar-recorrencia-actions">
+              <button id="contaPagarEditRecorrenciaAtivar" type="button" class="btn btn-ghost">Tornar recorrente (+12 meses)</button>
+              <button id="contaPagarEditRecorrenciaGerar" type="button" class="btn btn-ghost hidden">Gerar +12 meses</button>
+              <button id="contaPagarEditRecorrenciaEncerrar" type="button" class="btn btn-ghost hidden" style="color:#a11b2f">Encerrar recorrência</button>
+            </div>
+          </div>
+
           <div class="documento-items-panel-head" style="margin-top: 1rem">
             <div>
-              <h4>Parcelas</h4>
-              <span class="documento-items-hint">Vencimento, valor, data de pagamento e status são editáveis. Ao marcar como pago, a data de pagamento é gravada.</span>
+              <h4>Parcelas / meses</h4>
+              <span class="documento-items-hint">Vencimento, valor, data de pagamento e status são editáveis. Em contas recorrentes, ajuste o valor de cada mês aqui.</span>
             </div>
             <button id="contaPagarEditAddParcelaBtn" type="button" class="btn btn-ghost">+ Parcela</button>
           </div>
