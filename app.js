@@ -268,6 +268,7 @@ const els = {
   novoDocumentoForm: document.getElementById("novoDocumentoForm"),
   novoDocumentoModalTitle: document.getElementById("novoDocumentoModalTitle"),
   novoDocumentoModalSubtitle: document.getElementById("novoDocumentoModalSubtitle"),
+  novoDocumentoConverterBtn: document.getElementById("novoDocumentoConverterBtn"),
   novoDocumentoFotoWrap: document.getElementById("novoDocumentoFotoWrap"),
   novoDocumentoFoto: document.getElementById("novoDocumentoFoto"),
   novoDocumentoFotoHint: document.getElementById("novoDocumentoFotoHint"),
@@ -1297,7 +1298,9 @@ function createDocumentoDraft(tipo = "pedido") {
     itens: [createDocumentoDraftItem()],
     precoVendaCalc: createPrecoVendaCalcState(),
     precoFormacaoAplicada: null,
-    rawPayloadBase: null
+    rawPayloadBase: null,
+    // Quando o pedido nasce de um orçamento (conversão).
+    convertidoDeOrcamentoId: null
   };
 }
 
@@ -3045,15 +3048,31 @@ function renderNovoDocumentoModal() {
   if (!els.novoDocumentoModal) return;
   const config = getDocumentoModalConfig(state.novoDocumentoModal.tipo);
   const isEdit = Boolean(state.novoDocumentoModal.documentoId);
+  const isConversao = Boolean(state.novoDocumentoModal.convertidoDeOrcamentoId) && !isEdit;
 
   if (els.novoDocumentoModalTitle) {
-    els.novoDocumentoModalTitle.textContent = isEdit ? config.titulo.replace("Novo", "Editar") : config.titulo;
+    if (isConversao) {
+      els.novoDocumentoModalTitle.textContent = `Pedido a partir do orçamento #${state.novoDocumentoModal.convertidoDeOrcamentoId}`;
+    } else {
+      els.novoDocumentoModalTitle.textContent = isEdit ? config.titulo.replace("Novo", "Editar") : config.titulo;
+    }
   }
   if (els.novoDocumentoModalSubtitle) {
-    const tipoLabel = state.novoDocumentoModal.tipo === "orcamento" ? "orçamento" : "pedido";
-    els.novoDocumentoModalSubtitle.textContent = isEdit && state.novoDocumentoModal.fotoUrl
-      ? `Edite os dados do ${tipoLabel}. A foto aparece no resumo ao lado.`
-      : config.subtitulo;
+    if (isConversao) {
+      els.novoDocumentoModalSubtitle.textContent =
+        "Dados copiados do orçamento. Ajuste o pagamento se precisar e salve para gerar o pedido.";
+    } else {
+      const tipoLabel = state.novoDocumentoModal.tipo === "orcamento" ? "orçamento" : "pedido";
+      els.novoDocumentoModalSubtitle.textContent = isEdit && state.novoDocumentoModal.fotoUrl
+        ? `Edite os dados do ${tipoLabel}. A foto aparece no resumo ao lado.`
+        : config.subtitulo;
+    }
+  }
+  if (els.novoDocumentoConverterBtn) {
+    // Botão só ao editar um orçamento já salvo (ainda não convertido nesta tela).
+    const showConverter =
+      state.novoDocumentoModal.tipo === "orcamento" && Boolean(state.novoDocumentoModal.documentoId);
+    els.novoDocumentoConverterBtn.classList.toggle("hidden", !showConverter);
   }
   if (els.novoDocumentoObservacoes) {
     els.novoDocumentoObservacoes.value = state.novoDocumentoModal.observacoes || "";
@@ -3701,14 +3720,225 @@ async function loadDocumentoForEdit(tipo, documentoId) {
     precoVendaCalc: hydrateProdutoPrecoVendaCalcFromSnapshot(precoFormacaoAplicada),
     precoFormacaoAplicada,
     // Mantem campos legados (foto, import, etc.) ao regravar o pedido.
-    rawPayloadBase: rawPayload
+    rawPayloadBase: rawPayload,
+    convertidoDeOrcamentoId: null
   };
 }
 
+/**
+ * Marca o orçamento de origem como aprovado e grava o id do pedido gerado.
+ */
+async function markOrcamentoAsConverted(orcamentoId, pedidoId) {
+  if (!orcamentoId || !pedidoId || !supabaseClient) return;
+
+  const { data: orcamento, error: loadError } = await supabaseClient
+    .from("documentos_venda")
+    .select("id, status, raw_payload")
+    .eq("empresa_id", state.empresaId)
+    .eq("id", orcamentoId)
+    .eq("tipo_documento", "orcamento")
+    .maybeSingle();
+
+  if (loadError) throw loadError;
+  if (!orcamento) return;
+
+  const raw =
+    orcamento.raw_payload && typeof orcamento.raw_payload === "object"
+      ? { ...orcamento.raw_payload }
+      : {};
+  raw.pedido_convertido_id = Number(pedidoId);
+  raw.convertido_em = new Date().toISOString();
+
+  const { error: updateError } = await supabaseClient
+    .from("documentos_venda")
+    .update({
+      status: "aprovado",
+      raw_payload: raw
+    })
+    .eq("empresa_id", state.empresaId)
+    .eq("id", orcamentoId)
+    .eq("tipo_documento", "orcamento");
+
+  if (updateError) throw updateError;
+}
+
+/**
+ * Abre um novo pedido pré-preenchido a partir de um orçamento (sem gravar ainda).
+ * Ao salvar o pedido, o orçamento é marcado como aprovado e vinculado.
+ */
+async function convertOrcamentoToPedido(orcamentoId) {
+  const id = Number(orcamentoId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Orçamento inválido.");
+  }
+
+  await Promise.all([ensureClientesLoaded(), ensureProdutosLoaded()]);
+
+  // Se o orçamento já está aberto no modal, usa os dados da tela (inclui edições recentes).
+  const modalOpen =
+    els.novoDocumentoModal && !els.novoDocumentoModal.classList.contains("hidden");
+  const openDraft = state.novoDocumentoModal;
+  const usingOpenDraft =
+    modalOpen &&
+    openDraft?.tipo === "orcamento" &&
+    Number(openDraft.documentoId) === id;
+
+  let documento = null;
+  let rawPayload = {};
+  let itens = [];
+  let statusAtual = "aberto";
+
+  if (usingOpenDraft) {
+    syncNovoDocumentoDraftFromForm();
+    rawPayload =
+      openDraft.rawPayloadBase && typeof openDraft.rawPayloadBase === "object"
+        ? { ...openDraft.rawPayloadBase }
+        : {};
+    statusAtual = String(openDraft.status || "aberto").toLowerCase();
+    itens = (openDraft.itens || []).map((item) => ({ ...item, rowId: `${Date.now()}-${Math.random().toString(16).slice(2)}` }));
+    documento = {
+      id,
+      cliente_id: openDraft.clienteId || null,
+      status: openDraft.status,
+      observacoes: openDraft.observacoes || "",
+      raw_payload: rawPayload,
+      fotoUrl: openDraft.fotoUrl || "",
+      bicicleta: openDraft.bicicleta,
+      pagamento: openDraft.pagamento,
+      precoFormacaoAplicada: openDraft.precoFormacaoAplicada
+    };
+  } else {
+    const { data, error: documentoError } = await supabaseClient
+      .from("documentos_venda")
+      .select("id, cliente_id, status, observacoes, total, raw_payload, data_emissao")
+      .eq("empresa_id", state.empresaId)
+      .eq("id", id)
+      .eq("tipo_documento", "orcamento")
+      .maybeSingle();
+
+    if (documentoError) throw documentoError;
+    if (!data) throw new Error("Orçamento não encontrado.");
+    documento = data;
+    rawPayload =
+      documento.raw_payload && typeof documento.raw_payload === "object"
+        ? { ...documento.raw_payload }
+        : {};
+    statusAtual = String(documento.status || "").toLowerCase();
+
+    const { data: itensData, error: itensError } = await supabaseClient
+      .from("documento_venda_itens")
+      .select("id, produto_id, descricao_item, quantidade, valor_unitario")
+      .eq("empresa_id", state.empresaId)
+      .eq("documento_id", id)
+      .order("id", { ascending: true });
+
+    if (itensError) throw itensError;
+    itens = (itensData || []).map(normalizeDocumentoItem);
+  }
+
+  const pedidoJaCriado = Number(rawPayload.pedido_convertido_id || 0);
+  if (pedidoJaCriado > 0) {
+    const abrir = window.confirm(
+      `Este orçamento já foi convertido no pedido #${pedidoJaCriado}.\n\nDeseja abrir o pedido existente?`
+    );
+    if (abrir) {
+      await openNovoDocumentoEditModal("pedido", pedidoJaCriado);
+    }
+    return;
+  }
+
+  if (statusAtual === "reprovado") {
+    const seguir = window.confirm(
+      "Este orçamento está reprovado.\n\nMesmo assim deseja criar um pedido a partir dele?"
+    );
+    if (!seguir) return;
+  } else {
+    const confirmar = window.confirm(
+      "Converter este orçamento em pedido?\n\n" +
+        "• Será aberto um novo pedido com os mesmos dados (cliente, itens, foto, bike…)\n" +
+        "• Confira o pagamento e salve o pedido\n" +
+        "• Ao salvar, o orçamento será marcado como Aprovado e vinculado ao pedido"
+    );
+    if (!confirmar) return;
+  }
+
+  if (!itens.filter((item) => isDocumentoItemFilled(item)).length) {
+    throw new Error("O orçamento não tem itens para converter.");
+  }
+
+  const precoFormacaoAplicada =
+    documento.precoFormacaoAplicada || rawPayload.preco_formacao || null;
+  const basePayload = { ...rawPayload };
+  delete basePayload.pedido_convertido_id;
+  delete basePayload.convertido_em;
+
+  const fotoUrl = usingOpenDraft
+    ? String(documento.fotoUrl || "")
+    : getPedidoFotoUrl(documento);
+  const bicicleta = usingOpenDraft
+    ? createBicicletaDraft(documento.bicicleta)
+    : createBicicletaDraft(rawPayload.bicicleta || rawPayload.bike || null);
+  const pagamento = usingOpenDraft
+    ? { ...createPagamentoDraft(), ...(documento.pagamento || {}) }
+    : { ...createPagamentoDraft(), ...(rawPayload.pagamento || {}) };
+
+  state.novoDocumentoModal = {
+    ...createDocumentoDraft("pedido"),
+    tipo: "pedido",
+    documentoId: null,
+    clienteId: documento.cliente_id ? String(documento.cliente_id) : "",
+    status: "aberto",
+    observacoes: documento.observacoes || "",
+    dataEmissao: formatDateInput(new Date()),
+    fotoUrl,
+    bicicleta,
+    pagamento,
+    parcelasEditadas: null,
+    parcelasOriginaisSnapshot: null,
+    itens: itens.length ? itens : [createDocumentoDraftItem()],
+    precoVendaCalc: hydrateProdutoPrecoVendaCalcFromSnapshot(precoFormacaoAplicada),
+    precoFormacaoAplicada,
+    rawPayloadBase: {
+      ...basePayload,
+      orcamento_origem_id: id,
+      source: "conversao-orcamento"
+    },
+    convertidoDeOrcamentoId: id
+  };
+
+  ensureTrailingEmptyDocumentoItem();
+  renderNovoDocumentoModal();
+  if (els.novoDocumentoModal) {
+    els.novoDocumentoModal.classList.remove("hidden");
+  }
+  preloadHtml2Pdf();
+  showToast("Pedido montado a partir do orçamento. Confira o pagamento e salve.");
+}
+
 function setNovoDocumentoTipo(tipo) {
-  state.novoDocumentoModal.tipo = tipo === "orcamento" ? "orcamento" : "pedido";
-  const config = getDocumentoModalConfig(state.novoDocumentoModal.tipo);
-  state.novoDocumentoModal.status = config.defaultStatus;
+  const nextTipo = tipo === "orcamento" ? "orcamento" : "pedido";
+  const draft = state.novoDocumentoModal;
+  const prevTipo = draft.tipo;
+  // Editando orçamento e mudou para pedido → trata como conversão (novo pedido).
+  if (
+    prevTipo === "orcamento" &&
+    nextTipo === "pedido" &&
+    draft.documentoId &&
+    !draft.convertidoDeOrcamentoId
+  ) {
+    const orcamentoId = draft.documentoId;
+    convertOrcamentoToPedido(orcamentoId).catch((error) => {
+      showToast(`Erro ao converter orçamento: ${error.message}`, "error");
+    });
+    return;
+  }
+  draft.tipo = nextTipo;
+  const config = getDocumentoModalConfig(draft.tipo);
+  // Só reseta status se o valor atual não existir no novo tipo.
+  const statusOk = (config.statuses || []).some((s) => s.value === draft.status);
+  if (!statusOk) {
+    draft.status = config.defaultStatus;
+  }
   renderNovoDocumentoModal();
 }
 
@@ -5232,7 +5462,7 @@ async function saveNovoDocumento(event) {
 
     const rawPayload = {
       ...rawPayloadBase,
-      source: "novo-documento-modal",
+      source: draft.convertidoDeOrcamentoId ? "conversao-orcamento" : "novo-documento-modal",
       itens: itens.length,
       pagamento: pagamentoState
     };
@@ -5251,6 +5481,10 @@ async function saveNovoDocumento(event) {
       rawPayload.foto_url = draft.fotoUrl;
     } else {
       delete rawPayload.foto_url;
+    }
+    // Rastreio da conversão orçamento → pedido
+    if (draft.convertidoDeOrcamentoId && draft.tipo === "pedido") {
+      rawPayload.orcamento_origem_id = Number(draft.convertidoDeOrcamentoId);
     }
 
     const documentoPayload = {
@@ -5358,12 +5592,39 @@ async function saveNovoDocumento(event) {
       }
     }
 
+    // Conversão: marca orçamento de origem como aprovado e vincula o pedido.
+    let conversaoMsg = "";
+    if (!isEdit && draft.tipo === "pedido" && draft.convertidoDeOrcamentoId) {
+      try {
+        await markOrcamentoAsConverted(draft.convertidoDeOrcamentoId, documentoId);
+        conversaoMsg = ` Orçamento #${draft.convertidoDeOrcamentoId} marcado como aprovado.`;
+      } catch (convError) {
+        console.error("Falha ao atualizar orçamento convertido", convError);
+        showToast(
+          `Pedido #${documentoId} salvo, mas não foi possível atualizar o orçamento: ${convError.message}`,
+          "error"
+        );
+      }
+    }
+
     closeNovoDocumentoModal();
     state.novoDocumentoModal = createDocumentoDraft("pedido");
     if (els.novoDocumentoClienteSearch) {
       els.novoDocumentoClienteSearch.value = "";
     }
-    showToast(draft.tipo === "orcamento" ? (isEdit ? "Orcamento atualizado" : "Orcamento salvo") : (isEdit ? "Pedido atualizado" : "Pedido salvo"));
+    if (conversaoMsg) {
+      showToast(`Pedido #${documentoId} criado a partir do orçamento.${conversaoMsg}`);
+    } else {
+      showToast(
+        draft.tipo === "orcamento"
+          ? isEdit
+            ? "Orcamento atualizado"
+            : "Orcamento salvo"
+          : isEdit
+            ? "Pedido atualizado"
+            : "Pedido salvo"
+      );
+    }
     await refreshAll();
   } finally {
     state.novoDocumentoSaving = false;
@@ -7956,6 +8217,7 @@ function renderOrcamentoRowActionsMenu(orcamentoId) {
   return renderRowActionsMenu(
     [
       { label: "Editar", attrs: `data-edit-orcamento="${id}"` },
+      { label: "Converter em pedido", attrs: `data-convert-orcamento="${id}"`, finance: true },
       { label: "PDF", attrs: `data-pdf-orcamento="${id}"` },
       { label: "Itens", attrs: `data-view-orcamento-itens="${id}"` },
       { label: "Excluir", attrs: `data-del-orcamento="${id}"`, danger: true }
@@ -11064,6 +11326,18 @@ function attachEvents() {
       });
     });
   }
+  if (els.novoDocumentoConverterBtn) {
+    els.novoDocumentoConverterBtn.addEventListener("click", () => {
+      const orcamentoId = state.novoDocumentoModal?.documentoId;
+      if (!orcamentoId || state.novoDocumentoModal?.tipo !== "orcamento") {
+        showToast("Abra um orçamento salvo para converter.", "error");
+        return;
+      }
+      convertOrcamentoToPedido(Number(orcamentoId)).catch((error) => {
+        showToast(`Erro ao converter orçamento: ${error.message}`, "error");
+      });
+    });
+  }
 
   if (els.novoDocumentoFotoCameraBtn && els.novoDocumentoFotoCameraInput) {
     els.novoDocumentoFotoCameraBtn.addEventListener("click", () => {
@@ -11701,6 +11975,7 @@ function attachEvents() {
       }
       const pedidoEditId = getData("data-edit-pedido");
       const orcamentoEditId = getData("data-edit-orcamento");
+      const orcamentoConvertId = getData("data-convert-orcamento");
       const pedidoPdfId = getData("data-pdf-pedido");
       const orcamentoPdfId = getData("data-pdf-orcamento");
       if (pedidoPdfId) {
@@ -11711,6 +11986,11 @@ function attachEvents() {
       if (orcamentoPdfId) {
         closeAllRowActionMenus();
         await generateDocumentoPdfById("orcamento", Number(orcamentoPdfId));
+        return;
+      }
+      if (orcamentoConvertId) {
+        closeAllRowActionMenus();
+        await convertOrcamentoToPedido(Number(orcamentoConvertId));
         return;
       }
       if (pedidoEditId) {
