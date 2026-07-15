@@ -417,22 +417,8 @@
                 <input id="orcamentosMostrarAprovados" type="checkbox" />
                 <span>Mostrar aprovados</span>
               </label>
+              <button id="openOrcamentoModalBtn" class="btn" type="button">Novo Orçamento</button>
             </div>
-          </div>
-          <div class="form-block">
-            <form id="orcamentoForm">
-              <select name="cliente_id" id="orcamentoClienteSelect" required>
-                <option value="">Selecione um cliente</option>
-              </select>
-              <input name="descricao" placeholder="Descricao" />
-              <input name="valor_total" type="number" min="0" step="0.01" placeholder="Valor total" required />
-              <select name="status" required>
-                <option value="aberto">Aberto</option>
-                <option value="aprovado">Aprovado</option>
-                <option value="reprovado">Reprovado</option>
-              </select>
-              <button type="submit" class="btn">Salvar Orcamento</button>
-            </form>
           </div>
           <div class="table-wrap">
             <table>

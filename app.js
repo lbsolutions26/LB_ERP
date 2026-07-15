@@ -385,7 +385,7 @@ const els = {
   clientePedidosAberto: document.getElementById("clientePedidosAberto"),
   clientePedidosAbertoMeta: document.getElementById("clientePedidosAbertoMeta"),
   pedidoForm: document.getElementById("pedidoForm"),
-  orcamentoForm: document.getElementById("orcamentoForm"),
+  openOrcamentoModalBtn: document.getElementById("openOrcamentoModalBtn"),
   despesaForm: document.getElementById("despesaForm"),
   despesaModal: document.getElementById("despesaModal"),
   closeDespesaModalBtn: document.getElementById("closeDespesaModalBtn"),
@@ -449,7 +449,7 @@ const els = {
   adminInviteForm: document.getElementById("adminInviteForm"),
   adminVinculoForm: document.getElementById("adminVinculoForm"),
   pedidoClienteSelect: document.getElementById("pedidoClienteSelect"),
-  orcamentoClienteSelect: document.getElementById("orcamentoClienteSelect"),
+
   adminEmpresaSelect: document.getElementById("adminEmpresaSelect"),
   adminInviteEmpresaSelect: document.getElementById("adminInviteEmpresaSelect"),
   clientesTable: document.getElementById("clientesTable"),
@@ -8909,17 +8909,11 @@ function renderSelects() {
   if (els.pedidoClienteSelect) {
     els.pedidoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
   }
-  if (els.orcamentoClienteSelect) {
-    els.orcamentoClienteSelect.innerHTML = '<option value="">Selecione um cliente</option>';
-  }
 
   for (const cliente of state.clientes) {
     const optionHtml = `<option value="${cliente.id}">${escapeHtml(cliente.nome)}</option>`;
     if (els.pedidoClienteSelect) {
       els.pedidoClienteSelect.insertAdjacentHTML("beforeend", optionHtml);
-    }
-    if (els.orcamentoClienteSelect) {
-      els.orcamentoClienteSelect.insertAdjacentHTML("beforeend", optionHtml);
     }
   }
 }
@@ -10642,31 +10636,6 @@ async function createPedido(event) {
   await refreshAll();
 }
 
-async function createOrcamento(event) {
-  event.preventDefault();
-  const formData = new FormData(els.orcamentoForm);
-  const clienteIdRaw = Number(formData.get("cliente_id"));
-  const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
-
-  const payload = {
-    empresa_id: state.empresaId,
-    tipo_documento: "orcamento",
-    cliente_id: clienteId,
-    observacoes: String(formData.get("descricao") || "").trim() || null,
-    status: String(formData.get("status") || "aberto"),
-    total: Number(formData.get("valor_total") || 0),
-    subtotal: Number(formData.get("valor_total") || 0),
-    data_emissao: new Date().toISOString()
-  };
-
-  const { error } = await supabaseClient.from("documentos_venda").insert(payload);
-  if (error) throw error;
-
-  els.orcamentoForm.reset();
-  showToast("Orcamento salvo");
-  await refreshAll();
-}
-
 async function createDespesa(event) {
   event.preventDefault();
   const formData = new FormData(els.despesaForm);
@@ -11233,6 +11202,23 @@ function attachEvents() {
     els.fabNovoPedidoBtn.addEventListener("click", () => {
       openNovoPedidoRapido().catch((error) => {
         showToast(`Erro ao abrir novo pedido: ${error.message}`, "error");
+      });
+    });
+  }
+
+  async function openNovoOrcamentoRapido() {
+    try {
+      await Promise.all([ensureClientesLoaded(), ensureProdutosLoaded()]);
+    } catch (error) {
+      showToast(`Erro ao carregar dados para novo orçamento: ${error.message}`, "error");
+    }
+    openNovoDocumentoModal("orcamento");
+  }
+
+  if (els.openOrcamentoModalBtn) {
+    els.openOrcamentoModalBtn.addEventListener("click", () => {
+      openNovoOrcamentoRapido().catch((error) => {
+        showToast(`Erro ao abrir novo orçamento: ${error.message}`, "error");
       });
     });
   }
@@ -12154,14 +12140,6 @@ function attachEvents() {
       setOrcamentosMostrarAprovados(els.orcamentosMostrarAprovados.checked);
     });
   }
-
-  els.orcamentoForm.addEventListener("submit", async (event) => {
-    try {
-      await createOrcamento(event);
-    } catch (error) {
-      showToast(`Erro ao salvar orcamento: ${error.message}`, "error");
-    }
-  });
 
   // Despesa modal é gerenciado pelo modulo de compras (contas_pagar unificado).
 
