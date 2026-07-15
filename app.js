@@ -492,6 +492,8 @@ const els = {
   pedidosCount: document.getElementById("pedidosCount"),
   despesasCount: document.getElementById("despesasCount"),
   faturamentoValue: document.getElementById("faturamentoValue"),
+  faturamentoBadge: document.getElementById("faturamentoBadge"),
+  faturamentoHint: document.getElementById("faturamentoHint"),
   entradasCaixaResumo: document.getElementById("entradasCaixaResumo"),
   entradasCaixaTitulo: document.getElementById("entradasCaixaTitulo"),
   entradasCaixaSubtitulo: document.getElementById("entradasCaixaSubtitulo"),
@@ -6521,7 +6523,6 @@ async function loadDashboardSnapshot() {
   }
   const counts = data?.counts || {};
   state.pedidosCountTotal = Number(counts.pedidos || 0);
-  state.pedidosFaturamentoTotal = Number(counts.faturamento_total || 0);
   state.dashboardCounts = {
     clientes: Number(counts.clientes || 0),
     despesas: Number(counts.despesas || 0),
@@ -6540,6 +6541,8 @@ async function loadDashboardSnapshot() {
     despesasTotal: Number(row.despesas_total || 0),
     despesasCount: Number(row.despesas_count || 0)
   }));
+  // Card do dashboard: faturamento somente do ano corrente (não o total histórico).
+  state.pedidosFaturamentoTotal = getDashboardFaturamentoAnoCorrente();
 }
 
 async function loadDashboardDaily() {
@@ -6796,6 +6799,38 @@ function getDashboardFaturamentoMesAtual() {
   );
 }
 
+/**
+ * Faturamento de pedidos somente no ano civil corrente
+ * (soma dos meses do ano em dashboardMonthlyCash; mês atual usa o máximo
+ * entre o snapshot mensal e o gráfico diário para não ficar defasado).
+ */
+function getDashboardFaturamentoAnoCorrente() {
+  const year = new Date().getFullYear();
+  const currentKey = formatMonthKey(new Date());
+  const dailyMesAtual = getDashboardFaturamentoMesAtual();
+  const rows = state.dashboardMonthlyCash || [];
+  let total = 0;
+  let hasCurrentMonth = false;
+
+  for (const row of rows) {
+    const ref = parseMonthDate(row.mes);
+    if (!ref || ref.getFullYear() !== year) continue;
+    const key = formatMonthKey(ref);
+    let fat = Number(row.faturamento || 0);
+    if (key === currentKey) {
+      fat = Math.max(fat, dailyMesAtual);
+      hasCurrentMonth = true;
+    }
+    total += fat;
+  }
+
+  if (!hasCurrentMonth) {
+    total += dailyMesAtual;
+  }
+
+  return Number(total.toFixed(2));
+}
+
 function renderDashboardResultCards() {
   const pagar = state.dashboardContasPagarMes || {
     total: 0,
@@ -6881,11 +6916,16 @@ async function loadPedidosSummary() {
   }
 
   if (aggregateResp.error) {
-    console.warn("Falha ao obter faturamento total", aggregateResp.error.message);
+    console.warn("Falha ao obter faturamento do ano corrente", aggregateResp.error.message);
     state.pedidosFaturamentoTotal = 0;
   } else {
+    const year = new Date().getFullYear();
     const rows = aggregateResp.data || [];
-    state.pedidosFaturamentoTotal = rows.reduce((sum, row) => sum + Number(row.faturamento || 0), 0);
+    state.pedidosFaturamentoTotal = rows.reduce((sum, row) => {
+      const ref = parseMonthDate(row.mes);
+      if (!ref || ref.getFullYear() !== year) return sum;
+      return sum + Number(row.faturamento || 0);
+    }, 0);
   }
 }
 
@@ -9882,8 +9922,24 @@ function renderMetrics(options = {}) {
       : "";
   }
 
-  const faturamento = Number(state.pedidosFaturamentoTotal || 0);
-  if (els.faturamentoValue) els.faturamentoValue.textContent = moeda.format(faturamento);
+  const year = new Date().getFullYear();
+  // Preferência: recalcula do snapshot mensal + diário do mês (ano corrente).
+  const faturamentoAno = getDashboardFaturamentoAnoCorrente();
+  const faturamento =
+    faturamentoAno > 0 || (state.dashboardMonthlyCash || []).length
+      ? faturamentoAno
+      : Number(state.pedidosFaturamentoTotal || 0);
+  state.pedidosFaturamentoTotal = faturamento;
+  if (els.faturamentoValue) {
+    els.faturamentoValue.textContent = moeda.format(faturamento);
+    els.faturamentoValue.title = `Total do faturamento somente do ano corrente (${year})`;
+  }
+  if (els.faturamentoBadge) {
+    els.faturamentoBadge.textContent = `Ano ${year}`;
+  }
+  if (els.faturamentoHint) {
+    els.faturamentoHint.textContent = `Total do faturamento somente do ano corrente (${year})`;
+  }
 
   const estoqueTotal = state.produtosLoaded ? state.produtos.length : state.dashboardCounts.produtosTotal;
   const estoqueComSaldo = state.produtosLoaded
