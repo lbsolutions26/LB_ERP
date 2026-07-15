@@ -405,7 +405,20 @@
         </section>
 
         <section id="section-orcamentos" class="card app-section hidden">
-          <h2>Orcamentos</h2>
+          <div class="section-head">
+            <div>
+              <h2>Orcamentos</h2>
+              <p id="orcamentosSectionSubtitle" class="section-subtitle">
+                Por padrão, só aparecem orçamentos que ainda não foram aprovados.
+              </p>
+            </div>
+            <div class="pedidos-toolbar">
+              <label class="checkbox-inline orcamentos-aprovados-toggle" title="Quando marcado, a lista inclui também orçamentos aprovados">
+                <input id="orcamentosMostrarAprovados" type="checkbox" />
+                <span>Mostrar aprovados</span>
+              </label>
+            </div>
+          </div>
           <div class="form-block">
             <form id="orcamentoForm">
               <select name="cliente_id" id="orcamentoClienteSelect" required>
@@ -1321,6 +1334,25 @@
         <img id="imageLightboxImg" alt="" />
         <figcaption id="imageLightboxCaption"></figcaption>
       </figure>
+    </div>
+
+    <div id="pedidoOperacoesModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pedidoOperacoesTitle">
+      <div class="modal-card modal-pedido-operacoes-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="pedidoOperacoesTitle">Status do pedido</h3>
+            <p id="pedidoOperacoesSubtitle" class="modal-subtitle">Situação das operações desta ordem</p>
+          </div>
+          <button id="closePedidoOperacoesModalBtn" class="btn btn-ghost" type="button">Fechar</button>
+        </div>
+        <div id="pedidoOperacoesBody" class="pedido-operacoes-body"></div>
+        <div class="pedido-operacoes-actions">
+          <button id="pedidoOperacoesItensBtn" class="btn btn-ghost" type="button">Ver itens</button>
+          <button id="pedidoOperacoesReceberBtn" class="btn btn-ghost" type="button">Receber</button>
+          <button id="pedidoOperacoesPdfBtn" class="btn btn-ghost" type="button">PDF</button>
+          <button id="pedidoOperacoesEditarBtn" class="btn" type="button">Editar pedido</button>
+        </div>
+      </div>
     </div>
 
     <div id="itensDocumentoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="itensDocumentoModalTitle">

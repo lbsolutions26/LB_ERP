@@ -76,6 +76,7 @@ const state = {
   itensDocumentoPedidoFoto: "",
   itensDocumentoPedidoId: null,
   itensDocumentoTipo: "pedido",
+  pedidoOperacoesId: null,
   /** Quando abre itens a partir de outra visão do mesmo modal, fecha volta para ela. */
   itensDocumentoReturnTo: null,
   itensDocumentoProdutoGroupKey: null,
@@ -150,6 +151,7 @@ const state = {
   produtosLoaded: false,
   contasReceberLoaded: false,
   orcamentosLoaded: false,
+  orcamentosMostrarAprovados: false,
   despesasLoaded: false,
   ownerUsersLoaded: false,
   adminLoaded: false,
@@ -363,6 +365,15 @@ const els = {
   closeItensDocumentoModalBtn: document.getElementById("closeItensDocumentoModalBtn"),
   itensDocumentoModalTitle: document.getElementById("itensDocumentoModalTitle"),
   itensDocumentoModalSubtitle: document.getElementById("itensDocumentoModalSubtitle"),
+  pedidoOperacoesModal: document.getElementById("pedidoOperacoesModal"),
+  closePedidoOperacoesModalBtn: document.getElementById("closePedidoOperacoesModalBtn"),
+  pedidoOperacoesTitle: document.getElementById("pedidoOperacoesTitle"),
+  pedidoOperacoesSubtitle: document.getElementById("pedidoOperacoesSubtitle"),
+  pedidoOperacoesBody: document.getElementById("pedidoOperacoesBody"),
+  pedidoOperacoesItensBtn: document.getElementById("pedidoOperacoesItensBtn"),
+  pedidoOperacoesReceberBtn: document.getElementById("pedidoOperacoesReceberBtn"),
+  pedidoOperacoesPdfBtn: document.getElementById("pedidoOperacoesPdfBtn"),
+  pedidoOperacoesEditarBtn: document.getElementById("pedidoOperacoesEditarBtn"),
   novoPedidoClienteBtn: document.getElementById("novoPedidoClienteBtn"),
   itensDocumentoFotoWrap: document.getElementById("itensDocumentoFotoWrap"),
   itensDocumentoFoto: document.getElementById("itensDocumentoFoto"),
@@ -472,6 +483,8 @@ const els = {
   financeiroStatusFilter: document.getElementById("financeiroStatusFilter"),
   financeiroSearchInput: document.getElementById("financeiroSearchInput"),
   orcamentosTable: document.getElementById("orcamentosTable"),
+  orcamentosMostrarAprovados: document.getElementById("orcamentosMostrarAprovados"),
+  orcamentosSectionSubtitle: document.getElementById("orcamentosSectionSubtitle"),
   despesasTable: document.getElementById("despesasTable"),
   ownerUsersTable: document.getElementById("ownerUsersTable"),
   adminVinculosTable: document.getElementById("adminVinculosTable"),
@@ -1807,6 +1820,263 @@ function getContaStatusLabel(status) {
   if (status === "recebido") return "Recebido";
   if (status === "vencido") return "Vencido";
   return "Aberto";
+}
+
+function getDocumentoStatusLabel(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "fechado") return "Fechado";
+  if (s === "cancelado") return "Cancelado";
+  if (s === "aprovado") return "Aprovado";
+  if (s === "reprovado") return "Reprovado";
+  return "Aberto";
+}
+
+function getDocumentoStatusChipClass(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "fechado" || s === "aprovado") return "fechado";
+  if (s === "cancelado" || s === "reprovado") return "cancelado";
+  return "aberto";
+}
+
+function closePedidoOperacoesModal() {
+  if (!els.pedidoOperacoesModal) return;
+  els.pedidoOperacoesModal.classList.add("hidden");
+  state.pedidoOperacoesId = null;
+}
+
+function renderPedidoOperacoesBody(snapshot) {
+  if (!els.pedidoOperacoesBody) return;
+  const {
+    documentoId,
+    clienteNome,
+    dataEmissao,
+    total,
+    statusDocumento,
+    pagamentoLabel,
+    statusFinanceiro,
+    financeiroDetalhe,
+    statusEstoque,
+    estoqueDetalhe,
+    parcelas,
+    orcamentoOrigemId
+  } = snapshot;
+
+  const parcelasHtml = (parcelas || []).length
+    ? `<ul class="pedido-operacoes-list">${parcelas
+        .map((p) => {
+          const venc = p.vencimento
+            ? new Date(p.vencimento).toLocaleDateString("pt-BR")
+            : "–";
+          const chip = getContaStatusLabel(p.statusNormalizado || p.status);
+          const chipClass = p.statusNormalizado || "aberto";
+          return `<li>
+            <span><strong>Parc. ${escapeHtml(p.numero || "–")}</strong> · venc. ${escapeHtml(venc)}</span>
+            <span>
+              <span class="status-chip ${escapeHtml(chipClass)}">${escapeHtml(chip)}</span>
+              ${moeda.format(p.valor || 0)}
+              ${Number(p.saldo || 0) > 0.009 ? ` · saldo ${moeda.format(p.saldo)}` : ""}
+            </span>
+          </li>`;
+        })
+        .join("")}</ul>`
+    : `<p class="section-subtitle">Nenhum título financeiro vinculado a este pedido.</p>`;
+
+  els.pedidoOperacoesBody.innerHTML = `
+    <div class="pedido-operacoes-meta">
+      <strong>Pedido #${escapeHtml(documentoId)}</strong>
+      <span>${escapeHtml(clienteNome || "Cliente não informado")}${dataEmissao ? ` · ${escapeHtml(dataEmissao)}` : ""}</span>
+      <span>Total ${moeda.format(total || 0)}${orcamentoOrigemId ? ` · oriundo do orçamento #${escapeHtml(orcamentoOrigemId)}` : ""}</span>
+    </div>
+
+    <div class="pedido-operacoes-grid">
+      <article class="pedido-operacao-card">
+        <span>Documento</span>
+        <strong><span class="status-chip ${getDocumentoStatusChipClass(statusDocumento)}">${escapeHtml(getDocumentoStatusLabel(statusDocumento))}</span></strong>
+        <small>Status comercial do pedido</small>
+      </article>
+      <article class="pedido-operacao-card">
+        <span>Financeiro</span>
+        <strong><span class="status-chip ${escapeHtml(statusFinanceiro.chip)}">${escapeHtml(statusFinanceiro.label)}</span></strong>
+        <small>${escapeHtml(financeiroDetalhe || pagamentoLabel || "–")}</small>
+      </article>
+      <article class="pedido-operacao-card">
+        <span>Estoque</span>
+        <strong><span class="status-chip ${escapeHtml(statusEstoque.chip)}">${escapeHtml(statusEstoque.label)}</span></strong>
+        <small>${escapeHtml(estoqueDetalhe || "–")}</small>
+      </article>
+      <article class="pedido-operacao-card">
+        <span>Pagamento</span>
+        <strong>${escapeHtml(pagamentoLabel || "–")}</strong>
+        <small>Condição registrada no pedido</small>
+      </article>
+    </div>
+
+    <section class="pedido-operacoes-section">
+      <h4>Parcelas / títulos</h4>
+      ${parcelasHtml}
+    </section>
+  `;
+}
+
+/**
+ * Abre o painel de status das operações do pedido (documento, financeiro, estoque).
+ * Usado ao clicar na coluna Pedido (#) da lista.
+ */
+async function openPedidoOperacoesModal(pedidoId) {
+  const id = Number(pedidoId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Pedido inválido.");
+  }
+  if (!els.pedidoOperacoesModal) return;
+
+  state.pedidoOperacoesId = id;
+  if (els.pedidoOperacoesTitle) {
+    els.pedidoOperacoesTitle.textContent = `Status do pedido #${id}`;
+  }
+  if (els.pedidoOperacoesSubtitle) {
+    els.pedidoOperacoesSubtitle.textContent = "Carregando operações...";
+  }
+  if (els.pedidoOperacoesBody) {
+    els.pedidoOperacoesBody.innerHTML = `<p class="section-subtitle">Carregando status do pedido #${id}...</p>`;
+  }
+  els.pedidoOperacoesModal.classList.remove("hidden");
+
+  const { data: documento, error: docError } = await supabaseClient
+    .from("documentos_venda")
+    .select("id, cliente_id, status, total, observacoes, raw_payload, data_emissao, cliente:clientes(id,nome)")
+    .eq("empresa_id", state.empresaId)
+    .eq("id", id)
+    .eq("tipo_documento", "pedido")
+    .maybeSingle();
+
+  if (docError) throw docError;
+  if (!documento) throw new Error("Pedido não encontrado.");
+
+  const raw =
+    documento.raw_payload && typeof documento.raw_payload === "object"
+      ? documento.raw_payload
+      : {};
+  const pagamentoLabel = getPedidoPagamentoLabel(documento);
+  const dataEmissao = documento.data_emissao
+    ? new Date(documento.data_emissao).toLocaleDateString("pt-BR")
+    : "";
+  const clienteNome = documento.cliente?.nome || "";
+
+  // Financeiro
+  let parcelas = [];
+  let valorOriginal = 0;
+  let valorAberto = 0;
+  let valorRecebido = 0;
+  try {
+    const { data: contas, error: contasError } = await supabaseClient
+      .from("contas_receber")
+      .select("id, valor_original, valor_aberto, status")
+      .eq("empresa_id", state.empresaId)
+      .eq("documento_id", id);
+
+    if (contasError && !isMissingRelationError(contasError)) throw contasError;
+
+    const contaIds = (contas || []).map((c) => Number(c.id)).filter(Number.isFinite);
+    for (const c of contas || []) {
+      valorOriginal += Number(c.valor_original || 0);
+      valorAberto += Number(c.valor_aberto || 0);
+    }
+    valorRecebido = Math.max(0, valorOriginal - valorAberto);
+
+    if (contaIds.length) {
+      const { data: parcelasData, error: parcelasError } = await supabaseClient
+        .from("contas_receber_parcelas")
+        .select("id, conta_receber_id, numero_parcela, vencimento, valor_parcela, valor_recebido, status")
+        .eq("empresa_id", state.empresaId)
+        .in("conta_receber_id", contaIds)
+        .order("vencimento", { ascending: true });
+
+      if (parcelasError && !isMissingRelationError(parcelasError)) throw parcelasError;
+
+      const today = new Date(new Date().toDateString());
+      parcelas = (parcelasData || []).map((p, idx) => {
+        const valor = Number(p.valor_parcela || 0);
+        const recebido = Number(p.valor_recebido || 0);
+        const saldo = Math.max(0, valor - recebido);
+        const venc = p.vencimento ? new Date(`${String(p.vencimento).slice(0, 10)}T12:00:00`) : null;
+        const isVencida = Boolean(venc && !Number.isNaN(venc.getTime()) && venc < today && saldo > 0.009);
+        const statusNormalizado = normalizeContaStatus(p.status, saldo, isVencida);
+        return {
+          numero: p.numero_parcela || idx + 1,
+          vencimento: p.vencimento,
+          valor,
+          saldo,
+          status: p.status,
+          statusNormalizado
+        };
+      });
+    }
+  } catch (finError) {
+    console.warn("Falha ao carregar financeiro do pedido", finError);
+  }
+
+  let statusFinanceiro = { label: "Sem títulos", chip: "nao_aplicavel" };
+  let financeiroDetalhe = "Nenhum título a receber gerado.";
+  if (parcelas.length || valorOriginal > 0) {
+    if (valorAberto <= 0.009) {
+      statusFinanceiro = { label: "Recebido", chip: "recebido" };
+      financeiroDetalhe = `Total ${moeda.format(valorOriginal)} quitado.`;
+    } else if (valorRecebido > 0.009) {
+      statusFinanceiro = { label: "Parcial", chip: "parcial" };
+      financeiroDetalhe = `Recebido ${moeda.format(valorRecebido)} · em aberto ${moeda.format(valorAberto)}.`;
+    } else if (parcelas.some((p) => p.statusNormalizado === "vencido")) {
+      statusFinanceiro = { label: "Vencido", chip: "vencido" };
+      financeiroDetalhe = `Em aberto ${moeda.format(valorAberto)} com parcela(s) vencida(s).`;
+    } else {
+      statusFinanceiro = { label: "Em aberto", chip: "aberto" };
+      financeiroDetalhe = `Saldo em aberto ${moeda.format(valorAberto)}.`;
+    }
+  }
+
+  // Estoque
+  const applied =
+    raw.estoque_aplicado && typeof raw.estoque_aplicado === "object" ? raw.estoque_aplicado : {};
+  const qtdBaixada = Object.values(applied).reduce((sum, v) => sum + Number(v || 0), 0);
+  const statusDoc = String(documento.status || "aberto").toLowerCase();
+  let statusEstoque = { label: "Não baixado", chip: "pendente" };
+  let estoqueDetalhe = "Estoque só baixa com status Fechado.";
+  if (statusDoc === "cancelado") {
+    statusEstoque = { label: "Não aplicável", chip: "nao_aplicavel" };
+    estoqueDetalhe = "Pedido cancelado — sem baixa de estoque.";
+  } else if (qtdBaixada > 0.0005) {
+    statusEstoque = { label: "Baixado", chip: "ok" };
+    estoqueDetalhe = `${qtdBaixada.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} un. baixada(s) do estoque.`;
+  } else if (statusDoc === "fechado") {
+    statusEstoque = { label: "Sem itens controlados", chip: "nao_aplicavel" };
+    estoqueDetalhe = "Pedido fechado, mas sem produtos com controle de estoque.";
+  }
+
+  if (els.pedidoOperacoesSubtitle) {
+    els.pedidoOperacoesSubtitle.textContent = "Situação das operações desta ordem";
+  }
+
+  renderPedidoOperacoesBody({
+    documentoId: id,
+    clienteNome,
+    dataEmissao,
+    total: documento.total,
+    statusDocumento: documento.status || "aberto",
+    pagamentoLabel,
+    statusFinanceiro,
+    financeiroDetalhe,
+    statusEstoque,
+    estoqueDetalhe,
+    parcelas,
+    orcamentoOrigemId: raw.orcamento_origem_id || null
+  });
+
+  if (els.pedidoOperacoesReceberBtn) {
+    const podeReceber = valorAberto > 0.009;
+    els.pedidoOperacoesReceberBtn.disabled = !podeReceber;
+    els.pedidoOperacoesReceberBtn.title = podeReceber
+      ? "Registrar recebimento"
+      : "Nada em aberto para receber";
+  }
 }
 
 function getParcelaSaldo(parcela) {
@@ -5748,8 +6018,10 @@ function renderItensDocumentoTable() {
           <tr>
             <td class="pedido-actions-cell">${actions}</td>
             <td class="pedido-cell-id">
-              ${renderPedidoThumbHtml(pedido)}
-              <span>#${id}</span>
+              <button type="button" class="pedido-cell-id-btn" data-pedido-operacoes="${id}" title="Ver status das operações do pedido #${id}">
+                ${renderPedidoThumbHtml(pedido)}
+                <span>#${id}</span>
+              </button>
             </td>
             <td>${data}</td>
             <td>${escapeHtml(pedido.status || "-")}</td>
@@ -9358,12 +9630,15 @@ function renderPedidosTable() {
       const data = pedido.data_pedido ? new Date(pedido.data_pedido).toLocaleDateString("pt-BR") : "-";
       const clienteNome = pedido.cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${escapeHtml(pedido.cliente_legacy_id)}` : "-");
       const pagamentoLabel = getPedidoPagamentoLabel(pedido);
+      const id = escapeHtml(pedido.id);
       return `
       <tr>
         <td class="pedido-actions-cell">${renderPedidoRowActionsMenu(pedido.id)}</td>
         <td class="pedido-cell-id">
-          ${renderPedidoThumbHtml(pedido)}
-          <span>#${escapeHtml(pedido.id)}</span>
+          <button type="button" class="pedido-cell-id-btn" data-pedido-operacoes="${id}" title="Ver status das operações do pedido #${id}">
+            ${renderPedidoThumbHtml(pedido)}
+            <span>#${id}</span>
+          </button>
         </td>
         <td>${data}</td>
         <td>${clienteNome}</td>
@@ -9459,27 +9734,56 @@ function renderContasReceberTable() {
     updateTableSortHeaders("financeiro");
 }
 
+function getOrcamentosListSource() {
+  const all = state.orcamentos || [];
+  // Padrão: oculta aprovados (já convertidos / fechados comercialmente).
+  if (state.orcamentosMostrarAprovados) return all;
+  return all.filter((orcamento) => String(orcamento.status || "").toLowerCase() !== "aprovado");
+}
+
+function syncOrcamentosAprovadosToggleUi() {
+  if (els.orcamentosMostrarAprovados) {
+    els.orcamentosMostrarAprovados.checked = Boolean(state.orcamentosMostrarAprovados);
+  }
+  if (els.orcamentosSectionSubtitle) {
+    els.orcamentosSectionSubtitle.textContent = state.orcamentosMostrarAprovados
+      ? "Listando todos os orçamentos, inclusive os aprovados."
+      : "Por padrão, só aparecem orçamentos que ainda não foram aprovados.";
+  }
+}
+
+function setOrcamentosMostrarAprovados(mostrar) {
+  state.orcamentosMostrarAprovados = Boolean(mostrar);
+  syncOrcamentosAprovadosToggleUi();
+  renderOrcamentosTable();
+}
+
 function renderOrcamentosTable() {
-    const rows = getFilteredAndSortedTableRows(state.orcamentos, "orcamentos", {
-      data: {
-        filter: (orcamento) => orcamento.data_orcamento ? new Date(orcamento.data_orcamento).toLocaleDateString("pt-BR") : "-",
-        sort: (orcamento) => orcamento.data_orcamento ? new Date(orcamento.data_orcamento).getTime() : 0
-      },
-      cliente: (orcamento) => orcamento.cliente?.nome || (orcamento.cliente_legacy_id ? `Legacy #${orcamento.cliente_legacy_id}` : "-"),
-      status: (orcamento) => orcamento.status || "-",
-      total: {
-        filter: (orcamento) => moeda.format(orcamento.valor_total || 0),
-        sort: (orcamento) => Number(orcamento.valor_total || 0)
-      }
-    });
-
-    if (!rows.length) {
-      els.orcamentosTable.innerHTML = '<tr><td colspan="5">Nenhum orcamento encontrado para os filtros selecionados.</td></tr>';
-      updateTableSortHeaders("orcamentos");
-      return;
+  syncOrcamentosAprovadosToggleUi();
+  const source = getOrcamentosListSource();
+  const rows = getFilteredAndSortedTableRows(source, "orcamentos", {
+    data: {
+      filter: (orcamento) => orcamento.data_orcamento ? new Date(orcamento.data_orcamento).toLocaleDateString("pt-BR") : "-",
+      sort: (orcamento) => orcamento.data_orcamento ? new Date(orcamento.data_orcamento).getTime() : 0
+    },
+    cliente: (orcamento) => orcamento.cliente?.nome || (orcamento.cliente_legacy_id ? `Legacy #${orcamento.cliente_legacy_id}` : "-"),
+    status: (orcamento) => orcamento.status || "-",
+    total: {
+      filter: (orcamento) => moeda.format(orcamento.valor_total || 0),
+      sort: (orcamento) => Number(orcamento.valor_total || 0)
     }
+  });
 
-    els.orcamentosTable.innerHTML = rows
+  if (!rows.length) {
+    const emptyMsg = state.orcamentosMostrarAprovados
+      ? "Nenhum orcamento encontrado para os filtros selecionados."
+      : "Nenhum orcamento em aberto/reprovado. Marque \"Mostrar aprovados\" para ver os aprovados.";
+    els.orcamentosTable.innerHTML = `<tr><td colspan="5">${emptyMsg}</td></tr>`;
+    updateTableSortHeaders("orcamentos");
+    return;
+  }
+
+  els.orcamentosTable.innerHTML = rows
     .map((orcamento) => {
       const data = orcamento.data_orcamento ? new Date(orcamento.data_orcamento).toLocaleDateString("pt-BR") : "-";
       const clienteNome = orcamento.cliente?.nome || (orcamento.cliente_legacy_id ? `Legacy #${escapeHtml(orcamento.cliente_legacy_id)}` : "-");
@@ -11844,6 +12148,13 @@ function attachEvents() {
     });
   }
 
+  if (els.orcamentosMostrarAprovados) {
+    els.orcamentosMostrarAprovados.checked = Boolean(state.orcamentosMostrarAprovados);
+    els.orcamentosMostrarAprovados.addEventListener("change", () => {
+      setOrcamentosMostrarAprovados(els.orcamentosMostrarAprovados.checked);
+    });
+  }
+
   els.orcamentoForm.addEventListener("submit", async (event) => {
     try {
       await createOrcamento(event);
@@ -11976,6 +12287,7 @@ function attachEvents() {
       const pedidoEditId = getData("data-edit-pedido");
       const orcamentoEditId = getData("data-edit-orcamento");
       const orcamentoConvertId = getData("data-convert-orcamento");
+      const pedidoOperacoesId = getData("data-pedido-operacoes");
       const pedidoPdfId = getData("data-pdf-pedido");
       const orcamentoPdfId = getData("data-pdf-orcamento");
       if (pedidoPdfId) {
@@ -11986,6 +12298,11 @@ function attachEvents() {
       if (orcamentoPdfId) {
         closeAllRowActionMenus();
         await generateDocumentoPdfById("orcamento", Number(orcamentoPdfId));
+        return;
+      }
+      if (pedidoOperacoesId) {
+        closeAllRowActionMenus();
+        await openPedidoOperacoesModal(Number(pedidoOperacoesId));
         return;
       }
       if (orcamentoConvertId) {

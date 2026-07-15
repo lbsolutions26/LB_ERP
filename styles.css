@@ -2219,6 +2219,167 @@ img.produto-combo-thumb.is-broken {
   white-space: nowrap;
 }
 
+.pedido-cell-id-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 0;
+  background: transparent;
+  padding: 0.15rem 0.2rem;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 0.55rem;
+  text-align: left;
+}
+
+.pedido-cell-id-btn:hover,
+.pedido-cell-id-btn:focus-visible {
+  background: rgba(22, 93, 89, 0.1);
+  outline: none;
+}
+
+.pedido-cell-id-btn:focus-visible {
+  box-shadow: 0 0 0 2px rgba(22, 93, 89, 0.35);
+}
+
+.modal-pedido-operacoes-card {
+  width: min(640px, 100%);
+  max-height: min(90vh, 820px);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pedido-operacoes-body {
+  display: grid;
+  gap: 0.85rem;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.pedido-operacoes-meta {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+}
+
+.pedido-operacoes-meta strong {
+  font-size: 1.05rem;
+}
+
+.pedido-operacoes-meta span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.pedido-operacoes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.65rem;
+}
+
+.pedido-operacao-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+}
+
+.pedido-operacao-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.pedido-operacao-card strong {
+  font-size: 1rem;
+}
+
+.pedido-operacao-card small {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.pedido-operacoes-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pedido-operacoes-section h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.pedido-operacoes-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.pedido-operacoes-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 0.92rem;
+}
+
+.pedido-operacoes-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.status-chip.fechado {
+  color: #1f5f35;
+  background: #dbf2e2;
+  border-color: #acd9bb;
+}
+
+.status-chip.cancelado {
+  color: #7a2f2f;
+  background: #f8dfdf;
+  border-color: #e2b4b4;
+}
+
+.status-chip.ok {
+  color: #1f5f35;
+  background: #dbf2e2;
+  border-color: #acd9bb;
+}
+
+.status-chip.pendente {
+  color: #765a00;
+  background: #fff2cc;
+  border-color: #edd189;
+}
+
+.status-chip.nao_aplicavel {
+  color: #5c564c;
+  background: #eeeae2;
+  border-color: #d9d2c4;
+}
+
 /* Menu compacto de acoes (primeira coluna da lista de pedidos) */
 .pedido-actions-col {
   width: 3rem;
@@ -3404,6 +3565,27 @@ textarea:focus {
   flex-direction: row !important;
   align-items: center;
   gap: 0.5rem !important;
+}
+
+.orcamentos-aprovados-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.75);
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.orcamentos-aprovados-toggle input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--brand);
+  cursor: pointer;
 }
 .field-hint {
   display: block;
