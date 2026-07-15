@@ -3924,6 +3924,59 @@ tr.is-clickable-row:hover {
   gap: 0.45rem;
 }
 
+.contas-pagar-mes-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
+  margin: 0.35rem 0 0.85rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.85rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.contas-pagar-mes-filter-label {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.contas-pagar-mes-input {
+  min-width: 10.5rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--line);
+  background: #fff;
+  font: inherit;
+  color: var(--ink);
+}
+
+.contas-pagar-mes-nav {
+  min-width: 2.4rem;
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+}
+
+.contas-pagar-mes-hint {
+  margin: 0;
+  flex: 1 1 12rem;
+  min-width: 10rem;
+}
+
+@media (max-width: 720px) {
+  .contas-pagar-mes-filter {
+    gap: 0.4rem;
+  }
+
+  .contas-pagar-mes-input {
+    flex: 1 1 auto;
+    min-width: 8rem;
+  }
+}
+
 .despesa-classificacao-block {
   display: grid;
   gap: 0.4rem;

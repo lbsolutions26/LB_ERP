@@ -58,6 +58,55 @@ export function installComprasModule(ctx) {
     };
   }
 
+  function currentMonthKey(date = new Date()) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+  }
+
+  function shiftMonthKey(monthKey, delta) {
+    const raw = String(monthKey || currentMonthKey());
+    const match = raw.match(/^(\d{4})-(\d{2})$/);
+    const base = match
+      ? new Date(Number(match[1]), Number(match[2]) - 1, 1, 12, 0, 0)
+      : new Date();
+    base.setMonth(base.getMonth() + Number(delta || 0));
+    return currentMonthKey(base);
+  }
+
+  function formatMonthKeyLabel(monthKey) {
+    const match = String(monthKey || "").match(/^(\d{4})-(\d{2})$/);
+    if (!match) return "Todos os meses";
+    const d = new Date(Number(match[1]), Number(match[2]) - 1, 1);
+    const label = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+
+  function getDespesasMesAtivo() {
+    ensureStateDefaults();
+    return String(state().compras.filters.despesasMes || "").trim();
+  }
+
+  function syncDespesasMesFilterUi() {
+    const mes = getDespesasMesAtivo();
+    const input = document.getElementById("despesasMesFilter");
+    const hint = document.getElementById("despesasMesFilterHint");
+    if (input) input.value = mes || "";
+    if (hint) {
+      hint.textContent = mes
+        ? `Vencimentos de ${formatMonthKeyLabel(mes)}`
+        : "Todos os meses (sem filtro de vencimento)";
+    }
+  }
+
+  function setDespesasMes(mes) {
+    ensureStateDefaults();
+    const next = String(mes || "").trim();
+    state().compras.filters.despesasMes = /^\d{4}-\d{2}$/.test(next) ? next : "";
+    syncDespesasMesFilterUi();
+    renderContasPagarTable();
+  }
+
   function ensureStateDefaults() {
     const s = state();
     if (!s.compras) {
@@ -79,6 +128,8 @@ export function installComprasModule(ctx) {
           despesasBusca: "",
           despesasOrigem: "",
           despesasEscopo: "todos",
+          // YYYY-MM | "" (todos). Padrão: mês corrente (filtro rápido).
+          despesasMes: currentMonthKey(),
           despesasCols: defaultDespesasColFilters()
         }
       };
@@ -89,6 +140,9 @@ export function installComprasModule(ctx) {
     }
     if (!s.compras.filters.despesasEscopo) {
       s.compras.filters.despesasEscopo = "todos";
+    }
+    if (s.compras.filters.despesasMes === undefined || s.compras.filters.despesasMes === null) {
+      s.compras.filters.despesasMes = currentMonthKey();
     }
     if (!Array.isArray(s.compras.pagamentos)) s.compras.pagamentos = [];
     if (!s.notaEntradaModal) {
@@ -956,7 +1010,7 @@ export function installComprasModule(ctx) {
       .join("");
   }
 
-  /** Linhas da aba Contas a Pagar com os mesmos filtros da tabela (escopo + colunas). */
+  /** Linhas da aba Contas a Pagar com os mesmos filtros da tabela (escopo + colunas + mês). */
   function getContasPagarDespesasFilteredRows() {
     ensureStateDefaults();
     const cols = state().compras.filters.despesasCols || {};
@@ -967,7 +1021,12 @@ export function installComprasModule(ctx) {
       origem: cols.origem || state().compras.filters.despesasOrigem || "",
       escopo: escopo === "todos" ? "" : escopo
     });
-    return applyDespesasColumnFilters(rows);
+    rows = applyDespesasColumnFilters(rows);
+    const mes = getDespesasMesAtivo();
+    if (mes) {
+      rows = rows.filter((r) => String(r.vencimento || "").slice(0, 7) === mes);
+    }
+    return rows;
   }
 
   function getFornecedorDescFromParcela(r) {
@@ -1101,8 +1160,10 @@ export function installComprasModule(ctx) {
     const hoje = formatDateInput(new Date());
     const escopo = getDespesasEscopoAtivo();
     const escopoSuffix = escopo === "todos" ? "" : `-${escopo}`;
+    const mes = getDespesasMesAtivo();
+    const mesSuffix = mes ? `-${mes}` : "";
     downloadExcelSpreadsheet({
-      fileName: `contas-a-pagar${escopoSuffix}-${hoje}.xls`,
+      fileName: `contas-a-pagar${escopoSuffix}${mesSuffix}-${hoje}.xls`,
       sheetName: "Contas a Pagar",
       headers,
       rows: excelRows
@@ -1112,6 +1173,7 @@ export function installComprasModule(ctx) {
 
   function renderContasPagarTable() {
     const e = els();
+    syncDespesasMesFilterUi();
     // Atalho em Compras: só NFs
     const rowsCompras = getParcelasPagarRows({
       busca: state().compras.filters.pagarBusca,
@@ -1120,7 +1182,7 @@ export function installComprasModule(ctx) {
     });
     renderParcelasIntoTable(e.comprasPagarTable, rowsCompras, { showOrigem: true, showEmissao: false });
 
-    // Caixa único: aba Contas a Pagar (filtros de coluna no cabeçalho + escopo empresa/pessoal)
+    // Caixa único: aba Contas a Pagar (filtros de coluna no cabeçalho + escopo empresa/pessoal + mês)
     const rowsDespesas = getContasPagarDespesasFilteredRows();
     renderParcelasIntoTable(e.despesasPagarTable, rowsDespesas, { showOrigem: true, showEmissao: true });
     renderDespesasKpis();
@@ -3290,6 +3352,37 @@ export function installComprasModule(ctx) {
     });
     // Sync visual inicial do toggle
     setDespesasEscopo(getDespesasEscopoAtivo());
+
+    // Filtro rápido de mês (vencimento)
+    const mesInput = document.getElementById("despesasMesFilter");
+    const mesPrev = document.getElementById("despesasMesPrevBtn");
+    const mesNext = document.getElementById("despesasMesNextBtn");
+    const mesAtual = document.getElementById("despesasMesAtualBtn");
+    const mesTodos = document.getElementById("despesasMesTodosBtn");
+    syncDespesasMesFilterUi();
+    if (mesInput) {
+      mesInput.addEventListener("change", () => {
+        setDespesasMes(mesInput.value || "");
+      });
+    }
+    if (mesPrev) {
+      mesPrev.addEventListener("click", () => {
+        const base = getDespesasMesAtivo() || currentMonthKey();
+        setDespesasMes(shiftMonthKey(base, -1));
+      });
+    }
+    if (mesNext) {
+      mesNext.addEventListener("click", () => {
+        const base = getDespesasMesAtivo() || currentMonthKey();
+        setDespesasMes(shiftMonthKey(base, 1));
+      });
+    }
+    if (mesAtual) {
+      mesAtual.addEventListener("click", () => setDespesasMes(currentMonthKey()));
+    }
+    if (mesTodos) {
+      mesTodos.addEventListener("click", () => setDespesasMes(""));
+    }
 
     // Classificação Empresa / Pessoal no modal de nova despesa
     document.querySelectorAll("[data-despesa-classificacao]").forEach((btn) => {

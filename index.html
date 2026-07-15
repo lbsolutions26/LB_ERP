@@ -590,6 +590,16 @@
             <article title="Soma dos pagamentos com data de baixa no mês corrente (no escopo selecionado)"><span>Pagas no mês</span><strong id="despesasKpiPagasMes">R$ 0,00</strong></article>
           </div>
 
+          <div class="contas-pagar-mes-filter" aria-label="Filtro rápido de mês">
+            <span class="contas-pagar-mes-filter-label">Mês</span>
+            <button id="despesasMesPrevBtn" type="button" class="btn btn-ghost contas-pagar-mes-nav" title="Mês anterior" aria-label="Mês anterior">◀</button>
+            <input id="despesasMesFilter" type="month" class="contas-pagar-mes-input" title="Filtrar pelo vencimento do mês" />
+            <button id="despesasMesNextBtn" type="button" class="btn btn-ghost contas-pagar-mes-nav" title="Próximo mês" aria-label="Próximo mês">▶</button>
+            <button id="despesasMesAtualBtn" type="button" class="btn btn-ghost" title="Ir para o mês corrente">Este mês</button>
+            <button id="despesasMesTodosBtn" type="button" class="btn btn-ghost" title="Mostrar todos os meses">Todos</button>
+            <span id="despesasMesFilterHint" class="section-subtitle contas-pagar-mes-hint"></span>
+          </div>
+
           <div class="table-wrap contas-pagar-table-wrap">
             <table class="contas-pagar-table">
               <thead>
