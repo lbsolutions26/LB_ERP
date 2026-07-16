@@ -1173,7 +1173,7 @@
         <div class="modal-head modal-produto-head">
           <div>
             <h3 id="produtoModalTitle">Novo Produto</h3>
-            <p id="produtoModalSubtitle" class="modal-subtitle">Preencha os dados e confira a imagem do produto.</p>
+            <p id="produtoModalSubtitle" class="modal-subtitle">Preencha os dados e adicione a foto do produto.</p>
           </div>
           <button id="closeProdutoModalBtn" class="btn btn-ghost" type="button">Fechar</button>
         </div>
@@ -1184,14 +1184,22 @@
                 <img id="produtoImagePreview" class="produto-form-preview-img hidden" alt="Pré-visualização do produto" />
                 <div id="produtoImageEmpty" class="produto-form-preview-empty">
                   <strong>Sem imagem</strong>
-                  <span>Cole a URL da imagem ao lado para visualizar</span>
+                  <span>Tire uma foto ou escolha da galeria</span>
                 </div>
                 <button id="produtoImageZoomBtn" class="btn btn-ghost produto-form-zoom-btn hidden" type="button">Ampliar imagem</button>
               </div>
-              <label class="produto-form-field">
-                URL da imagem
-                <input name="imagem_path" id="produtoImagemPathInput" placeholder="https://... ou caminho do storage" />
-              </label>
+              <div class="produto-form-foto-meta">
+                <strong>Foto do produto</strong>
+                <span id="produtoFotoHint">Tire uma foto ou escolha da galeria</span>
+              </div>
+              <div class="produto-form-foto-actions">
+                <button id="produtoFotoCameraBtn" type="button" class="btn btn-ghost documento-foto-btn">Câmera</button>
+                <button id="produtoFotoGaleriaBtn" type="button" class="btn btn-ghost documento-foto-btn">Galeria</button>
+                <button id="produtoFotoRemoverBtn" type="button" class="btn btn-ghost documento-foto-btn documento-foto-btn--danger hidden">Remover</button>
+              </div>
+              <input type="hidden" name="imagem_path" id="produtoImagemPathInput" value="" />
+              <input id="produtoFotoCameraInput" type="file" accept="image/*" capture="environment" class="hidden" tabindex="-1" aria-hidden="true" />
+              <input id="produtoFotoGaleriaInput" type="file" accept="image/*" class="hidden" tabindex="-1" aria-hidden="true" />
             </aside>
 
             <div class="produto-form-fields">

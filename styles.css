@@ -1689,6 +1689,28 @@ table thead input {
   bottom: 0.7rem;
 }
 
+.produto-form-foto-meta {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.produto-form-foto-meta strong {
+  font-size: 0.92rem;
+  color: var(--brand-strong);
+}
+
+.produto-form-foto-meta span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.produto-form-foto-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .produto-form-actions {
   display: flex;
   justify-content: flex-end;

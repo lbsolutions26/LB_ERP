@@ -259,6 +259,12 @@ const els = {
   produtoImageEmpty: document.getElementById("produtoImageEmpty"),
   produtoImageZoomBtn: document.getElementById("produtoImageZoomBtn"),
   produtoImagemPathInput: document.getElementById("produtoImagemPathInput"),
+  produtoFotoHint: document.getElementById("produtoFotoHint"),
+  produtoFotoCameraBtn: document.getElementById("produtoFotoCameraBtn"),
+  produtoFotoGaleriaBtn: document.getElementById("produtoFotoGaleriaBtn"),
+  produtoFotoRemoverBtn: document.getElementById("produtoFotoRemoverBtn"),
+  produtoFotoCameraInput: document.getElementById("produtoFotoCameraInput"),
+  produtoFotoGaleriaInput: document.getElementById("produtoFotoGaleriaInput"),
   imageLightbox: document.getElementById("imageLightbox"),
   imageLightboxImg: document.getElementById("imageLightboxImg"),
   imageLightboxCaption: document.getElementById("imageLightboxCaption"),
@@ -800,6 +806,16 @@ function closeImageLightbox() {
   }
 }
 
+function setProdutoImagemPathValue(value) {
+  if (els.produtoImagemPathInput) {
+    els.produtoImagemPathInput.value = value == null ? "" : String(value);
+  }
+  const field = els.produtoForm?.elements?.namedItem("imagem_path");
+  if (field && "value" in field && field !== els.produtoImagemPathInput) {
+    field.value = value == null ? "" : String(value);
+  }
+}
+
 function updateProdutoFormImagePreview() {
   const raw = els.produtoImagemPathInput?.value || els.produtoForm?.elements?.namedItem("imagem_path")?.value || "";
   const url = resolveProdutoImageUrl(raw);
@@ -824,6 +840,14 @@ function updateProdutoFormImagePreview() {
 
   if (els.produtoImageEmpty) {
     els.produtoImageEmpty.classList.toggle("hidden", Boolean(url));
+  }
+  if (els.produtoFotoHint) {
+    els.produtoFotoHint.textContent = url
+      ? "Toque na foto para ampliar"
+      : "Tire uma foto ou escolha da galeria";
+  }
+  if (els.produtoFotoRemoverBtn) {
+    els.produtoFotoRemoverBtn.classList.toggle("hidden", !url);
   }
   if (els.produtoImageZoomBtn) {
     els.produtoImageZoomBtn.classList.toggle("hidden", !url);
@@ -3221,6 +3245,91 @@ async function uploadPedidoFotoFile(file) {
 
   // Guarda caminho estável no payload; a URL pública é resolvida na exibição
   return `pedido-images/${objectPath}`;
+}
+
+async function uploadProdutoImagemFile(file) {
+  if (!supabaseClient) throw new Error("Supabase não configurado");
+  if (!state.empresaId) throw new Error("Empresa não selecionada");
+  if (!(file instanceof File) && !(file instanceof Blob)) {
+    throw new Error("Selecione uma imagem válida");
+  }
+
+  const compressed = await compressImageFile(file);
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+  const rand = Math.random().toString(36).slice(2, 8);
+  const produtoId = els.produtoForm?.dataset?.editId
+    ? String(els.produtoForm.dataset.editId)
+    : "novo";
+  const objectPath = `${state.empresaId}/${produtoId}/${stamp}-${rand}.jpg`;
+
+  const { error } = await supabaseClient.storage
+    .from("produto-images")
+    .upload(objectPath, compressed, {
+      contentType: "image/jpeg",
+      upsert: true,
+      cacheControl: "3600"
+    });
+
+  if (error) {
+    throw new Error(error.message || "Falha ao enviar a imagem");
+  }
+
+  // Caminho estável; a URL pública é resolvida na exibição
+  return `produto-images/${objectPath}`;
+}
+
+async function handleProdutoFotoSelected(fileList) {
+  const file = fileList?.[0];
+  if (!file) return;
+  if (!String(file.type || "").startsWith("image/")) {
+    showToast("Selecione um arquivo de imagem.", "error");
+    return;
+  }
+
+  const cameraBtn = els.produtoFotoCameraBtn;
+  const galeriaBtn = els.produtoFotoGaleriaBtn;
+  const labels = {
+    camera: cameraBtn?.textContent || "Câmera",
+    galeria: galeriaBtn?.textContent || "Galeria"
+  };
+  if (cameraBtn) {
+    cameraBtn.disabled = true;
+    cameraBtn.textContent = "Enviando...";
+  }
+  if (galeriaBtn) {
+    galeriaBtn.disabled = true;
+    galeriaBtn.textContent = "Enviando...";
+  }
+
+  try {
+    const pathOrUrl = await uploadProdutoImagemFile(file);
+    setProdutoImagemPathValue(pathOrUrl);
+    updateProdutoFormImagePreview();
+    showToast("Foto do produto pronta. Salve para confirmar.");
+  } catch (error) {
+    console.warn("Falha ao enviar foto do produto", error);
+    showToast(`Erro ao enviar foto: ${error.message || "falha desconhecida"}`, "error");
+  } finally {
+    if (cameraBtn) {
+      cameraBtn.disabled = false;
+      cameraBtn.textContent = labels.camera;
+    }
+    if (galeriaBtn) {
+      galeriaBtn.disabled = false;
+      galeriaBtn.textContent = labels.galeria;
+    }
+    if (els.produtoFotoCameraInput) els.produtoFotoCameraInput.value = "";
+    if (els.produtoFotoGaleriaInput) els.produtoFotoGaleriaInput.value = "";
+  }
+}
+
+function removeProdutoFoto() {
+  const current = String(els.produtoImagemPathInput?.value || "").trim();
+  if (!current) return;
+  if (!window.confirm("Remover a foto deste produto?")) return;
+  setProdutoImagemPathValue("");
+  updateProdutoFormImagePreview();
+  showToast("Foto removida. Salve para confirmar.");
 }
 
 async function handleNovoDocumentoFotoSelected(fileList) {
@@ -6198,7 +6307,7 @@ function setProdutoFormMode({ editing = false, produto = null } = {}) {
       els.produtoModalTitle.textContent = "Novo Produto";
     }
     if (els.produtoModalSubtitle) {
-      els.produtoModalSubtitle.textContent = "Cadastre o item e, se quiser, cole a URL da imagem.";
+      els.produtoModalSubtitle.textContent = "Cadastre o item e, se quiser, adicione uma foto pela câmera ou galeria.";
     }
     if (els.produtoSubmitBtn) {
       els.produtoSubmitBtn.textContent = "Salvar Produto";
@@ -11502,6 +11611,32 @@ function attachEvents() {
   if (els.produtoImagemPathInput) {
     els.produtoImagemPathInput.addEventListener("input", updateProdutoFormImagePreview);
     els.produtoImagemPathInput.addEventListener("change", updateProdutoFormImagePreview);
+  }
+
+  if (els.produtoFotoCameraBtn && els.produtoFotoCameraInput) {
+    els.produtoFotoCameraBtn.addEventListener("click", () => {
+      els.produtoFotoCameraInput.click();
+    });
+    els.produtoFotoCameraInput.addEventListener("change", () => {
+      handleProdutoFotoSelected(els.produtoFotoCameraInput.files).catch((error) => {
+        showToast(`Erro ao enviar foto: ${error.message}`, "error");
+      });
+    });
+  }
+  if (els.produtoFotoGaleriaBtn && els.produtoFotoGaleriaInput) {
+    els.produtoFotoGaleriaBtn.addEventListener("click", () => {
+      els.produtoFotoGaleriaInput.click();
+    });
+    els.produtoFotoGaleriaInput.addEventListener("change", () => {
+      handleProdutoFotoSelected(els.produtoFotoGaleriaInput.files).catch((error) => {
+        showToast(`Erro ao enviar foto: ${error.message}`, "error");
+      });
+    });
+  }
+  if (els.produtoFotoRemoverBtn) {
+    els.produtoFotoRemoverBtn.addEventListener("click", () => {
+      removeProdutoFoto();
+    });
   }
 
   const produtoNomeField = els.produtoForm?.elements?.namedItem("nome");
