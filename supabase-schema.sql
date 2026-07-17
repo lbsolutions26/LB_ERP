@@ -6,6 +6,16 @@ create extension if not exists pgcrypto;
 create table if not exists public.empresas (
   id uuid primary key default gen_random_uuid(),
   nome text not null,
+  telefone text,
+  email text,
+  endereco text,
+  bairro text,
+  cidade text,
+  uf text,
+  logo_path text,
+  cor_primaria text default '#165d59',
+  pdf_termos text,
+  pdf_aviso text,
   created_at timestamp with time zone not null default now()
 );
 
@@ -208,6 +218,13 @@ on public.empresas
 for all
 using (public.is_platform_admin())
 with check (public.is_platform_admin());
+
+drop policy if exists "empresas_tenant_update" on public.empresas;
+create policy "empresas_tenant_update"
+on public.empresas
+for update
+using (public.user_belongs_to_empresa(id))
+with check (public.user_belongs_to_empresa(id));
 
 drop policy if exists "clientes_tenant" on public.clientes;
 create policy "clientes_tenant"

@@ -52,6 +52,7 @@ const state = {
   supabaseUrl: "",
   empresaId: null,
   empresaNome: "",
+  empresaConfig: null,
   currentRole: "user",
   isPlatformAdmin: false,
   clientes: [],
@@ -238,6 +239,18 @@ const els = {
   saasTitleLogin: document.getElementById("saasTitleLogin"),
   saasTitleApp: document.getElementById("saasTitleApp"),
   empresaInfo: document.getElementById("empresaInfo"),
+  empresaConfigForm: document.getElementById("empresaConfigForm"),
+  empresaLogoPreview: document.getElementById("empresaLogoPreview"),
+  empresaLogoEmpty: document.getElementById("empresaLogoEmpty"),
+  empresaLogoPathInput: document.getElementById("empresaLogoPathInput"),
+  empresaLogoCameraBtn: document.getElementById("empresaLogoCameraBtn"),
+  empresaLogoGaleriaBtn: document.getElementById("empresaLogoGaleriaBtn"),
+  empresaLogoRemoverBtn: document.getElementById("empresaLogoRemoverBtn"),
+  empresaLogoCameraInput: document.getElementById("empresaLogoCameraInput"),
+  empresaLogoGaleriaInput: document.getElementById("empresaLogoGaleriaInput"),
+  empresaCorPrimariaInput: document.getElementById("empresaCorPrimariaInput"),
+  empresaConfigAplicarPadraoBtn: document.getElementById("empresaConfigAplicarPadraoBtn"),
+  empresaConfigSubmitBtn: document.getElementById("empresaConfigSubmitBtn"),
   tabs: Array.from(document.querySelectorAll(".tab")),
   sections: Array.from(document.querySelectorAll(".app-section")),
   clienteForm: document.getElementById("clienteForm"),
@@ -4583,9 +4596,22 @@ function waitForElementImages(root, timeoutMs = 2500) {
   ]);
 }
 
+function darkenHexColor(hex, amount = 0.22) {
+  const raw = String(hex || "").replace("#", "").trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return "#0f4744";
+  const n = Math.min(1, Math.max(0, Number(amount) || 0));
+  const parts = [0, 2, 4].map((i) => {
+    const v = parseInt(raw.slice(i, i + 2), 16);
+    return Math.max(0, Math.round(v * (1 - n)));
+  });
+  return `#${parts.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
 function buildOrcamentoPdfHtml(payload) {
   const {
     empresaNome,
+    empresaConfig,
+    empresaLogoDataUrl,
     cliente,
     dataEmissaoLabel,
     numeroRef,
@@ -4602,6 +4628,29 @@ function buildOrcamentoPdfHtml(payload) {
   const clienteNome = String(cliente?.nome || "").trim();
   const clienteTel = String(cliente?.telefone || "").trim();
   const clienteEmail = String(cliente?.email || "").trim();
+  const cfg = normalizeEmpresaConfig(empresaConfig || {}, empresaNome);
+  const brand = cfg.cor_primaria || "#165d59";
+  const brandDark = darkenHexColor(brand, 0.28);
+  const nomeEmpresa = cfg.nome || empresaNome || "Empresa";
+  const empresaContatoHtml = [
+    cfg.telefone ? `Tel.: ${escapeHtml(cfg.telefone)}` : "",
+    cfg.email ? `E-mail: ${escapeHtml(cfg.email)}` : "",
+    ...formatEmpresaEnderecoLinhas(cfg).map((line) => escapeHtml(line))
+  ].filter(Boolean).join("<br />");
+  const logoHtml = empresaLogoDataUrl
+    ? `<img class="brand-logo" src="${escapeHtml(empresaLogoDataUrl)}" alt="Logo" />`
+    : "";
+  const termosHtml = cfg.pdf_termos
+    ? cfg.pdf_termos
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => `<div class="termo-line">${escapeHtml(line)}</div>`)
+      .join("")
+    : "";
+  const avisoHtml = cfg.pdf_aviso
+    ? `<div class="aviso-box"><strong>Atenção</strong><p>${escapeHtml(cfg.pdf_aviso)}</p></div>`
+    : "";
 
   const rows = (itens || [])
     .map((item, index) => {
@@ -4667,7 +4716,7 @@ function buildOrcamentoPdfHtml(payload) {
     .header {
       width: 100%;
       border-collapse: collapse;
-      border-bottom: 3px solid #165d59;
+      border-bottom: 3px solid ${brand};
       margin-bottom: 16px;
       padding-bottom: 0;
     }
@@ -4675,20 +4724,33 @@ function buildOrcamentoPdfHtml(payload) {
       vertical-align: top;
       padding: 0 0 12px 0;
     }
+    .brand-logo {
+      max-width: 120px;
+      max-height: 56px;
+      object-fit: contain;
+      display: block;
+      margin-bottom: 8px;
+    }
     .brand h1 {
       margin: 0;
       font-size: 22px;
       letter-spacing: -0.02em;
-      color: #0f4744;
+      color: ${brandDark};
     }
     .brand p { margin: 4px 0 0; color: #5f5a50; }
+    .brand .empresa-contato {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #5f5a50;
+      line-height: 1.4;
+    }
     .doc-meta {
       text-align: right;
       width: 200px;
     }
     .badge {
       display: inline-block;
-      background: #165d59;
+      background: ${brand};
       color: #fff;
       font-weight: 700;
       font-size: 11px;
@@ -4722,7 +4784,7 @@ function buildOrcamentoPdfHtml(payload) {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: #165d59;
+      color: ${brand};
     }
     .card .card-body { color: #1f1e1a; }
     table.items {
@@ -4731,7 +4793,7 @@ function buildOrcamentoPdfHtml(payload) {
       margin-top: 4px;
     }
     table.items thead th {
-      background: #165d59;
+      background: ${brand};
       color: #fff;
       text-align: left;
       padding: 9px 8px;
@@ -4793,7 +4855,7 @@ function buildOrcamentoPdfHtml(payload) {
       color: #1f1e1a;
     }
     .totals-box .row.total td {
-      background: #165d59;
+      background: ${brand};
       color: #fff;
       font-size: 15px;
       font-weight: 700;
@@ -4810,9 +4872,48 @@ function buildOrcamentoPdfHtml(payload) {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: #165d59;
+      color: ${brand};
     }
     .notes p { margin: 0; white-space: pre-wrap; color: #3b372f; }
+    .termos {
+      margin-top: 16px;
+      border-top: 1px dashed #d7cdb9;
+      padding-top: 12px;
+    }
+    .termos h3 {
+      margin: 0 0 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: ${brand};
+    }
+    .termo-line {
+      margin: 0 0 4px;
+      color: #3b372f;
+      font-size: 11px;
+    }
+    .aviso-box {
+      margin-top: 14px;
+      border: 1px solid #e2b4b4;
+      background: #fff5f5;
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .aviso-box strong {
+      display: block;
+      color: #8a2f2f;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+    }
+    .aviso-box p {
+      margin: 0;
+      white-space: pre-wrap;
+      color: #5a3030;
+      font-size: 11px;
+      line-height: 1.45;
+    }
     .approval {
       width: 100%;
       border-collapse: separate;
@@ -4849,7 +4950,7 @@ function buildOrcamentoPdfHtml(payload) {
       cursor: pointer;
       margin-left: 8px;
     }
-    .toolbar .primary { background: #165d59; color: #fff; }
+    .toolbar .primary { background: ${brand}; color: #fff; }
     .toolbar .ghost { background: #ece7de; color: #1f1e1a; }
   </style>
 </head>
@@ -4863,8 +4964,10 @@ function buildOrcamentoPdfHtml(payload) {
     <table class="header">
       <tr>
         <td class="brand">
-          <h1>${escapeHtml(empresaNome || "Empresa")}</h1>
+          ${logoHtml}
+          <h1>${escapeHtml(nomeEmpresa)}</h1>
           <p>${escapeHtml(tipoLabel)} para o cliente</p>
+          ${empresaContatoHtml ? `<div class="empresa-contato">${empresaContatoHtml}</div>` : ""}
         </td>
         <td class="doc-meta">
           <div class="badge">${escapeHtml(tipoLabel)}</div>
@@ -4941,10 +5044,16 @@ function buildOrcamentoPdfHtml(payload) {
       ? `<section class="notes"><h3>Observações</h3><p>${escapeHtml(observacoes)}</p></section>`
       : ""}
 
+    ${termosHtml
+      ? `<section class="termos"><h3>Termos e condições</h3>${termosHtml}</section>`
+      : ""}
+
+    ${avisoHtml}
+
     <table class="approval">
       <tr>
         <td><div class="sign">Assinatura do cliente<br />Data: ____/____/________</div></td>
-        <td><div class="sign">Assinatura da empresa<br />${escapeHtml(empresaNome || "")}</div></td>
+        <td><div class="sign">Assinatura da empresa<br />${escapeHtml(nomeEmpresa)}</div></td>
       </tr>
     </table>
 
@@ -5283,6 +5392,8 @@ function isMobileDevice() {
 function buildDocumentoPdfDefinition(payload) {
   const {
     empresaNome,
+    empresaConfig,
+    empresaLogoDataUrl,
     cliente,
     dataEmissaoLabel,
     numeroRef,
@@ -5299,11 +5410,38 @@ function buildDocumentoPdfDefinition(payload) {
   const clienteNome = String(cliente?.nome || "Cliente não informado").trim();
   const clienteTel = String(cliente?.telefone || "").trim();
   const clienteEmail = String(cliente?.email || "").trim();
-  const brand = "#165d59";
-  const brandDark = "#0f4744";
+  const cfg = normalizeEmpresaConfig(empresaConfig || {}, empresaNome);
+  const brand = cfg.cor_primaria || "#165d59";
+  const brandDark = darkenHexColor(brand, 0.28);
+  const nomeEmpresa = cfg.nome || empresaNome || "Empresa";
   const muted = "#5f5a50";
   const line = "#ddd2c0";
   const softBg = "#fbf8f2";
+
+  const empresaHeaderStack = [];
+  if (empresaLogoDataUrl) {
+    empresaHeaderStack.push({
+      image: empresaLogoDataUrl,
+      width: 88,
+      margin: [0, 0, 0, 6]
+    });
+  }
+  empresaHeaderStack.push({ text: String(nomeEmpresa), fontSize: 18, bold: true, color: brandDark });
+  empresaHeaderStack.push({ text: `${tipoLabel} para o cliente`, fontSize: 10, color: muted, margin: [0, 4, 0, 0] });
+  if (cfg.telefone) {
+    empresaHeaderStack.push({ text: `Tel.: ${cfg.telefone}`, fontSize: 9, color: muted, margin: [0, 6, 0, 0] });
+  }
+  if (cfg.email) {
+    empresaHeaderStack.push({ text: `E-mail: ${cfg.email}`, fontSize: 9, color: muted, margin: [0, 2, 0, 0] });
+  }
+  formatEmpresaEnderecoLinhas(cfg).forEach((linha, idx) => {
+    empresaHeaderStack.push({
+      text: linha,
+      fontSize: 9,
+      color: muted,
+      margin: [0, idx === 0 && !cfg.telefone && !cfg.email ? 6 : 2, 0, 0]
+    });
+  });
 
   const clienteLines = [
     { text: clienteNome, bold: true, fontSize: 11, color: "#1f1e1a" }
@@ -5365,10 +5503,7 @@ function buildDocumentoPdfDefinition(payload) {
       columns: [
         {
           width: "*",
-          stack: [
-            { text: String(empresaNome || "Empresa"), fontSize: 18, bold: true, color: brandDark },
-            { text: `${tipoLabel} para o cliente`, fontSize: 10, color: muted, margin: [0, 4, 0, 0] }
-          ]
+          stack: empresaHeaderStack
         },
         {
           width: 150,
@@ -5542,7 +5677,55 @@ function buildDocumentoPdfDefinition(payload) {
         { text: "OBSERVAÇÕES", fontSize: 9, bold: true, color: brand, margin: [0, 0, 0, 4] },
         { text: String(observacoes), fontSize: 10, color: "#3b372f" }
       ],
-      margin: [0, 0, 0, 18]
+      margin: [0, 0, 0, 12]
+    });
+  }
+
+  if (cfg.pdf_termos) {
+    const termosLines = String(cfg.pdf_termos)
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line, idx) => ({
+        text: line,
+        fontSize: 9,
+        color: "#3b372f",
+        margin: [0, idx === 0 ? 0 : 2, 0, 0]
+      }));
+    if (termosLines.length) {
+      content.push({
+        stack: [
+          { text: "TERMOS E CONDIÇÕES", fontSize: 9, bold: true, color: brand, margin: [0, 0, 0, 6] },
+          ...termosLines
+        ],
+        margin: [0, 0, 0, 12]
+      });
+    }
+  }
+
+  if (cfg.pdf_aviso) {
+    content.push({
+      table: {
+        widths: ["*"],
+        body: [[{
+          stack: [
+            { text: "ATENÇÃO", fontSize: 9, bold: true, color: "#8a2f2f", margin: [0, 0, 0, 4] },
+            { text: String(cfg.pdf_aviso), fontSize: 9, color: "#5a3030" }
+          ],
+          fillColor: "#fff5f5"
+        }]]
+      },
+      layout: {
+        hLineWidth: () => 1,
+        vLineWidth: () => 1,
+        hLineColor: () => "#e2b4b4",
+        vLineColor: () => "#e2b4b4",
+        paddingLeft: () => 10,
+        paddingRight: () => 10,
+        paddingTop: () => 8,
+        paddingBottom: () => 8
+      },
+      margin: [0, 0, 0, 14]
     });
   }
 
@@ -5561,7 +5744,7 @@ function buildDocumentoPdfDefinition(payload) {
         stack: [
           { canvas: [{ type: "line", x1: 0, y1: 0, x2: 220, y2: 0, lineWidth: 0.8, lineColor: "#9f9687" }], margin: [0, 24, 0, 6] },
           { text: "Assinatura da empresa", alignment: "center", fontSize: 9, color: muted },
-          { text: String(empresaNome || ""), alignment: "center", fontSize: 9, color: muted, margin: [0, 4, 0, 0] }
+          { text: String(nomeEmpresa || ""), alignment: "center", fontSize: 9, color: muted, margin: [0, 4, 0, 0] }
         ]
       }
     ],
@@ -5722,9 +5905,14 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
     fileName = `${fileTitle}.pdf`;
     shareText = `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef} — ${cliente.nome || ""}`.trim();
     bicicleta = createBicicletaDraft(state.novoDocumentoModal.bicicleta);
+    const empresaCfg = getEmpresaConfig();
+    const logoUrl = resolveProdutoImageUrl(empresaCfg.logo_path);
+    const empresaLogoDataUrl = logoUrl ? await imageUrlToDataUrl(logoUrl) : "";
 
     pdfPayload = {
-      empresaNome: state.empresaNome || saasName || "Empresa",
+      empresaNome: empresaCfg.nome || state.empresaNome || saasName || "Empresa",
+      empresaConfig: empresaCfg,
+      empresaLogoDataUrl: empresaLogoDataUrl || "",
       cliente,
       dataEmissaoLabel,
       numeroRef,
@@ -5732,7 +5920,7 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
       subtotal,
       observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
       pagamentoTexto: getPagamentoResumoTextoParaPdf(),
-      bicicleta: isPedido && isBicicletaFilled(bicicleta) ? bicicleta : null,
+      bicicleta: isBicicletaFilled(bicicleta) ? bicicleta : null,
       docLabel: isPedido ? "Pedido" : "Orçamento",
       geradoEm: new Date().toLocaleString("pt-BR"),
       fileTitle,
@@ -5753,8 +5941,11 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
     });
   } catch (error) {
     console.warn("Falha ao gerar PDF, usando prévia HTML", error);
+    const fallbackCfg = getEmpresaConfig();
     const fallbackPayload = pdfPayload || {
-      empresaNome: state.empresaNome || saasName || "Empresa",
+      empresaNome: fallbackCfg.nome || state.empresaNome || saasName || "Empresa",
+      empresaConfig: fallbackCfg,
+      empresaLogoDataUrl: "",
       cliente: cliente || { nome: els.novoDocumentoClienteLabel?.textContent || "Cliente" },
       dataEmissaoLabel: dataEmissaoLabel || new Date().toLocaleDateString("pt-BR"),
       numeroRef: numeroRef || "DOC",
@@ -5765,7 +5956,7 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
       ),
       observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
       pagamentoTexto: getPagamentoResumoTextoParaPdf(),
-      bicicleta: isPedido && bicicleta && isBicicletaFilled(bicicleta) ? bicicleta : null,
+      bicicleta: bicicleta && isBicicletaFilled(bicicleta) ? bicicleta : null,
       docLabel: state.novoDocumentoModal.tipo === "pedido" ? "Pedido" : "Orçamento",
       geradoEm: new Date().toLocaleString("pt-BR"),
       fileTitle: fileTitle || "Documento",
@@ -6475,21 +6666,305 @@ async function changePassword(event) {
   showToast("Senha atualizada");
 }
 
+const EMPRESA_CONFIG_DEFAULTS = {
+  nome: "GuPedal",
+  telefone: "51 99208 7070",
+  email: "",
+  endereco: "Rua 1 Setor 1 Quadra F Loja 01",
+  bairro: "Guajuviras",
+  cidade: "Canoas",
+  uf: "RS",
+  logo_path: "",
+  cor_primaria: "#165d59",
+  pdf_termos:
+    "1 - Condição de Pagamento\n2 - Orçamento válido por 5 dias\n3 - Após finalizado o serviço, o prazo de retirada é de no MÁXIMO 5 DIAS",
+  pdf_aviso:
+    "Atenção, cliente! Conforme acordo prévio, caso você não retire a bicicleta consertada e efetue o pagamento do orçamento autorizado dentro de 30 dias, a bicicleta será vendida para ressarcimento dos custos à oficina. Por favor, verifique o status do conserto e regularize sua situação conosco"
+};
+
+const EMPRESA_CONFIG_SELECT_FULL =
+  "empresa_id, role, empresas(id, nome, telefone, email, endereco, bairro, cidade, uf, logo_path, cor_primaria, pdf_termos, pdf_aviso)";
+const EMPRESA_CONFIG_SELECT_BASIC = "empresa_id, role, empresas(id, nome)";
+
+function createEmptyEmpresaConfig(overrides = {}) {
+  return {
+    nome: "",
+    telefone: "",
+    email: "",
+    endereco: "",
+    bairro: "",
+    cidade: "",
+    uf: "",
+    logo_path: "",
+    cor_primaria: "#165d59",
+    pdf_termos: "",
+    pdf_aviso: "",
+    ...overrides
+  };
+}
+
+function normalizeEmpresaConfig(raw, fallbackNome = "") {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const cor = String(src.cor_primaria || "").trim();
+  return createEmptyEmpresaConfig({
+    nome: String(src.nome || fallbackNome || "").trim(),
+    telefone: String(src.telefone || "").trim(),
+    email: String(src.email || "").trim(),
+    endereco: String(src.endereco || "").trim(),
+    bairro: String(src.bairro || "").trim(),
+    cidade: String(src.cidade || "").trim(),
+    uf: String(src.uf || "").trim().toUpperCase().slice(0, 2),
+    logo_path: String(src.logo_path || "").trim(),
+    cor_primaria: /^#[0-9a-fA-F]{6}$/.test(cor) ? cor : "#165d59",
+    pdf_termos: String(src.pdf_termos || "").trim(),
+    pdf_aviso: String(src.pdf_aviso || "").trim()
+  });
+}
+
+function getEmpresaConfig() {
+  return normalizeEmpresaConfig(state.empresaConfig, state.empresaNome);
+}
+
+function formatEmpresaEnderecoLinhas(config) {
+  const cfg = config || getEmpresaConfig();
+  const linhas = [];
+  if (cfg.endereco) linhas.push(cfg.endereco);
+  if (cfg.bairro) linhas.push(`Bairro ${cfg.bairro}`);
+  const cidadeUf = [cfg.cidade, cfg.uf].filter(Boolean).join("-");
+  if (cidadeUf) linhas.push(cidadeUf);
+  return linhas;
+}
+
+function updateEmpresaLogoPreview() {
+  const path = els.empresaLogoPathInput?.value || state.empresaConfig?.logo_path || "";
+  const url = resolveProdutoImageUrl(path);
+  if (els.empresaLogoPreview) {
+    if (url) {
+      els.empresaLogoPreview.src = url;
+      els.empresaLogoPreview.classList.remove("hidden");
+    } else {
+      els.empresaLogoPreview.removeAttribute("src");
+      els.empresaLogoPreview.classList.add("hidden");
+    }
+  }
+  if (els.empresaLogoEmpty) {
+    els.empresaLogoEmpty.classList.toggle("hidden", Boolean(url));
+  }
+  if (els.empresaLogoRemoverBtn) {
+    els.empresaLogoRemoverBtn.classList.toggle("hidden", !path);
+  }
+}
+
+function fillEmpresaConfigForm(config) {
+  const cfg = normalizeEmpresaConfig(config, state.empresaNome);
+  if (!els.empresaConfigForm) return;
+  const setVal = (name, value) => {
+    const field = els.empresaConfigForm.elements.namedItem(name);
+    if (field && "value" in field) field.value = value == null ? "" : String(value);
+  };
+  setVal("nome", cfg.nome);
+  setVal("telefone", cfg.telefone);
+  setVal("email", cfg.email);
+  setVal("endereco", cfg.endereco);
+  setVal("bairro", cfg.bairro);
+  setVal("cidade", cfg.cidade);
+  setVal("uf", cfg.uf);
+  setVal("logo_path", cfg.logo_path);
+  setVal("cor_primaria", cfg.cor_primaria || "#165d59");
+  setVal("pdf_termos", cfg.pdf_termos);
+  setVal("pdf_aviso", cfg.pdf_aviso);
+  if (els.empresaLogoPathInput) els.empresaLogoPathInput.value = cfg.logo_path || "";
+  if (els.empresaCorPrimariaInput) els.empresaCorPrimariaInput.value = cfg.cor_primaria || "#165d59";
+  updateEmpresaLogoPreview();
+}
+
+function readEmpresaConfigFromForm() {
+  if (!els.empresaConfigForm) return getEmpresaConfig();
+  const fd = new FormData(els.empresaConfigForm);
+  return normalizeEmpresaConfig({
+    nome: fd.get("nome"),
+    telefone: fd.get("telefone"),
+    email: fd.get("email"),
+    endereco: fd.get("endereco"),
+    bairro: fd.get("bairro"),
+    cidade: fd.get("cidade"),
+    uf: fd.get("uf"),
+    logo_path: fd.get("logo_path") || els.empresaLogoPathInput?.value || "",
+    cor_primaria: fd.get("cor_primaria") || els.empresaCorPrimariaInput?.value || "#165d59",
+    pdf_termos: fd.get("pdf_termos"),
+    pdf_aviso: fd.get("pdf_aviso")
+  }, state.empresaNome);
+}
+
+function applyEmpresaConfigPadraoGuPedal() {
+  const current = readEmpresaConfigFromForm();
+  fillEmpresaConfigForm({
+    ...EMPRESA_CONFIG_DEFAULTS,
+    logo_path: current.logo_path || "",
+    cor_primaria: current.cor_primaria || EMPRESA_CONFIG_DEFAULTS.cor_primaria
+  });
+  showToast("Modelo GuPedal preenchido. Revise e salve.");
+}
+
+async function uploadEmpresaLogoFile(file) {
+  if (!supabaseClient) throw new Error("Supabase não configurado");
+  if (!state.empresaId) throw new Error("Empresa não selecionada");
+  if (!(file instanceof File) && !(file instanceof Blob)) {
+    throw new Error("Selecione uma imagem válida");
+  }
+  const compressed = await compressImageFile(file);
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+  const rand = Math.random().toString(36).slice(2, 8);
+  const objectPath = `${state.empresaId}/brand/logo-${stamp}-${rand}.jpg`;
+
+  const { error } = await supabaseClient.storage
+    .from("produto-images")
+    .upload(objectPath, compressed, {
+      contentType: "image/jpeg",
+      upsert: true,
+      cacheControl: "3600"
+    });
+  if (error) throw new Error(error.message || "Falha ao enviar o logo");
+  return `produto-images/${objectPath}`;
+}
+
+async function handleEmpresaLogoSelected(fileList) {
+  const file = fileList?.[0];
+  if (!file) return;
+  if (!String(file.type || "").startsWith("image/")) {
+    showToast("Selecione um arquivo de imagem.", "error");
+    return;
+  }
+  const cameraBtn = els.empresaLogoCameraBtn;
+  const galeriaBtn = els.empresaLogoGaleriaBtn;
+  const labels = {
+    camera: cameraBtn?.textContent || "Câmera",
+    galeria: galeriaBtn?.textContent || "Galeria"
+  };
+  if (cameraBtn) {
+    cameraBtn.disabled = true;
+    cameraBtn.textContent = "Enviando...";
+  }
+  if (galeriaBtn) {
+    galeriaBtn.disabled = true;
+    galeriaBtn.textContent = "Enviando...";
+  }
+  try {
+    const path = await uploadEmpresaLogoFile(file);
+    if (els.empresaLogoPathInput) els.empresaLogoPathInput.value = path;
+    const field = els.empresaConfigForm?.elements?.namedItem("logo_path");
+    if (field && "value" in field) field.value = path;
+    updateEmpresaLogoPreview();
+    showToast("Logo pronto. Salve as configurações para confirmar.");
+  } catch (error) {
+    console.warn("Falha ao enviar logo", error);
+    showToast(`Erro ao enviar logo: ${error.message || "falha desconhecida"}`, "error");
+  } finally {
+    if (cameraBtn) {
+      cameraBtn.disabled = false;
+      cameraBtn.textContent = labels.camera;
+    }
+    if (galeriaBtn) {
+      galeriaBtn.disabled = false;
+      galeriaBtn.textContent = labels.galeria;
+    }
+    if (els.empresaLogoCameraInput) els.empresaLogoCameraInput.value = "";
+    if (els.empresaLogoGaleriaInput) els.empresaLogoGaleriaInput.value = "";
+  }
+}
+
+function removeEmpresaLogo() {
+  const current = String(els.empresaLogoPathInput?.value || "").trim();
+  if (!current) return;
+  if (!window.confirm("Remover o logo da empresa?")) return;
+  if (els.empresaLogoPathInput) els.empresaLogoPathInput.value = "";
+  const field = els.empresaConfigForm?.elements?.namedItem("logo_path");
+  if (field && "value" in field) field.value = "";
+  updateEmpresaLogoPreview();
+  showToast("Logo removido. Salve as configurações para confirmar.");
+}
+
+async function saveEmpresaConfig(event) {
+  event.preventDefault();
+  if (!supabaseClient || !state.empresaId) {
+    throw new Error("Empresa não selecionada");
+  }
+  const cfg = readEmpresaConfigFromForm();
+  if (!cfg.nome) throw new Error("Informe o nome da empresa");
+
+  const payload = {
+    nome: cfg.nome,
+    telefone: cfg.telefone || null,
+    email: cfg.email || null,
+    endereco: cfg.endereco || null,
+    bairro: cfg.bairro || null,
+    cidade: cfg.cidade || null,
+    uf: cfg.uf || null,
+    logo_path: cfg.logo_path || null,
+    cor_primaria: cfg.cor_primaria || "#165d59",
+    pdf_termos: cfg.pdf_termos || null,
+    pdf_aviso: cfg.pdf_aviso || null
+  };
+
+  const submitBtn = els.empresaConfigSubmitBtn;
+  const label = submitBtn?.textContent || "Salvar configurações";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Salvando...";
+  }
+
+  try {
+    const { error } = await supabaseClient
+      .from("empresas")
+      .update(payload)
+      .eq("id", state.empresaId);
+    if (error) throw error;
+
+    state.empresaConfig = cfg;
+    state.empresaNome = cfg.nome;
+    if (els.empresaInfo && state.session?.user?.email) {
+      els.empresaInfo.textContent = `${state.empresaNome} • ${state.session.user.email}`;
+    }
+    fillEmpresaConfigForm(cfg);
+    showToast("Configurações da empresa salvas");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = label;
+    }
+  }
+}
+
 async function loadEmpresaContext() {
   const userId = state.session?.user?.id;
   if (!userId) {
     state.empresaId = null;
     state.empresaNome = "";
+    state.empresaConfig = null;
     return;
   }
 
-  const { data, error } = await supabaseClient
+  let data = null;
+  let error = null;
+
+  ({ data, error } = await supabaseClient
     .from("usuarios_empresas")
-    .select("empresa_id, role, empresas(nome)")
+    .select(EMPRESA_CONFIG_SELECT_FULL)
     .eq("user_id", userId)
     .eq("ativo", true)
     .limit(1)
-    .maybeSingle();
+    .maybeSingle());
+
+  // Ambiente ainda sem migration de colunas de config
+  if (error && (isMissingRelationError(error) || /column|does not exist|schema cache/i.test(String(error.message || "")))) {
+    ({ data, error } = await supabaseClient
+      .from("usuarios_empresas")
+      .select(EMPRESA_CONFIG_SELECT_BASIC)
+      .eq("user_id", userId)
+      .eq("ativo", true)
+      .limit(1)
+      .maybeSingle());
+  }
 
   if (error) throw error;
   if (!data) {
@@ -6498,8 +6973,11 @@ async function loadEmpresaContext() {
 
   state.empresaId = data.empresa_id;
   state.currentRole = data.role || "user";
-  state.empresaNome = data.empresas?.nome || "Empresa";
+  const empresaRow = data.empresas || {};
+  state.empresaNome = empresaRow.nome || "Empresa";
+  state.empresaConfig = normalizeEmpresaConfig(empresaRow, state.empresaNome);
   els.empresaInfo.textContent = `${state.empresaNome} • ${state.session.user.email}`;
+  fillEmpresaConfigForm(state.empresaConfig);
   updateOwnerUsersVisibility();
 }
 
@@ -11072,6 +11550,7 @@ async function handleSession(session) {
   if (!session) {
     state.empresaId = null;
     state.empresaNome = "";
+    state.empresaConfig = null;
     state.currentRole = "user";
     state.isPlatformAdmin = false;
     state.pedidosLoaded = false;
@@ -11246,6 +11725,8 @@ function attachEvents() {
         } else if (sectionName === "financeiro") {
           await ensureContasReceberLoaded();
           renderContasReceberTable();
+        } else if (sectionName === "configuracoes") {
+          fillEmpresaConfigForm(getEmpresaConfig());
         } else if (sectionName === "usuarios") {
           await ensureOwnerUsersLoaded();
           renderOwnerUsersTable();
@@ -11268,6 +11749,54 @@ function attachEvents() {
       } catch (error) {
         showToast(`Erro ao salvar cliente: ${error.message}`, "error");
       }
+    });
+  }
+
+  if (els.empresaConfigForm) {
+    els.empresaConfigForm.addEventListener("submit", async (event) => {
+      try {
+        await saveEmpresaConfig(event);
+      } catch (error) {
+        const msg = String(error?.message || "");
+        if (/column|schema cache|does not exist/i.test(msg)) {
+          showToast(
+            "Rode no Supabase o SQL supabase/add-empresa-config.sql e tente novamente.",
+            "error"
+          );
+        } else {
+          showToast(`Erro ao salvar configurações: ${msg}`, "error");
+        }
+      }
+    });
+  }
+  if (els.empresaConfigAplicarPadraoBtn) {
+    els.empresaConfigAplicarPadraoBtn.addEventListener("click", () => {
+      applyEmpresaConfigPadraoGuPedal();
+    });
+  }
+  if (els.empresaLogoCameraBtn && els.empresaLogoCameraInput) {
+    els.empresaLogoCameraBtn.addEventListener("click", () => {
+      els.empresaLogoCameraInput.click();
+    });
+    els.empresaLogoCameraInput.addEventListener("change", () => {
+      handleEmpresaLogoSelected(els.empresaLogoCameraInput.files).catch((error) => {
+        showToast(`Erro ao enviar logo: ${error.message}`, "error");
+      });
+    });
+  }
+  if (els.empresaLogoGaleriaBtn && els.empresaLogoGaleriaInput) {
+    els.empresaLogoGaleriaBtn.addEventListener("click", () => {
+      els.empresaLogoGaleriaInput.click();
+    });
+    els.empresaLogoGaleriaInput.addEventListener("change", () => {
+      handleEmpresaLogoSelected(els.empresaLogoGaleriaInput.files).catch((error) => {
+        showToast(`Erro ao enviar logo: ${error.message}`, "error");
+      });
+    });
+  }
+  if (els.empresaLogoRemoverBtn) {
+    els.empresaLogoRemoverBtn.addEventListener("click", () => {
+      removeEmpresaLogo();
     });
   }
 
