@@ -1347,12 +1347,47 @@ h3 {
   margin-top: 0.75rem;
 }
 
+.doc-extra-where-box {
+  margin-top: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid rgba(22, 93, 89, 0.2);
+  background: linear-gradient(160deg, #eef7f5 0%, #fff9f0 100%);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.doc-extra-where-box > strong {
+  color: var(--brand-strong);
+  font-size: 0.92rem;
+}
+
+.doc-extra-where-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem 0.75rem;
+}
+
+.doc-extra-campos-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin-top: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+
+.doc-extra-campos-head strong {
+  color: var(--brand-strong);
+}
+
 .doc-extra-campo-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) 110px 70px auto;
+  grid-template-columns: minmax(0, 1.3fr) 120px auto;
   gap: 0.45rem;
   align-items: end;
-  padding: 0.55rem;
+  padding: 0.65rem;
   border: 1px solid #e4dac8;
   border-radius: 12px;
   background: #fffefb;
@@ -1366,17 +1401,39 @@ h3 {
   color: var(--muted);
 }
 
-.doc-extra-campo-row .doc-extra-campo-ativo {
+.doc-extra-campo-where {
+  grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.9rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 10px;
+  background: #f4faf8;
+  border: 1px dashed rgba(22, 93, 89, 0.22);
+}
+
+.doc-extra-campo-where > span {
+  width: 100%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--brand-strong);
+}
+
+.doc-extra-campo-where label {
+  display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 0.35rem;
-  min-height: 2.4rem;
-  font-size: 0.85rem;
+  font-size: 0.86rem;
+  font-weight: 600;
   color: var(--ink);
 }
 
-.doc-extra-campo-row .doc-extra-campo-ativo input {
+.doc-extra-campo-where input {
   width: auto;
+  accent-color: var(--brand);
 }
 
 .doc-extra-campos-empty {
@@ -1391,8 +1448,9 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .doc-extra-where-checks,
   .doc-extra-campo-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 }
 

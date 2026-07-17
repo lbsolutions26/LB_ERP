@@ -317,7 +317,10 @@ const els = {
   docExtraAddCampoBtn: document.getElementById("docExtraAddCampoBtn"),
   docExtraBikePresetBtn: document.getElementById("docExtraBikePresetBtn"),
   docExtraClearBtn: document.getElementById("docExtraClearBtn"),
-  empresaDocExtraAtivo: document.getElementById("empresaDocExtraAtivo"),
+  empresaDocExtraFormPedido: document.getElementById("empresaDocExtraFormPedido"),
+  empresaDocExtraFormOrcamento: document.getElementById("empresaDocExtraFormOrcamento"),
+  empresaDocExtraPdf: document.getElementById("empresaDocExtraPdf"),
+  empresaDocExtraResumo: document.getElementById("empresaDocExtraResumo"),
   empresaDocExtraTitulo: document.getElementById("empresaDocExtraTitulo"),
   empresaDocExtraHint: document.getElementById("empresaDocExtraHint"),
   novoDocumentoItemsGrid: document.getElementById("novoDocumentoItemsGrid"),
@@ -1350,34 +1353,78 @@ function ensureTrailingEmptyDocumentoItem() {
   return changed;
 }
 
+/** Flags de onde o campo/seção aparece. */
+function normalizeDocExtraWhereFlags(src = null, fallback = true) {
+  const s = src && typeof src === "object" ? src : {};
+  const def = fallback !== false;
+  // Compat: se só existia "ativo", repassa para todos os lugares.
+  const legacyAtivo = s.ativo;
+  const pick = (key) => {
+    if (s[key] != null) return Boolean(s[key]);
+    if (legacyAtivo != null) return Boolean(legacyAtivo);
+    return def;
+  };
+  return {
+    form_pedido: pick("form_pedido"),
+    form_orcamento: pick("form_orcamento"),
+    pdf: pick("pdf"),
+    resumo: pick("resumo")
+  };
+}
+
+function createDocExtraCampo(src = null) {
+  const s = src && typeof src === "object" ? src : {};
+  const where = normalizeDocExtraWhereFlags(s, s.ativo !== false);
+  return {
+    id: String(s.id || "").trim(),
+    label: String(s.label || "").trim(),
+    tipo: s.tipo === "textarea" ? "textarea" : "text",
+    ativo: s.ativo !== false,
+    placeholder: String(s.placeholder || "").trim(),
+    form_pedido: where.form_pedido,
+    form_orcamento: where.form_orcamento,
+    pdf: where.pdf,
+    resumo: where.resumo
+  };
+}
+
 /** Preset clássico de oficina de bikes (compatível com dados legados em raw_payload.bicicleta). */
 const DOC_EXTRA_BIKE_PRESET = {
-  ativo: true,
   titulo: "Bicicleta",
   hint: "Dados da bike do cliente neste documento.",
+  form_pedido: true,
+  form_orcamento: true,
+  pdf: true,
+  resumo: true,
   campos: [
-    { id: "marca", label: "Marca", tipo: "text", ativo: true, placeholder: "Ex.: Specialized" },
-    { id: "modelo", label: "Modelo", tipo: "text", ativo: true, placeholder: "Ex.: Rockhopper" },
-    { id: "tamanhoAro", label: "Tamanho de aro", tipo: "text", ativo: true, placeholder: 'Ex.: 29"' },
-    { id: "cor", label: "Cor", tipo: "text", ativo: true, placeholder: "Ex.: Preta/vermelha" },
-    { id: "acessorios", label: "Acessórios", tipo: "textarea", ativo: true, placeholder: "Ex.: pedais, suporte, bagageiro..." }
+    createDocExtraCampo({ id: "marca", label: "Marca", tipo: "text", placeholder: "Ex.: Specialized" }),
+    createDocExtraCampo({ id: "modelo", label: "Modelo", tipo: "text", placeholder: "Ex.: Rockhopper" }),
+    createDocExtraCampo({ id: "tamanhoAro", label: "Tamanho de aro", tipo: "text", placeholder: 'Ex.: 29"' }),
+    createDocExtraCampo({ id: "cor", label: "Cor", tipo: "text", placeholder: "Ex.: Preta/vermelha" }),
+    createDocExtraCampo({
+      id: "acessorios",
+      label: "Acessórios",
+      tipo: "textarea",
+      placeholder: "Ex.: pedais, suporte, bagageiro..."
+    })
   ]
 };
 
 function cloneDocExtraConfig(src) {
+  const where = normalizeDocExtraWhereFlags(src, src?.ativo !== false);
   return {
-    ativo: Boolean(src?.ativo),
+    // "ativo" legado = qualquer lugar habilitado
+    ativo: Boolean(
+      src?.ativo !== false &&
+        (where.form_pedido || where.form_orcamento || where.pdf || where.resumo)
+    ),
     titulo: String(src?.titulo || "").trim(),
     hint: String(src?.hint || "").trim(),
-    campos: Array.isArray(src?.campos)
-      ? src.campos.map((c) => ({
-          id: String(c?.id || "").trim(),
-          label: String(c?.label || "").trim(),
-          tipo: c?.tipo === "textarea" ? "textarea" : "text",
-          ativo: c?.ativo !== false,
-          placeholder: String(c?.placeholder || "").trim()
-        }))
-      : []
+    form_pedido: where.form_pedido,
+    form_orcamento: where.form_orcamento,
+    pdf: where.pdf,
+    resumo: where.resumo,
+    campos: Array.isArray(src?.campos) ? src.campos.map((c) => createDocExtraCampo(c)) : []
   };
 }
 
@@ -1398,7 +1445,7 @@ function normalizeDocExtraConfig(raw) {
     return cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET);
   }
   const base = cloneDocExtraConfig({
-    ativo: parsed.ativo !== false,
+    ...parsed,
     titulo: parsed.titulo || "Dados adicionais",
     hint: parsed.hint || "Campos extras deste documento.",
     campos: Array.isArray(parsed.campos) ? parsed.campos : []
@@ -1417,8 +1464,11 @@ function normalizeDocExtraConfig(raw) {
         n += 1;
       }
       used.add(unique);
-      return { ...c, id: unique, label: c.label || unique };
+      return createDocExtraCampo({ ...c, id: unique, label: c.label || unique });
     });
+  base.ativo = Boolean(
+    base.form_pedido || base.form_orcamento || base.pdf || base.resumo
+  );
   return base;
 }
 
@@ -1436,10 +1486,23 @@ function getDocExtraConfig() {
   return normalizeDocExtraConfig(getEmpresaConfig()?.doc_extra_config);
 }
 
-function getActiveDocExtraCampos(config = null) {
+/**
+ * Campos ativos para um destino: "form_pedido" | "form_orcamento" | "pdf" | "resumo" | "any"
+ */
+function getActiveDocExtraCampos(config = null, where = "any") {
   const cfg = config || getDocExtraConfig();
-  if (!cfg.ativo) return [];
-  return (cfg.campos || []).filter((c) => c.ativo && c.id && c.label);
+  const sectionOn =
+    where === "any"
+      ? cfg.form_pedido || cfg.form_orcamento || cfg.pdf || cfg.resumo
+      : Boolean(cfg[where]);
+  if (!sectionOn) return [];
+  return (cfg.campos || []).filter((c) => {
+    if (!c?.ativo || !c.id || !c.label) return false;
+    if (where === "any") {
+      return c.form_pedido || c.form_orcamento || c.pdf || c.resumo;
+    }
+    return Boolean(c[where]);
+  });
 }
 
 /** Valores dos campos extras (legado: bicicleta). */
@@ -1527,14 +1590,20 @@ function readBicicletaFromForm() {
   return readDocExtraFromForm();
 }
 
+function getDocExtraFormWhereForTipo(tipo = null) {
+  const t = tipo || state.novoDocumentoModal?.tipo || "pedido";
+  return t === "orcamento" ? "form_orcamento" : "form_pedido";
+}
+
 function renderDocumentoExtraFields(values = null) {
   const section = els.novoDocumentoExtraSection;
   const wrap = els.novoDocumentoExtraFields;
   if (!section || !wrap) return;
 
   const cfg = getDocExtraConfig();
-  const active = getActiveDocExtraCampos(cfg);
-  if (!cfg.ativo || !active.length) {
+  const formWhere = getDocExtraFormWhereForTipo();
+  const active = getActiveDocExtraCampos(cfg, formWhere);
+  if (!active.length) {
     section.classList.add("hidden");
     wrap.innerHTML = "";
     return;
@@ -1545,7 +1614,7 @@ function renderDocumentoExtraFields(values = null) {
     els.novoDocumentoExtraTitle.textContent = cfg.titulo || "Dados adicionais";
   }
   if (els.novoDocumentoExtraHint) {
-    const tipo = state.novoDocumentoModal?.tipo === "orcamento" ? "orçamento" : "pedido";
+    const tipo = formWhere === "form_orcamento" ? "orçamento" : "pedido";
     els.novoDocumentoExtraHint.textContent =
       cfg.hint || `Dados extras do cliente neste ${tipo}.`;
   }
@@ -1579,15 +1648,17 @@ function fillBicicletaForm(bike) {
   fillDocExtraForm(bike);
 }
 
-function buildDocExtraPdfLines(values, meta = null) {
+function buildDocExtraPdfLines(values, meta = null, where = "pdf") {
   const cfg = getDocExtraConfig();
   const hasMetaCampos = Array.isArray(meta?.campos) && meta.campos.length > 0;
   const titulo = String(meta?.titulo || cfg.titulo || "Dados adicionais").trim();
-  // Sem snapshot do documento e seção desativada na empresa: não exibe.
-  if (!hasMetaCampos && !cfg.ativo) {
+  // Sem snapshot e destino desligado na empresa: não exibe.
+  if (!hasMetaCampos && !cfg[where] && where !== "any") {
     return { titulo, lines: [] };
   }
-  const camposMeta = hasMetaCampos ? meta.campos : getActiveDocExtraCampos(cfg);
+  const camposMeta = hasMetaCampos
+    ? meta.campos
+    : getActiveDocExtraCampos(cfg, where);
   const vals = values && typeof values === "object" ? values : {};
   const lines = [];
   for (const campo of camposMeta) {
@@ -1596,14 +1667,18 @@ function buildDocExtraPdfLines(values, meta = null) {
     const value = String(vals[id] || "").trim();
     if (!value) continue;
     if (campo.ativo === false) continue;
+    // Snapshot antigo pode não ter a flag; config atual com meta vazio filtra por where
+    if (!hasMetaCampos && where !== "any" && campo[where] === false) continue;
+    if (hasMetaCampos && where !== "any" && campo[where] === false) continue;
     lines.push({ label, value });
   }
-  // Fallback só quando a seção está ativa e há valores sem labels de campo
-  if (!lines.length && cfg.ativo && isDocExtraFilled(vals)) {
+  // Fallback: seção ligada e valores legados sem definição
+  if (!lines.length && (cfg[where] || where === "any") && isDocExtraFilled(vals) && !hasMetaCampos) {
     for (const [key, value] of Object.entries(vals)) {
       const text = String(value || "").trim();
       if (!text) continue;
       const known = (cfg.campos || []).find((c) => c.id === key);
+      if (known && where !== "any" && known[where] === false) continue;
       lines.push({ label: known?.label || key, value: text });
     }
   }
@@ -6183,21 +6258,17 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
       savedExtra && Array.isArray(savedExtra.campos) && savedExtra.campos.length
         ? {
             titulo: savedExtra.titulo || docExtraCfg.titulo,
-            campos: savedExtra.campos.map((c) => ({
-              id: c.id,
-              label: c.label,
-              tipo: c.tipo || "text",
-              ativo: c.ativo !== false
-            }))
+            campos: savedExtra.campos.map((c) =>
+              createDocExtraCampo({
+                ...c,
+                tipo: c.tipo || "text",
+                ativo: c.ativo !== false
+              })
+            )
           }
         : {
             titulo: docExtraCfg.titulo,
-            campos: getActiveDocExtraCampos(docExtraCfg).map((c) => ({
-              id: c.id,
-              label: c.label,
-              tipo: c.tipo,
-              ativo: true
-            }))
+            campos: getActiveDocExtraCampos(docExtraCfg, "pdf")
           };
 
     pdfPayload = {
@@ -6212,7 +6283,7 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
       observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
       pagamentoTexto: getPagamentoResumoTextoParaPdf(),
       bicicleta:
-        (docExtraCfg.ativo || docExtraMeta.campos.length) && isDocExtraFilled(bicicleta)
+        (docExtraCfg.pdf || docExtraMeta.campos.length) && isDocExtraFilled(bicicleta)
           ? bicicleta
           : null,
       docExtraMeta,
@@ -6254,12 +6325,7 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
       bicicleta: bicicleta && isDocExtraFilled(bicicleta) ? bicicleta : null,
       docExtraMeta: {
         titulo: getDocExtraConfig().titulo,
-        campos: getActiveDocExtraCampos().map((c) => ({
-          id: c.id,
-          label: c.label,
-          tipo: c.tipo,
-          ativo: true
-        }))
+        campos: getActiveDocExtraCampos(getDocExtraConfig(), "pdf")
       },
       docLabel: state.novoDocumentoModal.tipo === "pedido" ? "Pedido" : "Orçamento",
       geradoEm: new Date().toLocaleString("pt-BR"),
@@ -6344,15 +6410,34 @@ async function saveNovoDocumento(event) {
       pagamento: pagamentoState
     };
     // Campos extras configuráveis (legado: bicicleta).
-    if (docExtraCfg.ativo && isDocExtraFilled(docExtraValores)) {
-      rawPayload.doc_extra = {
-        titulo: docExtraCfg.titulo || "Dados adicionais",
-        campos: getActiveDocExtraCampos(docExtraCfg).map((c) => ({
+    const formWhere = getDocExtraFormWhereForTipo(draft.tipo);
+    const hasAnyExtraTarget =
+      docExtraCfg.form_pedido ||
+      docExtraCfg.form_orcamento ||
+      docExtraCfg.pdf ||
+      docExtraCfg.resumo;
+    if (hasAnyExtraTarget && isDocExtraFilled(docExtraValores)) {
+      const snapshotCampos = (docExtraCfg.campos || [])
+        .filter((c) => c.ativo && c.id && c.label)
+        .map((c) => ({
           id: c.id,
           label: c.label,
-          tipo: c.tipo
-        })),
-        valores: docExtraValores
+          tipo: c.tipo,
+          form_pedido: c.form_pedido !== false,
+          form_orcamento: c.form_orcamento !== false,
+          pdf: c.pdf !== false,
+          resumo: c.resumo !== false,
+          ativo: true
+        }));
+      rawPayload.doc_extra = {
+        titulo: docExtraCfg.titulo || "Dados adicionais",
+        form_pedido: docExtraCfg.form_pedido !== false,
+        form_orcamento: docExtraCfg.form_orcamento !== false,
+        pdf: docExtraCfg.pdf !== false,
+        resumo: docExtraCfg.resumo !== false,
+        campos: snapshotCampos,
+        valores: docExtraValores,
+        preenchido_em: formWhere
       };
       // Espelho legado para documentos antigos / relatórios
       rawPayload.bicicleta = docExtraValores;
@@ -6779,7 +6864,8 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
     const bike = extractDocExtraFromPayload(documentoData?.raw_payload || null);
     const extraPdf = buildDocExtraPdfLines(
       bike,
-      documentoData?.raw_payload?.doc_extra || null
+      documentoData?.raw_payload?.doc_extra || null,
+      "resumo"
     );
     if (extraPdf.lines.length) {
       const parts = extraPdf.lines.map((line) => `${line.label}: ${line.value}`);
@@ -7044,25 +7130,61 @@ function normalizeEmpresaConfig(raw, fallbackNome = "") {
 let docExtraEditorState = cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET);
 
 function readDocExtraEditorFromDom() {
-  const ativo = Boolean(els.empresaDocExtraAtivo?.checked);
   const titulo = String(els.empresaDocExtraTitulo?.value || "").trim() || "Dados adicionais";
   const hint = String(els.empresaDocExtraHint?.value || "").trim();
+  const form_pedido = Boolean(els.empresaDocExtraFormPedido?.checked);
+  const form_orcamento = Boolean(els.empresaDocExtraFormOrcamento?.checked);
+  const pdf = Boolean(els.empresaDocExtraPdf?.checked);
+  const resumo = Boolean(els.empresaDocExtraResumo?.checked);
   const rows = Array.from(els.docExtraCamposEditor?.querySelectorAll("[data-doc-extra-row]") || []);
   const campos = rows.map((row, idx) => {
     const label = String(row.querySelector("[data-field='label']")?.value || "").trim();
     const tipo = row.querySelector("[data-field='tipo']")?.value === "textarea" ? "textarea" : "text";
-    const campoAtivo = Boolean(row.querySelector("[data-field='ativo']")?.checked);
     const existingId = String(row.getAttribute("data-campo-id") || "").trim();
     const id = existingId || slugifyDocExtraFieldId(label) || `campo_${idx + 1}`;
     const placeholder = String(row.querySelector("[data-field='placeholder']")?.value || "").trim();
-    return { id, label: label || id, tipo, ativo: campoAtivo, placeholder };
+    const cFormPedido = Boolean(row.querySelector("[data-field='form_pedido']")?.checked);
+    const cFormOrc = Boolean(row.querySelector("[data-field='form_orcamento']")?.checked);
+    const cPdf = Boolean(row.querySelector("[data-field='pdf']")?.checked);
+    const cResumo = Boolean(row.querySelector("[data-field='resumo']")?.checked);
+    return createDocExtraCampo({
+      id,
+      label: label || id,
+      tipo,
+      placeholder,
+      ativo: cFormPedido || cFormOrc || cPdf || cResumo,
+      form_pedido: cFormPedido,
+      form_orcamento: cFormOrc,
+      pdf: cPdf,
+      resumo: cResumo
+    });
   }).filter((c) => c.label);
-  return normalizeDocExtraConfig({ ativo, titulo, hint, campos });
+  return normalizeDocExtraConfig({
+    titulo,
+    hint,
+    form_pedido,
+    form_orcamento,
+    pdf,
+    resumo,
+    ativo: form_pedido || form_orcamento || pdf || resumo,
+    campos
+  });
 }
 
 function renderDocExtraCamposEditor(config = null) {
   docExtraEditorState = normalizeDocExtraConfig(config || docExtraEditorState);
-  if (els.empresaDocExtraAtivo) els.empresaDocExtraAtivo.checked = docExtraEditorState.ativo !== false;
+  if (els.empresaDocExtraFormPedido) {
+    els.empresaDocExtraFormPedido.checked = docExtraEditorState.form_pedido !== false;
+  }
+  if (els.empresaDocExtraFormOrcamento) {
+    els.empresaDocExtraFormOrcamento.checked = docExtraEditorState.form_orcamento !== false;
+  }
+  if (els.empresaDocExtraPdf) {
+    els.empresaDocExtraPdf.checked = docExtraEditorState.pdf !== false;
+  }
+  if (els.empresaDocExtraResumo) {
+    els.empresaDocExtraResumo.checked = docExtraEditorState.resumo !== false;
+  }
   if (els.empresaDocExtraTitulo) els.empresaDocExtraTitulo.value = docExtraEditorState.titulo || "";
   if (els.empresaDocExtraHint) els.empresaDocExtraHint.value = docExtraEditorState.hint || "";
   if (!els.docExtraCamposEditor) return;
@@ -7088,15 +7210,18 @@ function renderDocExtraCamposEditor(config = null) {
             <option value="textarea" ${campo.tipo === "textarea" ? "selected" : ""}>Texto longo</option>
           </select>
         </label>
-        <label class="doc-extra-campo-ativo">
-          <input data-field="ativo" type="checkbox" ${campo.ativo !== false ? "checked" : ""} />
-          Ativo
-        </label>
         <button type="button" class="btn btn-ghost documento-foto-btn--danger" data-doc-extra-remove="${index}">Remover</button>
         <label class="produto-form-field-full" style="grid-column: 1 / -1">
           Placeholder (opcional)
           <input data-field="placeholder" type="text" value="${escapeHtml(campo.placeholder || "")}" placeholder="Texto de exemplo no campo" />
         </label>
+        <div class="doc-extra-campo-where">
+          <span>Onde este campo aparece</span>
+          <label><input data-field="form_pedido" type="checkbox" ${campo.form_pedido !== false ? "checked" : ""} /> Formulário pedido</label>
+          <label><input data-field="form_orcamento" type="checkbox" ${campo.form_orcamento !== false ? "checked" : ""} /> Formulário orçamento</label>
+          <label><input data-field="pdf" type="checkbox" ${campo.pdf !== false ? "checked" : ""} /> PDF</label>
+          <label><input data-field="resumo" type="checkbox" ${campo.resumo !== false ? "checked" : ""} /> Resumo de itens</label>
+        </div>
       </div>`
     )
     .join("");
@@ -7105,14 +7230,20 @@ function renderDocExtraCamposEditor(config = null) {
 function addDocExtraCampoEditor() {
   docExtraEditorState = readDocExtraEditorFromDom();
   const n = docExtraEditorState.campos.length + 1;
-  docExtraEditorState.campos.push({
-    id: `campo_${Date.now().toString(36)}`,
-    label: `Campo ${n}`,
-    tipo: "text",
-    ativo: true,
-    placeholder: ""
-  });
-  docExtraEditorState.ativo = true;
+  docExtraEditorState.campos.push(
+    createDocExtraCampo({
+      id: `campo_${Date.now().toString(36)}`,
+      label: `Campo ${n}`,
+      tipo: "text",
+      placeholder: "",
+      form_pedido: true,
+      form_orcamento: true,
+      pdf: true,
+      resumo: true
+    })
+  );
+  docExtraEditorState.form_pedido = true;
+  docExtraEditorState.form_orcamento = true;
   renderDocExtraCamposEditor(docExtraEditorState);
 }
 
@@ -7130,13 +7261,16 @@ function applyDocExtraBikePreset() {
 
 function clearDocExtraEditor() {
   docExtraEditorState = normalizeDocExtraConfig({
-    ativo: false,
     titulo: "Dados adicionais",
     hint: "",
+    form_pedido: false,
+    form_orcamento: false,
+    pdf: false,
+    resumo: false,
     campos: []
   });
   renderDocExtraCamposEditor(docExtraEditorState);
-  showToast("Seção desativada. Salve para confirmar.");
+  showToast("Campos personalizados desativados. Salve para confirmar.");
 }
 
 function getEmpresaConfig() {
