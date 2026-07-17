@@ -6178,15 +6178,27 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
     const logoUrl = resolveProdutoImageUrl(empresaCfg.logo_path);
     const empresaLogoDataUrl = logoUrl ? await imageUrlToDataUrl(logoUrl) : "";
     const docExtraCfg = getDocExtraConfig();
-    const docExtraMeta = {
-      titulo: docExtraCfg.titulo,
-      campos: getActiveDocExtraCampos(docExtraCfg).map((c) => ({
-        id: c.id,
-        label: c.label,
-        tipo: c.tipo,
-        ativo: true
-      }))
-    };
+    const savedExtra = state.novoDocumentoModal?.rawPayloadBase?.doc_extra;
+    const docExtraMeta =
+      savedExtra && Array.isArray(savedExtra.campos) && savedExtra.campos.length
+        ? {
+            titulo: savedExtra.titulo || docExtraCfg.titulo,
+            campos: savedExtra.campos.map((c) => ({
+              id: c.id,
+              label: c.label,
+              tipo: c.tipo || "text",
+              ativo: c.ativo !== false
+            }))
+          }
+        : {
+            titulo: docExtraCfg.titulo,
+            campos: getActiveDocExtraCampos(docExtraCfg).map((c) => ({
+              id: c.id,
+              label: c.label,
+              tipo: c.tipo,
+              ativo: true
+            }))
+          };
 
     pdfPayload = {
       empresaNome: empresaCfg.nome || state.empresaNome || saasName || "Empresa",
@@ -6199,7 +6211,10 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
       subtotal,
       observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
       pagamentoTexto: getPagamentoResumoTextoParaPdf(),
-      bicicleta: isDocExtraFilled(bicicleta) ? bicicleta : null,
+      bicicleta:
+        (docExtraCfg.ativo || docExtraMeta.campos.length) && isDocExtraFilled(bicicleta)
+          ? bicicleta
+          : null,
       docExtraMeta,
       docLabel: isPedido ? "Pedido" : "Orçamento",
       geradoEm: new Date().toLocaleString("pt-BR"),
