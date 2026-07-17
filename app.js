@@ -7027,8 +7027,8 @@ async function loadEmpresaContext() {
   const empresaRow = data.empresas || {};
   state.empresaNome = empresaRow.nome || "Empresa";
   state.empresaConfig = normalizeEmpresaConfig(empresaRow, state.empresaNome);
-  els.empresaInfo.textContent = `${state.empresaNome} • ${state.session.user.email}`;
   fillEmpresaConfigForm(state.empresaConfig);
+  updateAppBrandChrome();
   updateOwnerUsersVisibility();
 }
 
@@ -11604,6 +11604,7 @@ async function handleSession(session) {
     state.empresaConfig = null;
     state.currentRole = "user";
     state.isPlatformAdmin = false;
+    updateAppBrandChrome();
     state.pedidosLoaded = false;
     state.pedidos = [];
     state.pedidosLimit = 50;
