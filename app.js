@@ -309,12 +309,17 @@ const els = {
   novoDocumentoStatusSelect: document.getElementById("novoDocumentoStatusSelect"),
   novoDocumentoDataEmissao: document.getElementById("novoDocumentoDataEmissao"),
   novoDocumentoObservacoes: document.getElementById("novoDocumentoObservacoes"),
-  novoDocumentoBicicletaSection: document.getElementById("novoDocumentoBicicletaSection"),
-  novoDocumentoBikeMarca: document.getElementById("novoDocumentoBikeMarca"),
-  novoDocumentoBikeModelo: document.getElementById("novoDocumentoBikeModelo"),
-  novoDocumentoBikeAro: document.getElementById("novoDocumentoBikeAro"),
-  novoDocumentoBikeCor: document.getElementById("novoDocumentoBikeCor"),
-  novoDocumentoBikeAcessorios: document.getElementById("novoDocumentoBikeAcessorios"),
+  novoDocumentoExtraSection: document.getElementById("novoDocumentoExtraSection"),
+  novoDocumentoExtraTitle: document.getElementById("novoDocumentoExtraTitle"),
+  novoDocumentoExtraHint: document.getElementById("novoDocumentoExtraHint"),
+  novoDocumentoExtraFields: document.getElementById("novoDocumentoExtraFields"),
+  docExtraCamposEditor: document.getElementById("docExtraCamposEditor"),
+  docExtraAddCampoBtn: document.getElementById("docExtraAddCampoBtn"),
+  docExtraBikePresetBtn: document.getElementById("docExtraBikePresetBtn"),
+  docExtraClearBtn: document.getElementById("docExtraClearBtn"),
+  empresaDocExtraAtivo: document.getElementById("empresaDocExtraAtivo"),
+  empresaDocExtraTitulo: document.getElementById("empresaDocExtraTitulo"),
+  empresaDocExtraHint: document.getElementById("empresaDocExtraHint"),
   novoDocumentoItemsGrid: document.getElementById("novoDocumentoItemsGrid"),
   novoDocumentoPagamentoSection: document.getElementById("novoDocumentoPagamentoSection"),
   novoDocumentoPagamentoModo: document.getElementById("novoDocumentoPagamentoModo"),
@@ -1345,45 +1350,264 @@ function ensureTrailingEmptyDocumentoItem() {
   return changed;
 }
 
-function createBicicletaDraft(src = null) {
-  const s = src && typeof src === "object" ? src : {};
+/** Preset clássico de oficina de bikes (compatível com dados legados em raw_payload.bicicleta). */
+const DOC_EXTRA_BIKE_PRESET = {
+  ativo: true,
+  titulo: "Bicicleta",
+  hint: "Dados da bike do cliente neste documento.",
+  campos: [
+    { id: "marca", label: "Marca", tipo: "text", ativo: true, placeholder: "Ex.: Specialized" },
+    { id: "modelo", label: "Modelo", tipo: "text", ativo: true, placeholder: "Ex.: Rockhopper" },
+    { id: "tamanhoAro", label: "Tamanho de aro", tipo: "text", ativo: true, placeholder: 'Ex.: 29"' },
+    { id: "cor", label: "Cor", tipo: "text", ativo: true, placeholder: "Ex.: Preta/vermelha" },
+    { id: "acessorios", label: "Acessórios", tipo: "textarea", ativo: true, placeholder: "Ex.: pedais, suporte, bagageiro..." }
+  ]
+};
+
+function cloneDocExtraConfig(src) {
   return {
-    marca: String(s.marca || "").trim(),
-    modelo: String(s.modelo || "").trim(),
-    tamanhoAro: String(s.tamanhoAro || s.tamanho_aro || s.aro || "").trim(),
-    cor: String(s.cor || "").trim(),
-    acessorios: String(s.acessorios || "").trim()
+    ativo: Boolean(src?.ativo),
+    titulo: String(src?.titulo || "").trim(),
+    hint: String(src?.hint || "").trim(),
+    campos: Array.isArray(src?.campos)
+      ? src.campos.map((c) => ({
+          id: String(c?.id || "").trim(),
+          label: String(c?.label || "").trim(),
+          tipo: c?.tipo === "textarea" ? "textarea" : "text",
+          ativo: c?.ativo !== false,
+          placeholder: String(c?.placeholder || "").trim()
+        }))
+      : []
   };
 }
 
+function normalizeDocExtraConfig(raw) {
+  // Sem config salva: mantém comportamento atual da GuPedal (bicicleta).
+  if (raw == null || raw === "") {
+    return cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET);
+  }
+  let parsed = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (_) {
+      return cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET);
+    }
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET);
+  }
+  const base = cloneDocExtraConfig({
+    ativo: parsed.ativo !== false,
+    titulo: parsed.titulo || "Dados adicionais",
+    hint: parsed.hint || "Campos extras deste documento.",
+    campos: Array.isArray(parsed.campos) ? parsed.campos : []
+  });
+  // Garante ids únicos e válidos
+  const used = new Set();
+  base.campos = base.campos
+    .filter((c) => c.label || c.id)
+    .map((c, idx) => {
+      let id = c.id || slugifyDocExtraFieldId(c.label) || `campo_${idx + 1}`;
+      id = id.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 40) || `campo_${idx + 1}`;
+      let unique = id;
+      let n = 2;
+      while (used.has(unique)) {
+        unique = `${id}_${n}`;
+        n += 1;
+      }
+      used.add(unique);
+      return { ...c, id: unique, label: c.label || unique };
+    });
+  return base;
+}
+
+function slugifyDocExtraFieldId(label) {
+  return String(label || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 32);
+}
+
+function getDocExtraConfig() {
+  return normalizeDocExtraConfig(getEmpresaConfig()?.doc_extra_config);
+}
+
+function getActiveDocExtraCampos(config = null) {
+  const cfg = config || getDocExtraConfig();
+  if (!cfg.ativo) return [];
+  return (cfg.campos || []).filter((c) => c.ativo && c.id && c.label);
+}
+
+/** Valores dos campos extras (legado: bicicleta). */
+function createDocExtraDraft(src = null, campos = null) {
+  const s = src && typeof src === "object" ? src : {};
+  // Compat legado: aro / tamanho_aro
+  const legacy = {
+    ...s,
+    tamanhoAro: s.tamanhoAro || s.tamanho_aro || s.aro || ""
+  };
+  const list = Array.isArray(campos) ? campos : getDocExtraConfig().campos || [];
+  const out = {};
+  if (list.length) {
+    for (const campo of list) {
+      if (!campo?.id) continue;
+      out[campo.id] = String(legacy[campo.id] ?? "").trim();
+    }
+  }
+  // Preserva valores extras já salvos mesmo se o campo foi desativado
+  for (const [key, value] of Object.entries(legacy)) {
+    if (key === "tamanho_aro" || key === "aro") continue;
+    if (out[key] == null || out[key] === "") {
+      const text = String(value ?? "").trim();
+      if (text) out[key] = text;
+    }
+  }
+  // Garante chaves legadas mínimas se ainda forem do modelo bike
+  if (!list.length) {
+    return {
+      marca: String(legacy.marca || "").trim(),
+      modelo: String(legacy.modelo || "").trim(),
+      tamanhoAro: String(legacy.tamanhoAro || "").trim(),
+      cor: String(legacy.cor || "").trim(),
+      acessorios: String(legacy.acessorios || "").trim()
+    };
+  }
+  return out;
+}
+
+// Alias de compatibilidade
+function createBicicletaDraft(src = null) {
+  return createDocExtraDraft(src);
+}
+
+function isDocExtraFilled(values) {
+  if (!values || typeof values !== "object") return false;
+  return Object.values(values).some((v) => String(v || "").trim());
+}
+
 function isBicicletaFilled(bike) {
-  if (!bike) return false;
-  return Boolean(
-    String(bike.marca || "").trim() ||
-      String(bike.modelo || "").trim() ||
-      String(bike.tamanhoAro || "").trim() ||
-      String(bike.cor || "").trim() ||
-      String(bike.acessorios || "").trim()
-  );
+  return isDocExtraFilled(bike);
+}
+
+function extractDocExtraFromPayload(rawPayload) {
+  const raw = rawPayload && typeof rawPayload === "object" ? rawPayload : {};
+  if (raw.doc_extra && typeof raw.doc_extra === "object") {
+    const valores = raw.doc_extra.valores && typeof raw.doc_extra.valores === "object"
+      ? raw.doc_extra.valores
+      : raw.doc_extra;
+    return createDocExtraDraft(valores);
+  }
+  return createDocExtraDraft(raw.bicicleta || raw.bike || null);
+}
+
+function readDocExtraFromForm() {
+  const campos = getDocExtraConfig().campos || [];
+  const values = {};
+  for (const campo of campos) {
+    if (!campo?.id) continue;
+    const el = document.getElementById(`docExtraField_${campo.id}`);
+    values[campo.id] = String(el?.value || "").trim();
+  }
+  // Mantém valores de campos desativados que já estavam no draft
+  const prev = state.novoDocumentoModal?.bicicleta || {};
+  for (const [key, value] of Object.entries(prev)) {
+    if (values[key] == null || values[key] === "") {
+      const text = String(value || "").trim();
+      if (text) values[key] = text;
+    }
+  }
+  return createDocExtraDraft(values, campos);
 }
 
 function readBicicletaFromForm() {
-  return createBicicletaDraft({
-    marca: els.novoDocumentoBikeMarca?.value || "",
-    modelo: els.novoDocumentoBikeModelo?.value || "",
-    tamanhoAro: els.novoDocumentoBikeAro?.value || "",
-    cor: els.novoDocumentoBikeCor?.value || "",
-    acessorios: els.novoDocumentoBikeAcessorios?.value || ""
-  });
+  return readDocExtraFromForm();
+}
+
+function renderDocumentoExtraFields(values = null) {
+  const section = els.novoDocumentoExtraSection;
+  const wrap = els.novoDocumentoExtraFields;
+  if (!section || !wrap) return;
+
+  const cfg = getDocExtraConfig();
+  const active = getActiveDocExtraCampos(cfg);
+  if (!cfg.ativo || !active.length) {
+    section.classList.add("hidden");
+    wrap.innerHTML = "";
+    return;
+  }
+
+  section.classList.remove("hidden");
+  if (els.novoDocumentoExtraTitle) {
+    els.novoDocumentoExtraTitle.textContent = cfg.titulo || "Dados adicionais";
+  }
+  if (els.novoDocumentoExtraHint) {
+    const tipo = state.novoDocumentoModal?.tipo === "orcamento" ? "orçamento" : "pedido";
+    els.novoDocumentoExtraHint.textContent =
+      cfg.hint || `Dados extras do cliente neste ${tipo}.`;
+  }
+
+  const vals = createDocExtraDraft(values || state.novoDocumentoModal?.bicicleta || {}, cfg.campos);
+  wrap.innerHTML = active
+    .map((campo) => {
+      const id = `docExtraField_${campo.id}`;
+      const val = escapeHtml(vals[campo.id] || "");
+      const ph = escapeHtml(campo.placeholder || "");
+      const full = campo.tipo === "textarea" ? " documento-bike-acessorios" : "";
+      if (campo.tipo === "textarea") {
+        return `<label class="${full.trim()}">
+          ${escapeHtml(campo.label)}
+          <textarea id="${id}" name="doc_extra_${escapeHtml(campo.id)}" rows="2" placeholder="${ph}" autocomplete="off">${val}</textarea>
+        </label>`;
+      }
+      return `<label>
+        ${escapeHtml(campo.label)}
+        <input id="${id}" name="doc_extra_${escapeHtml(campo.id)}" type="text" value="${val}" placeholder="${ph}" autocomplete="off" />
+      </label>`;
+    })
+    .join("");
+}
+
+function fillDocExtraForm(values) {
+  renderDocumentoExtraFields(values);
 }
 
 function fillBicicletaForm(bike) {
-  const b = createBicicletaDraft(bike);
-  if (els.novoDocumentoBikeMarca) els.novoDocumentoBikeMarca.value = b.marca;
-  if (els.novoDocumentoBikeModelo) els.novoDocumentoBikeModelo.value = b.modelo;
-  if (els.novoDocumentoBikeAro) els.novoDocumentoBikeAro.value = b.tamanhoAro;
-  if (els.novoDocumentoBikeCor) els.novoDocumentoBikeCor.value = b.cor;
-  if (els.novoDocumentoBikeAcessorios) els.novoDocumentoBikeAcessorios.value = b.acessorios;
+  fillDocExtraForm(bike);
+}
+
+function buildDocExtraPdfLines(values, meta = null) {
+  const cfg = getDocExtraConfig();
+  const hasMetaCampos = Array.isArray(meta?.campos) && meta.campos.length > 0;
+  const titulo = String(meta?.titulo || cfg.titulo || "Dados adicionais").trim();
+  // Sem snapshot do documento e seção desativada na empresa: não exibe.
+  if (!hasMetaCampos && !cfg.ativo) {
+    return { titulo, lines: [] };
+  }
+  const camposMeta = hasMetaCampos ? meta.campos : getActiveDocExtraCampos(cfg);
+  const vals = values && typeof values === "object" ? values : {};
+  const lines = [];
+  for (const campo of camposMeta) {
+    const id = campo.id || campo;
+    const label = campo.label || id;
+    const value = String(vals[id] || "").trim();
+    if (!value) continue;
+    if (campo.ativo === false) continue;
+    lines.push({ label, value });
+  }
+  // Fallback só quando a seção está ativa e há valores sem labels de campo
+  if (!lines.length && cfg.ativo && isDocExtraFilled(vals)) {
+    for (const [key, value] of Object.entries(vals)) {
+      const text = String(value || "").trim();
+      if (!text) continue;
+      const known = (cfg.campos || []).find((c) => c.id === key);
+      lines.push({ label: known?.label || key, value: text });
+    }
+  }
+  return { titulo, lines };
 }
 
 function createDocumentoDraft(tipo = "pedido") {
@@ -3528,18 +3752,7 @@ function renderNovoDocumentoModal() {
     els.novoDocumentoDataEmissao.value = state.novoDocumentoModal.dataEmissao || formatDateInput(new Date());
   }
 
-  fillBicicletaForm(state.novoDocumentoModal.bicicleta);
-  if (els.novoDocumentoBicicletaSection) {
-    // Bicicleta disponível em pedido e orçamento (oficina / proposta comercial).
-    els.novoDocumentoBicicletaSection.classList.remove("hidden");
-    const bikeHint = els.novoDocumentoBicicletaSection.querySelector(".documento-items-hint");
-    if (bikeHint) {
-      bikeHint.textContent =
-        state.novoDocumentoModal.tipo === "orcamento"
-          ? "Dados da bike do cliente neste orçamento."
-          : "Dados da bike do cliente neste pedido.";
-    }
-  }
+  fillDocExtraForm(state.novoDocumentoModal.bicicleta);
 
   renderNovoDocumentoClienteSelect();
   renderNovoDocumentoStatusSelect();
@@ -4154,7 +4367,7 @@ async function loadDocumentoForEdit(tipo, documentoId) {
       ? formatDateInput(new Date(documento.data_emissao))
       : formatDateInput(new Date()),
     fotoUrl: getPedidoFotoUrl(documento),
-    bicicleta: createBicicletaDraft(rawPayload.bicicleta || rawPayload.bike || null),
+    bicicleta: extractDocExtraFromPayload(rawPayload),
     pagamento: {
       ...createPagamentoDraft(),
       ...(rawPayload.pagamento || {})
@@ -4323,8 +4536,8 @@ async function convertOrcamentoToPedido(orcamentoId) {
     ? String(documento.fotoUrl || "")
     : getPedidoFotoUrl(documento);
   const bicicleta = usingOpenDraft
-    ? createBicicletaDraft(documento.bicicleta)
-    : createBicicletaDraft(rawPayload.bicicleta || rawPayload.bike || null);
+    ? createDocExtraDraft(documento.bicicleta)
+    : extractDocExtraFromPayload(rawPayload);
   const pagamento = usingOpenDraft
     ? { ...createPagamentoDraft(), ...(documento.pagamento || {}) }
     : { ...createPagamentoDraft(), ...(rawPayload.pagamento || {}) };
@@ -4504,7 +4717,7 @@ function syncNovoDocumentoDraftFromForm() {
   if (els.novoDocumentoClienteId) {
     state.novoDocumentoModal.clienteId = els.novoDocumentoClienteId.value || state.novoDocumentoModal.clienteId;
   }
-  state.novoDocumentoModal.bicicleta = readBicicletaFromForm();
+  state.novoDocumentoModal.bicicleta = readDocExtraFromForm();
 }
 
 function formatQtyForPdf(value) {
@@ -5052,20 +5265,18 @@ function buildOrcamentoPdfHtml(payload) {
       </tr>
     </table>
 
-    ${bicicleta && (bicicleta.marca || bicicleta.modelo || bicicleta.tamanhoAro || bicicleta.cor || bicicleta.acessorios)
-      ? `<div class="card" style="margin-bottom:14px;">
-          <h2>Bicicleta</h2>
+    ${(() => {
+      const extra = buildDocExtraPdfLines(bicicleta, payload.docExtraMeta || null);
+      if (!extra.lines.length) return "";
+      return `<div class="card" style="margin-bottom:14px;">
+          <h2>${escapeHtml(extra.titulo || "Dados adicionais")}</h2>
           <div class="card-body">
-            ${[
-              bicicleta.marca ? `<strong>Marca:</strong> ${escapeHtml(bicicleta.marca)}` : "",
-              bicicleta.modelo ? `<strong>Modelo:</strong> ${escapeHtml(bicicleta.modelo)}` : "",
-              bicicleta.tamanhoAro ? `<strong>Aro:</strong> ${escapeHtml(bicicleta.tamanhoAro)}` : "",
-              bicicleta.cor ? `<strong>Cor:</strong> ${escapeHtml(bicicleta.cor)}` : "",
-              bicicleta.acessorios ? `<strong>Acessórios:</strong> ${escapeHtml(bicicleta.acessorios)}` : ""
-            ].filter(Boolean).join("<br />")}
+            ${extra.lines
+              .map((line) => `<strong>${escapeHtml(line.label)}:</strong> ${escapeHtml(line.value)}`)
+              .join("<br />")}
           </div>
-        </div>`
-      : ""}
+        </div>`;
+    })()}
 
     <table class="items">
       <thead>
@@ -5645,38 +5856,43 @@ function buildDocumentoPdfDefinition(payload) {
     }
   ];
 
-  if (bicicleta && (bicicleta.marca || bicicleta.modelo || bicicleta.tamanhoAro || bicicleta.cor || bicicleta.acessorios)) {
-    const bikeLines = [
-      bicicleta.marca ? `Marca: ${bicicleta.marca}` : "",
-      bicicleta.modelo ? `Modelo: ${bicicleta.modelo}` : "",
-      bicicleta.tamanhoAro ? `Aro: ${bicicleta.tamanhoAro}` : "",
-      bicicleta.cor ? `Cor: ${bicicleta.cor}` : "",
-      bicicleta.acessorios ? `Acessórios: ${bicicleta.acessorios}` : ""
-    ].filter(Boolean);
-
-    content.push({
-      table: {
-        widths: ["*"],
-        body: [[{
-          stack: [
-            { text: "BICICLETA", fontSize: 9, bold: true, color: brand, margin: [0, 0, 0, 6] },
-            { text: bikeLines.join("\n"), fontSize: 10, color: "#1f1e1a" }
-          ],
-          fillColor: softBg
-        }]]
-      },
-      layout: {
-        hLineWidth: () => 1,
-        vLineWidth: () => 1,
-        hLineColor: () => line,
-        vLineColor: () => line,
-        paddingLeft: () => 10,
-        paddingRight: () => 10,
-        paddingTop: () => 8,
-        paddingBottom: () => 8
-      },
-      margin: [0, 0, 0, 12]
-    });
+  {
+    const extra = buildDocExtraPdfLines(bicicleta, payload.docExtraMeta || null);
+    if (extra.lines.length) {
+      content.push({
+        table: {
+          widths: ["*"],
+          body: [[{
+            stack: [
+              {
+                text: String(extra.titulo || "Dados adicionais").toUpperCase(),
+                fontSize: 9,
+                bold: true,
+                color: brand,
+                margin: [0, 0, 0, 6]
+              },
+              {
+                text: extra.lines.map((line) => `${line.label}: ${line.value}`).join("\n"),
+                fontSize: 10,
+                color: "#1f1e1a"
+              }
+            ],
+            fillColor: softBg
+          }]]
+        },
+        layout: {
+          hLineWidth: () => 1,
+          vLineWidth: () => 1,
+          hLineColor: () => line,
+          vLineColor: () => line,
+          paddingLeft: () => 10,
+          paddingRight: () => 10,
+          paddingTop: () => 8,
+          paddingBottom: () => 8
+        },
+        margin: [0, 0, 0, 12]
+      });
+    }
   }
 
   content.push({
@@ -5957,10 +6173,20 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
     fileTitle = `${isPedido ? "Pedido" : "Orcamento"}-${clienteSlug}-${dataEmissaoLabel.replace(/\//g, "-")}`;
     fileName = `${fileTitle}.pdf`;
     shareText = `${isPedido ? "Pedido" : "Orçamento"} ${numeroRef} — ${cliente.nome || ""}`.trim();
-    bicicleta = createBicicletaDraft(state.novoDocumentoModal.bicicleta);
+    bicicleta = createDocExtraDraft(state.novoDocumentoModal.bicicleta);
     const empresaCfg = getEmpresaConfig();
     const logoUrl = resolveProdutoImageUrl(empresaCfg.logo_path);
     const empresaLogoDataUrl = logoUrl ? await imageUrlToDataUrl(logoUrl) : "";
+    const docExtraCfg = getDocExtraConfig();
+    const docExtraMeta = {
+      titulo: docExtraCfg.titulo,
+      campos: getActiveDocExtraCampos(docExtraCfg).map((c) => ({
+        id: c.id,
+        label: c.label,
+        tipo: c.tipo,
+        ativo: true
+      }))
+    };
 
     pdfPayload = {
       empresaNome: empresaCfg.nome || state.empresaNome || saasName || "Empresa",
@@ -5973,7 +6199,8 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
       subtotal,
       observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
       pagamentoTexto: getPagamentoResumoTextoParaPdf(),
-      bicicleta: isBicicletaFilled(bicicleta) ? bicicleta : null,
+      bicicleta: isDocExtraFilled(bicicleta) ? bicicleta : null,
+      docExtraMeta,
       docLabel: isPedido ? "Pedido" : "Orçamento",
       geradoEm: new Date().toLocaleString("pt-BR"),
       fileTitle,
@@ -6009,7 +6236,16 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
       ),
       observacoes: String(state.novoDocumentoModal.observacoes || "").trim(),
       pagamentoTexto: getPagamentoResumoTextoParaPdf(),
-      bicicleta: bicicleta && isBicicletaFilled(bicicleta) ? bicicleta : null,
+      bicicleta: bicicleta && isDocExtraFilled(bicicleta) ? bicicleta : null,
+      docExtraMeta: {
+        titulo: getDocExtraConfig().titulo,
+        campos: getActiveDocExtraCampos().map((c) => ({
+          id: c.id,
+          label: c.label,
+          tipo: c.tipo,
+          ativo: true
+        }))
+      },
       docLabel: state.novoDocumentoModal.tipo === "pedido" ? "Pedido" : "Orçamento",
       geradoEm: new Date().toLocaleString("pt-BR"),
       fileTitle: fileTitle || "Documento",
@@ -6082,8 +6318,9 @@ async function saveNovoDocumento(event) {
     const rawPayloadBase = draft.rawPayloadBase && typeof draft.rawPayloadBase === "object"
       ? { ...draft.rawPayloadBase }
       : {};
-    const bicicleta = readBicicletaFromForm();
-    draft.bicicleta = bicicleta;
+    const docExtraValores = readDocExtraFromForm();
+    draft.bicicleta = docExtraValores;
+    const docExtraCfg = getDocExtraConfig();
 
     const rawPayload = {
       ...rawPayloadBase,
@@ -6091,10 +6328,21 @@ async function saveNovoDocumento(event) {
       itens: itens.length,
       pagamento: pagamentoState
     };
-    // Dados da bicicleta (pedido e orçamento — oficina/proposta).
-    if (isBicicletaFilled(bicicleta)) {
-      rawPayload.bicicleta = bicicleta;
+    // Campos extras configuráveis (legado: bicicleta).
+    if (docExtraCfg.ativo && isDocExtraFilled(docExtraValores)) {
+      rawPayload.doc_extra = {
+        titulo: docExtraCfg.titulo || "Dados adicionais",
+        campos: getActiveDocExtraCampos(docExtraCfg).map((c) => ({
+          id: c.id,
+          label: c.label,
+          tipo: c.tipo
+        })),
+        valores: docExtraValores
+      };
+      // Espelho legado para documentos antigos / relatórios
+      rawPayload.bicicleta = docExtraValores;
     } else {
+      delete rawPayload.doc_extra;
       delete rawPayload.bicicleta;
     }
     // Snapshot da calculadora (historico da decisao comercial no pedido/orcamento).
@@ -6513,15 +6761,13 @@ async function openDocumentoItens(tipoDocumento, documentoId) {
     els.itensDocumentoModalTitle.textContent = `${titulo} #${documentoId}`;
   }
   if (els.itensDocumentoModalSubtitle) {
-    const bike = createBicicletaDraft(documentoData?.raw_payload?.bicicleta || null);
-    if (isBicicletaFilled(bike)) {
-      const parts = [
-        bike.marca && `Marca: ${bike.marca}`,
-        bike.modelo && `Modelo: ${bike.modelo}`,
-        bike.tamanhoAro && `Aro: ${bike.tamanhoAro}`,
-        bike.cor && `Cor: ${bike.cor}`,
-        bike.acessorios && `Acessorios: ${bike.acessorios}`
-      ].filter(Boolean);
+    const bike = extractDocExtraFromPayload(documentoData?.raw_payload || null);
+    const extraPdf = buildDocExtraPdfLines(
+      bike,
+      documentoData?.raw_payload?.doc_extra || null
+    );
+    if (extraPdf.lines.length) {
+      const parts = extraPdf.lines.map((line) => `${line.label}: ${line.value}`);
       els.itensDocumentoModalSubtitle.textContent = parts.join(" · ");
       els.itensDocumentoModalSubtitle.classList.remove("hidden");
     } else if (!state.itensDocumentoReturnTo) {
@@ -6732,11 +6978,12 @@ const EMPRESA_CONFIG_DEFAULTS = {
   pdf_termos:
     "1 - Condição de Pagamento\n2 - Orçamento válido por 5 dias\n3 - Após finalizado o serviço, o prazo de retirada é de no MÁXIMO 5 DIAS",
   pdf_aviso:
-    "Atenção, cliente! Conforme acordo prévio, caso você não retire a bicicleta consertada e efetue o pagamento do orçamento autorizado dentro de 30 dias, a bicicleta será vendida para ressarcimento dos custos à oficina. Por favor, verifique o status do conserto e regularize sua situação conosco"
+    "Atenção, cliente! Conforme acordo prévio, caso você não retire a bicicleta consertada e efetue o pagamento do orçamento autorizado dentro de 30 dias, a bicicleta será vendida para ressarcimento dos custos à oficina. Por favor, verifique o status do conserto e regularize sua situação conosco",
+  doc_extra_config: cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET)
 };
 
 const EMPRESA_CONFIG_SELECT_FULL =
-  "empresa_id, role, empresas(id, nome, telefone, email, endereco, bairro, cidade, uf, logo_path, cor_primaria, pdf_termos, pdf_aviso)";
+  "empresa_id, role, empresas(id, nome, telefone, email, endereco, bairro, cidade, uf, logo_path, cor_primaria, pdf_termos, pdf_aviso, doc_extra_config)";
 const EMPRESA_CONFIG_SELECT_BASIC = "empresa_id, role, empresas(id, nome)";
 
 function createEmptyEmpresaConfig(overrides = {}) {
@@ -6752,6 +6999,7 @@ function createEmptyEmpresaConfig(overrides = {}) {
     cor_primaria: "#165d59",
     pdf_termos: "",
     pdf_aviso: "",
+    doc_extra_config: cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET),
     ...overrides
   };
 }
@@ -6770,8 +7018,110 @@ function normalizeEmpresaConfig(raw, fallbackNome = "") {
     logo_path: String(src.logo_path || "").trim(),
     cor_primaria: /^#[0-9a-fA-F]{6}$/.test(cor) ? cor : "#165d59",
     pdf_termos: String(src.pdf_termos || "").trim(),
-    pdf_aviso: String(src.pdf_aviso || "").trim()
+    pdf_aviso: String(src.pdf_aviso || "").trim(),
+    doc_extra_config: normalizeDocExtraConfig(
+      src.doc_extra_config != null ? src.doc_extra_config : DOC_EXTRA_BIKE_PRESET
+    )
   });
+}
+
+/** Estado temporário do editor de campos extras na tela de configurações. */
+let docExtraEditorState = cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET);
+
+function readDocExtraEditorFromDom() {
+  const ativo = Boolean(els.empresaDocExtraAtivo?.checked);
+  const titulo = String(els.empresaDocExtraTitulo?.value || "").trim() || "Dados adicionais";
+  const hint = String(els.empresaDocExtraHint?.value || "").trim();
+  const rows = Array.from(els.docExtraCamposEditor?.querySelectorAll("[data-doc-extra-row]") || []);
+  const campos = rows.map((row, idx) => {
+    const label = String(row.querySelector("[data-field='label']")?.value || "").trim();
+    const tipo = row.querySelector("[data-field='tipo']")?.value === "textarea" ? "textarea" : "text";
+    const campoAtivo = Boolean(row.querySelector("[data-field='ativo']")?.checked);
+    const existingId = String(row.getAttribute("data-campo-id") || "").trim();
+    const id = existingId || slugifyDocExtraFieldId(label) || `campo_${idx + 1}`;
+    const placeholder = String(row.querySelector("[data-field='placeholder']")?.value || "").trim();
+    return { id, label: label || id, tipo, ativo: campoAtivo, placeholder };
+  }).filter((c) => c.label);
+  return normalizeDocExtraConfig({ ativo, titulo, hint, campos });
+}
+
+function renderDocExtraCamposEditor(config = null) {
+  docExtraEditorState = normalizeDocExtraConfig(config || docExtraEditorState);
+  if (els.empresaDocExtraAtivo) els.empresaDocExtraAtivo.checked = docExtraEditorState.ativo !== false;
+  if (els.empresaDocExtraTitulo) els.empresaDocExtraTitulo.value = docExtraEditorState.titulo || "";
+  if (els.empresaDocExtraHint) els.empresaDocExtraHint.value = docExtraEditorState.hint || "";
+  if (!els.docExtraCamposEditor) return;
+
+  if (!docExtraEditorState.campos.length) {
+    els.docExtraCamposEditor.innerHTML =
+      '<p class="doc-extra-campos-empty">Nenhum campo. Use “Adicionar campo” ou “Modelo oficina de bikes”.</p>';
+    return;
+  }
+
+  els.docExtraCamposEditor.innerHTML = docExtraEditorState.campos
+    .map(
+      (campo, index) => `
+      <div class="doc-extra-campo-row" data-doc-extra-row data-campo-id="${escapeHtml(campo.id)}">
+        <label>
+          Nome do campo
+          <input data-field="label" type="text" value="${escapeHtml(campo.label)}" placeholder="Ex.: Marca, Placa, Modelo" />
+        </label>
+        <label>
+          Tipo
+          <select data-field="tipo">
+            <option value="text" ${campo.tipo !== "textarea" ? "selected" : ""}>Texto</option>
+            <option value="textarea" ${campo.tipo === "textarea" ? "selected" : ""}>Texto longo</option>
+          </select>
+        </label>
+        <label class="doc-extra-campo-ativo">
+          <input data-field="ativo" type="checkbox" ${campo.ativo !== false ? "checked" : ""} />
+          Ativo
+        </label>
+        <button type="button" class="btn btn-ghost documento-foto-btn--danger" data-doc-extra-remove="${index}">Remover</button>
+        <label class="produto-form-field-full" style="grid-column: 1 / -1">
+          Placeholder (opcional)
+          <input data-field="placeholder" type="text" value="${escapeHtml(campo.placeholder || "")}" placeholder="Texto de exemplo no campo" />
+        </label>
+      </div>`
+    )
+    .join("");
+}
+
+function addDocExtraCampoEditor() {
+  docExtraEditorState = readDocExtraEditorFromDom();
+  const n = docExtraEditorState.campos.length + 1;
+  docExtraEditorState.campos.push({
+    id: `campo_${Date.now().toString(36)}`,
+    label: `Campo ${n}`,
+    tipo: "text",
+    ativo: true,
+    placeholder: ""
+  });
+  docExtraEditorState.ativo = true;
+  renderDocExtraCamposEditor(docExtraEditorState);
+}
+
+function removeDocExtraCampoEditor(index) {
+  docExtraEditorState = readDocExtraEditorFromDom();
+  docExtraEditorState.campos = docExtraEditorState.campos.filter((_, i) => i !== Number(index));
+  renderDocExtraCamposEditor(docExtraEditorState);
+}
+
+function applyDocExtraBikePreset() {
+  docExtraEditorState = cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET);
+  renderDocExtraCamposEditor(docExtraEditorState);
+  showToast("Modelo de oficina de bikes aplicado. Salve para confirmar.");
+}
+
+function clearDocExtraEditor() {
+  docExtraEditorState = normalizeDocExtraConfig({
+    ativo: false,
+    titulo: "Dados adicionais",
+    hint: "",
+    campos: []
+  });
+  renderDocExtraCamposEditor(docExtraEditorState);
+  showToast("Seção desativada. Salve para confirmar.");
 }
 
 function getEmpresaConfig() {
@@ -6828,6 +7178,7 @@ function fillEmpresaConfigForm(config) {
   setVal("pdf_aviso", cfg.pdf_aviso);
   if (els.empresaLogoPathInput) els.empresaLogoPathInput.value = cfg.logo_path || "";
   if (els.empresaCorPrimariaInput) els.empresaCorPrimariaInput.value = cfg.cor_primaria || "#165d59";
+  renderDocExtraCamposEditor(cfg.doc_extra_config);
   updateEmpresaLogoPreview();
 }
 
@@ -6845,7 +7196,8 @@ function readEmpresaConfigFromForm() {
     logo_path: fd.get("logo_path") || els.empresaLogoPathInput?.value || "",
     cor_primaria: fd.get("cor_primaria") || els.empresaCorPrimariaInput?.value || "#165d59",
     pdf_termos: fd.get("pdf_termos"),
-    pdf_aviso: fd.get("pdf_aviso")
+    pdf_aviso: fd.get("pdf_aviso"),
+    doc_extra_config: readDocExtraEditorFromDom()
   }, state.empresaNome);
 }
 
@@ -6854,7 +7206,8 @@ function applyEmpresaConfigPadraoGuPedal() {
   fillEmpresaConfigForm({
     ...EMPRESA_CONFIG_DEFAULTS,
     logo_path: current.logo_path || "",
-    cor_primaria: current.cor_primaria || EMPRESA_CONFIG_DEFAULTS.cor_primaria
+    cor_primaria: current.cor_primaria || EMPRESA_CONFIG_DEFAULTS.cor_primaria,
+    doc_extra_config: cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET)
   });
   showToast("Modelo GuPedal preenchido. Revise e salve.");
 }
@@ -6956,7 +7309,8 @@ async function saveEmpresaConfig(event) {
     logo_path: cfg.logo_path || null,
     cor_primaria: cfg.cor_primaria || "#165d59",
     pdf_termos: cfg.pdf_termos || null,
-    pdf_aviso: cfg.pdf_aviso || null
+    pdf_aviso: cfg.pdf_aviso || null,
+    doc_extra_config: cfg.doc_extra_config || cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET)
   };
 
   const submitBtn = els.empresaConfigSubmitBtn;
@@ -11824,6 +12178,22 @@ function attachEvents() {
   if (els.empresaConfigAplicarPadraoBtn) {
     els.empresaConfigAplicarPadraoBtn.addEventListener("click", () => {
       applyEmpresaConfigPadraoGuPedal();
+    });
+  }
+  if (els.docExtraAddCampoBtn) {
+    els.docExtraAddCampoBtn.addEventListener("click", () => addDocExtraCampoEditor());
+  }
+  if (els.docExtraBikePresetBtn) {
+    els.docExtraBikePresetBtn.addEventListener("click", () => applyDocExtraBikePreset());
+  }
+  if (els.docExtraClearBtn) {
+    els.docExtraClearBtn.addEventListener("click", () => clearDocExtraEditor());
+  }
+  if (els.docExtraCamposEditor) {
+    els.docExtraCamposEditor.addEventListener("click", (event) => {
+      const btn = event.target?.closest?.("[data-doc-extra-remove]");
+      if (!btn) return;
+      removeDocExtraCampoEditor(btn.getAttribute("data-doc-extra-remove"));
     });
   }
   if (els.empresaLogoCameraBtn && els.empresaLogoCameraInput) {

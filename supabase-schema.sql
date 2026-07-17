@@ -16,6 +16,7 @@ create table if not exists public.empresas (
   cor_primaria text default '#165d59',
   pdf_termos text,
   pdf_aviso text,
+  doc_extra_config jsonb,
   created_at timestamp with time zone not null default now()
 );
 

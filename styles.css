@@ -1328,10 +1328,71 @@ h3 {
   border-color: var(--brand);
 }
 
+.empresa-config-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #3d372d;
+}
+
+.empresa-config-check input {
+  width: auto;
+  accent-color: var(--brand);
+}
+
+.doc-extra-campos-editor {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.doc-extra-campo-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 110px 70px auto;
+  gap: 0.45rem;
+  align-items: end;
+  padding: 0.55rem;
+  border: 1px solid #e4dac8;
+  border-radius: 12px;
+  background: #fffefb;
+}
+
+.doc-extra-campo-row label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.doc-extra-campo-row .doc-extra-campo-ativo {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.4rem;
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.doc-extra-campo-row .doc-extra-campo-ativo input {
+  width: auto;
+}
+
+.doc-extra-campos-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
 @media (max-width: 820px) {
   .empresa-config-layout,
   .empresa-config-grid {
     grid-template-columns: 1fr;
+  }
+
+  .doc-extra-campo-row {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
