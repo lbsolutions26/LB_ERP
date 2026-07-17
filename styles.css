@@ -113,6 +113,55 @@ body {
   gap: 1rem;
 }
 
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.topbar-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid rgba(22, 93, 89, 0.18);
+  background: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(33, 32, 28, 0.08);
+}
+
+.topbar-brand-text {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.topbar-empresa-nome {
+  margin: 0;
+  font-family: "Sora", sans-serif;
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--brand-strong);
+  line-height: 1.15;
+}
+
+.topbar-saas-label {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.topbar-user-line {
+  margin: 0.15rem 0 0;
+  font-size: 0.86rem;
+}
+
 .top-actions {
   display: flex;
   gap: 0.5rem;
@@ -3519,6 +3568,15 @@ textarea:focus {
   .topbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .topbar-logo {
+    width: 48px;
+    height: 48px;
+  }
+
+  .top-actions {
+    flex-wrap: wrap;
   }
 
   .metric-grid {

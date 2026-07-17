@@ -238,6 +238,8 @@ const els = {
   adminTab: document.getElementById("adminTab"),
   saasTitleLogin: document.getElementById("saasTitleLogin"),
   saasTitleApp: document.getElementById("saasTitleApp"),
+  empresaNomeApp: document.getElementById("empresaNomeApp"),
+  empresaLogoApp: document.getElementById("empresaLogoApp"),
   empresaInfo: document.getElementById("empresaInfo"),
   empresaConfigForm: document.getElementById("empresaConfigForm"),
   empresaLogoPreview: document.getElementById("empresaLogoPreview"),
@@ -687,12 +689,63 @@ const els = {
 };
 
 function applySaasBranding() {
-  document.title = saasName;
   if (els.saasTitleLogin) {
     els.saasTitleLogin.textContent = saasName;
   }
   if (els.saasTitleApp) {
     els.saasTitleApp.textContent = saasName;
+  }
+  updateAppBrandChrome();
+}
+
+/**
+ * Cabeçalho do app: logo + nome da empresa em destaque + LB ERP SaaS pequeno.
+ */
+function updateAppBrandChrome() {
+  const cfg = state.empresaConfig ? normalizeEmpresaConfig(state.empresaConfig, state.empresaNome) : null;
+  const empresaNome = String(cfg?.nome || state.empresaNome || "Empresa").trim() || "Empresa";
+  const cor = String(cfg?.cor_primaria || "").trim();
+  const logoPath = String(cfg?.logo_path || "").trim();
+  const logoUrl = logoPath ? resolveProdutoImageUrl(logoPath) : "";
+
+  if (els.empresaNomeApp) {
+    els.empresaNomeApp.textContent = empresaNome;
+  }
+  if (els.saasTitleApp) {
+    els.saasTitleApp.textContent = saasName || "LB ERP SaaS";
+  }
+
+  if (els.empresaLogoApp) {
+    if (logoUrl) {
+      els.empresaLogoApp.src = logoUrl;
+      els.empresaLogoApp.alt = `Logo ${empresaNome}`;
+      els.empresaLogoApp.classList.remove("hidden");
+    } else {
+      els.empresaLogoApp.removeAttribute("src");
+      els.empresaLogoApp.alt = "";
+      els.empresaLogoApp.classList.add("hidden");
+    }
+  }
+
+  // Cor primaria da empresa no tema do app (quando cadastrada)
+  if (/^#[0-9a-fA-F]{6}$/.test(cor)) {
+    document.documentElement.style.setProperty("--brand", cor);
+    document.documentElement.style.setProperty("--brand-strong", darkenHexColor(cor, 0.28));
+  } else {
+    document.documentElement.style.setProperty("--brand", "#165d59");
+    document.documentElement.style.setProperty("--brand-strong", "#0f4744");
+  }
+
+  if (state.session?.user?.email) {
+    document.title = `${empresaNome} · ${saasName}`;
+    if (els.empresaInfo) {
+      els.empresaInfo.textContent = state.session.user.email;
+    }
+  } else {
+    document.title = saasName;
+    if (els.empresaInfo) {
+      els.empresaInfo.textContent = "—";
+    }
   }
 }
 
@@ -6922,10 +6975,8 @@ async function saveEmpresaConfig(event) {
 
     state.empresaConfig = cfg;
     state.empresaNome = cfg.nome;
-    if (els.empresaInfo && state.session?.user?.email) {
-      els.empresaInfo.textContent = `${state.empresaNome} • ${state.session.user.email}`;
-    }
     fillEmpresaConfigForm(cfg);
+    updateAppBrandChrome();
     showToast("Configurações da empresa salvas");
   } finally {
     if (submitBtn) {
