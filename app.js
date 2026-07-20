@@ -272,7 +272,17 @@ const els = {
   caixaModoDocumentoBtn: document.getElementById("caixaModoDocumentoBtn"),
   caixaHistoricoBtn: document.getElementById("caixaHistoricoBtn"),
   caixaProdutoSearch: document.getElementById("caixaProdutoSearch"),
+  caixaProdutoScanBtn: document.getElementById("caixaProdutoScanBtn"),
   caixaProdutoResults: document.getElementById("caixaProdutoResults"),
+  produtoCodigoInput: document.getElementById("produtoCodigoInput"),
+  produtoCodigoScanBtn: document.getElementById("produtoCodigoScanBtn"),
+  barcodeScannerModal: document.getElementById("barcodeScannerModal"),
+  barcodeScannerTitle: document.getElementById("barcodeScannerTitle"),
+  barcodeScannerSubtitle: document.getElementById("barcodeScannerSubtitle"),
+  barcodeScannerStatus: document.getElementById("barcodeScannerStatus"),
+  barcodeScannerVideo: document.getElementById("barcodeScannerVideo"),
+  barcodeScannerHtml5: document.getElementById("barcodeScannerHtml5"),
+  closeBarcodeScannerBtn: document.getElementById("closeBarcodeScannerBtn"),
   caixaClienteId: document.getElementById("caixaClienteId"),
   caixaClienteSearch: document.getElementById("caixaClienteSearch"),
   caixaClienteLimparBtn: document.getElementById("caixaClienteLimparBtn"),
@@ -3982,6 +3992,370 @@ function isCaixaOpen() {
   return Boolean(els.caixaModal && !els.caixaModal.classList.contains("hidden"));
 }
 
+/** Estado do scanner de código de barras (câmera). */
+const barcodeScannerState = {
+  open: false,
+  mode: null, // "produto" | "caixa"
+  onResult: null,
+  stream: null,
+  rafId: 0,
+  detector: null,
+  html5: null,
+  handling: false,
+  lastCode: "",
+  lastAt: 0
+};
+
+function setBarcodeScannerStatus(text) {
+  if (els.barcodeScannerStatus) els.barcodeScannerStatus.textContent = text || "";
+}
+
+function loadHtml5QrcodeLibrary() {
+  if (window.Html5Qrcode) return Promise.resolve(window.Html5Qrcode);
+  if (loadHtml5QrcodeLibrary._promise) return loadHtml5QrcodeLibrary._promise;
+  loadHtml5QrcodeLibrary._promise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+    script.async = true;
+    script.onload = () => {
+      if (window.Html5Qrcode) resolve(window.Html5Qrcode);
+      else reject(new Error("Biblioteca de leitura não carregou"));
+    };
+    script.onerror = () => reject(new Error("Falha ao carregar leitor de código (rede/CDN)"));
+    document.head.appendChild(script);
+  });
+  return loadHtml5QrcodeLibrary._promise;
+}
+
+function normalizeScannedBarcode(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/[\r\n\t]+/g, "")
+    .replace(/\s+/g, "");
+}
+
+async function handleBarcodeScanResult(rawCode) {
+  if (!barcodeScannerState.open || barcodeScannerState.handling) return;
+  const code = normalizeScannedBarcode(rawCode);
+  if (!code) return;
+
+  // Evita o mesmo código várias vezes em sequência (debounce ~1.2s).
+  const now = Date.now();
+  if (code === barcodeScannerState.lastCode && now - barcodeScannerState.lastAt < 1200) {
+    return;
+  }
+  barcodeScannerState.lastCode = code;
+  barcodeScannerState.lastAt = now;
+  barcodeScannerState.handling = true;
+
+  try {
+    playCaixaBeep(true);
+    setBarcodeScannerStatus(`Lido: ${code}`);
+    const onResult = barcodeScannerState.onResult;
+    await closeBarcodeScannerModal();
+    if (typeof onResult === "function") {
+      await onResult(code);
+    }
+  } catch (error) {
+    console.error(error);
+    showToast(error?.message || "Erro ao usar o código lido", "error");
+  } finally {
+    barcodeScannerState.handling = false;
+  }
+}
+
+async function stopBarcodeDetectorLoop() {
+  if (barcodeScannerState.rafId) {
+    cancelAnimationFrame(barcodeScannerState.rafId);
+    barcodeScannerState.rafId = 0;
+  }
+  barcodeScannerState.detector = null;
+  const video = els.barcodeScannerVideo;
+  if (video) {
+    try {
+      video.pause();
+    } catch {
+      /* ignore */
+    }
+    video.srcObject = null;
+    video.classList.add("hidden");
+  }
+  if (barcodeScannerState.stream) {
+    for (const track of barcodeScannerState.stream.getTracks()) {
+      try {
+        track.stop();
+      } catch {
+        /* ignore */
+      }
+    }
+    barcodeScannerState.stream = null;
+  }
+}
+
+async function stopHtml5BarcodeScanner() {
+  const scanner = barcodeScannerState.html5;
+  barcodeScannerState.html5 = null;
+  if (!scanner) return;
+  try {
+    if (scanner.isScanning) {
+      await scanner.stop();
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    await scanner.clear();
+  } catch {
+    /* ignore */
+  }
+  if (els.barcodeScannerHtml5) {
+    els.barcodeScannerHtml5.innerHTML = "";
+    els.barcodeScannerHtml5.classList.add("hidden");
+  }
+}
+
+async function closeBarcodeScannerModal() {
+  barcodeScannerState.open = false;
+  barcodeScannerState.onResult = null;
+  barcodeScannerState.mode = null;
+  await stopBarcodeDetectorLoop();
+  await stopHtml5BarcodeScanner();
+  if (els.barcodeScannerModal) {
+    els.barcodeScannerModal.classList.add("hidden");
+  }
+  document.body.classList.remove("barcode-scanner-open");
+}
+
+async function startBarcodeDetectorScanner() {
+  if (!("BarcodeDetector" in window)) {
+    throw new Error("BarcodeDetector indisponível");
+  }
+  const video = els.barcodeScannerVideo;
+  if (!video) throw new Error("Elemento de vídeo não encontrado");
+
+  let formats = [
+    "ean_13",
+    "ean_8",
+    "upc_a",
+    "upc_e",
+    "code_128",
+    "code_39",
+    "codabar",
+    "itf",
+    "qr_code"
+  ];
+  try {
+    if (typeof BarcodeDetector.getSupportedFormats === "function") {
+      const supported = await BarcodeDetector.getSupportedFormats();
+      if (Array.isArray(supported) && supported.length) {
+        formats = formats.filter((f) => supported.includes(f));
+      }
+    }
+  } catch {
+    /* usa lista padrão */
+  }
+
+  const detector = new BarcodeDetector({ formats: formats.length ? formats : undefined });
+  barcodeScannerState.detector = detector;
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      facingMode: { ideal: "environment" },
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    }
+  });
+  barcodeScannerState.stream = stream;
+  video.classList.remove("hidden");
+  if (els.barcodeScannerHtml5) els.barcodeScannerHtml5.classList.add("hidden");
+  video.srcObject = stream;
+  await video.play();
+  setBarcodeScannerStatus("Aponte para o código de barras…");
+
+  const tick = async () => {
+    if (!barcodeScannerState.open || !barcodeScannerState.detector) return;
+    try {
+      if (video.readyState >= 2) {
+        const codes = await barcodeScannerState.detector.detect(video);
+        if (codes?.length) {
+          const text = String(codes[0].rawValue || "").trim();
+          if (text) {
+            await handleBarcodeScanResult(text);
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      // detect pode falhar em frames ruins — segue o loop
+    }
+    barcodeScannerState.rafId = requestAnimationFrame(tick);
+  };
+  barcodeScannerState.rafId = requestAnimationFrame(tick);
+}
+
+async function startHtml5BarcodeScanner() {
+  const Html5Qrcode = await loadHtml5QrcodeLibrary();
+  if (!els.barcodeScannerHtml5) throw new Error("Viewport do leitor não encontrado");
+
+  if (els.barcodeScannerVideo) els.barcodeScannerVideo.classList.add("hidden");
+  els.barcodeScannerHtml5.classList.remove("hidden");
+  els.barcodeScannerHtml5.innerHTML = "";
+
+  const scanner = new Html5Qrcode("barcodeScannerHtml5", {
+    verbose: false
+  });
+  barcodeScannerState.html5 = scanner;
+
+  const config = {
+    fps: 12,
+    qrbox: (viewW, viewH) => {
+      const w = Math.min(Math.floor(viewW * 0.86), 320);
+      const h = Math.min(Math.floor(viewH * 0.28), 140);
+      return { width: Math.max(180, w), height: Math.max(80, h) };
+    },
+    aspectRatio: 1.777,
+    experimentalFeatures: {
+      useBarCodeDetectorIfSupported: true
+    }
+  };
+
+  // Preferências de formato quando a lib suportar
+  const formatsToSupport =
+    window.Html5QrcodeSupportedFormats
+      ? [
+          window.Html5QrcodeSupportedFormats.EAN_13,
+          window.Html5QrcodeSupportedFormats.EAN_8,
+          window.Html5QrcodeSupportedFormats.UPC_A,
+          window.Html5QrcodeSupportedFormats.UPC_E,
+          window.Html5QrcodeSupportedFormats.CODE_128,
+          window.Html5QrcodeSupportedFormats.CODE_39,
+          window.Html5QrcodeSupportedFormats.ITF,
+          window.Html5QrcodeSupportedFormats.QR_CODE
+        ]
+      : undefined;
+
+  await scanner.start(
+    { facingMode: "environment" },
+    formatsToSupport ? { ...config, formatsToSupport } : config,
+    (decodedText) => {
+      handleBarcodeScanResult(decodedText);
+    },
+    () => {
+      /* frame sem código */
+    }
+  );
+  setBarcodeScannerStatus("Aponte para o código de barras…");
+}
+
+/**
+ * Abre o scanner de câmera.
+ * @param {{ title?: string, subtitle?: string, mode?: string, onResult: (code: string) => void|Promise<void> }} options
+ */
+async function openBarcodeScannerModal(options = {}) {
+  if (!els.barcodeScannerModal) {
+    showToast("Scanner não disponível nesta tela.", "error");
+    return;
+  }
+  if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    showToast("A câmera exige HTTPS. Use o site publicado (Vercel) ou localhost.", "error");
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showToast("Este navegador não permite acesso à câmera.", "error");
+    return;
+  }
+
+  // Fecha scanner anterior se houver
+  await closeBarcodeScannerModal();
+
+  barcodeScannerState.open = true;
+  barcodeScannerState.mode = options.mode || null;
+  barcodeScannerState.onResult = options.onResult || null;
+  barcodeScannerState.handling = false;
+  barcodeScannerState.lastCode = "";
+  barcodeScannerState.lastAt = 0;
+
+  if (els.barcodeScannerTitle) {
+    els.barcodeScannerTitle.textContent = options.title || "Ler código de barras";
+  }
+  if (els.barcodeScannerSubtitle) {
+    els.barcodeScannerSubtitle.textContent =
+      options.subtitle || "Aponte a câmera para o código. Funciona melhor com boa luz.";
+  }
+  setBarcodeScannerStatus("Iniciando câmera…");
+
+  els.barcodeScannerModal.classList.remove("hidden");
+  document.body.classList.add("barcode-scanner-open");
+
+  try {
+    // Chrome/Android: BarcodeDetector nativo (rápido). Fallback: html5-qrcode (melhor no iOS).
+    const preferNative = "BarcodeDetector" in window && /Android|Chrome|Edg|CriOS/i.test(navigator.userAgent);
+    if (preferNative) {
+      try {
+        await startBarcodeDetectorScanner();
+        return;
+      } catch (nativeErr) {
+        console.warn("BarcodeDetector falhou, tentando html5-qrcode", nativeErr);
+        await stopBarcodeDetectorLoop();
+      }
+    }
+    await startHtml5BarcodeScanner();
+  } catch (error) {
+    console.error(error);
+    await closeBarcodeScannerModal();
+    const msg = String(error?.message || error || "");
+    if (/Permission|NotAllowed|denied/i.test(msg)) {
+      showToast("Permissão da câmera negada. Ative nas configurações do navegador.", "error");
+    } else if (/NotFound|DevicesNotFound/i.test(msg)) {
+      showToast("Nenhuma câmera encontrada neste aparelho.", "error");
+    } else {
+      showToast(`Não foi possível abrir a câmera: ${msg}`, "error");
+    }
+  }
+}
+
+async function scanBarcodeForProduto() {
+  await openBarcodeScannerModal({
+    mode: "produto",
+    title: "Código do produto",
+    subtitle: "Aponte para o código de barras. O valor será preenchido no cadastro.",
+    onResult: (code) => {
+      if (els.produtoCodigoInput) {
+        els.produtoCodigoInput.value = code;
+        els.produtoCodigoInput.dispatchEvent(new Event("input", { bubbles: true }));
+        els.produtoCodigoInput.focus();
+      } else {
+        const field = els.produtoForm?.elements?.namedItem("codigo");
+        if (field && "value" in field) field.value = code;
+      }
+      showToast(`Código ${code} preenchido no produto`);
+    }
+  });
+}
+
+async function scanBarcodeForCaixa() {
+  await openBarcodeScannerModal({
+    mode: "caixa",
+    title: "Ler produto no caixa",
+    subtitle: "Aponte para o código. Se o produto estiver cadastrado, entra no carrinho.",
+    onResult: async (code) => {
+      if (els.caixaProdutoSearch) {
+        els.caixaProdutoSearch.value = code;
+      }
+      // Reaproveita a busca/match do caixa (barcode exato ou nome).
+      const hit = findCaixaProdutoByBarcode(code);
+      if (hit) {
+        addProdutoToCaixa(hit.id);
+        showToast(`${hit.nome || "Produto"} adicionado`);
+        return;
+      }
+      // Tenta o submit padrão (lista / mensagens de erro).
+      handleCaixaSearchSubmit();
+    }
+  });
+}
+
 function normalizeCaixaSearchText(value) {
   return String(value || "")
     .trim()
@@ -4549,6 +4923,10 @@ function openCaixaModal({ reset = true } = {}) {
 
 function closeCaixaModal() {
   if (!els.caixaModal) return;
+  // Fecha scanner se estiver aberto sobre o caixa
+  if (barcodeScannerState.open) {
+    closeBarcodeScannerModal().catch(() => {});
+  }
   els.caixaModal.classList.add("hidden");
   document.body.classList.remove("caixa-open");
   if (els.caixaClienteOptions) {
@@ -13745,6 +14123,38 @@ function attachEvents() {
       });
     });
   }
+
+  if (els.produtoCodigoScanBtn) {
+    els.produtoCodigoScanBtn.addEventListener("click", () => {
+      scanBarcodeForProduto().catch((error) => {
+        showToast(error.message || "Erro ao ler código", "error");
+      });
+    });
+  }
+  if (els.caixaProdutoScanBtn) {
+    els.caixaProdutoScanBtn.addEventListener("click", () => {
+      if (!isCaixaOpen()) {
+        // garante dados se clicar fora do fluxo usual
+        Promise.all([ensureProdutosLoaded(), loadFormasPagamento()]).catch(() => {});
+      }
+      scanBarcodeForCaixa().catch((error) => {
+        showToast(error.message || "Erro ao ler código", "error");
+      });
+    });
+  }
+  if (els.closeBarcodeScannerBtn) {
+    els.closeBarcodeScannerBtn.addEventListener("click", () => {
+      closeBarcodeScannerModal().catch(() => {});
+    });
+  }
+  if (els.barcodeScannerModal) {
+    els.barcodeScannerModal.addEventListener("click", (event) => {
+      if (event.target === els.barcodeScannerModal) {
+        closeBarcodeScannerModal().catch(() => {});
+      }
+    });
+  }
+
   if (els.caixaProdutoSearch) {
     els.caixaProdutoSearch.addEventListener("input", () => {
       renderCaixaProdutoResults(els.caixaProdutoSearch.value || "");
@@ -13858,6 +14268,12 @@ function attachEvents() {
     });
   }
   document.addEventListener("keydown", (event) => {
+    // Esc fecha o scanner de barras com prioridade
+    if (event.key === "Escape" && barcodeScannerState.open) {
+      event.preventDefault();
+      closeBarcodeScannerModal().catch(() => {});
+      return;
+    }
     if (!isCaixaOpen()) return;
     // Atalhos do PDV (não dispara se estiver digitando em outro modal empilhado)
     if (event.key === "Escape") {

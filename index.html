@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260720caixa7" />
+    <link rel="stylesheet" href="styles.css?v=20260720barcode1" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -1412,16 +1412,26 @@
                 Nome do produto
                 <input name="nome" placeholder="Ex.: Banco MTB GTS" required />
               </label>
-              <label class="produto-form-field">
+              <label class="produto-form-field produto-form-field-full">
                 Código / barras
-                <input
-                  name="codigo"
-                  id="produtoCodigoInput"
-                  placeholder="EAN, SKU ou código interno"
-                  autocomplete="off"
-                  inputmode="text"
-                />
-                <span class="field-hint">Usado no caixa (leitor de barras e busca). Salvo em external_id.</span>
+                <div class="barcode-field-row">
+                  <input
+                    name="codigo"
+                    id="produtoCodigoInput"
+                    placeholder="EAN, SKU ou código interno"
+                    autocomplete="off"
+                    inputmode="text"
+                  />
+                  <button
+                    id="produtoCodigoScanBtn"
+                    type="button"
+                    class="btn btn-ghost barcode-scan-btn"
+                    title="Ler código com a câmera"
+                  >
+                    📷 Ler
+                  </button>
+                </div>
+                <span class="field-hint">Usado no caixa (leitor ou câmera). Salvo em external_id.</span>
               </label>
               <label class="produto-form-field">
                 Categoria
@@ -2414,14 +2424,24 @@
             <div class="caixa-search-wrap">
               <label class="caixa-search-label" for="caixaProdutoSearch">
                 Buscar produto / código de barras
-                <input
-                  id="caixaProdutoSearch"
-                  type="search"
-                  class="caixa-search-input"
-                  placeholder="Digite o nome ou leia o código e pressione Enter"
-                  autocomplete="off"
-                  enterkeyhint="search"
-                />
+                <div class="barcode-field-row">
+                  <input
+                    id="caixaProdutoSearch"
+                    type="search"
+                    class="caixa-search-input"
+                    placeholder="Digite, leia o código ou use a câmera"
+                    autocomplete="off"
+                    enterkeyhint="search"
+                  />
+                  <button
+                    id="caixaProdutoScanBtn"
+                    type="button"
+                    class="btn btn-ghost barcode-scan-btn"
+                    title="Ler código com a câmera"
+                  >
+                    📷
+                  </button>
+                </div>
               </label>
               <div id="caixaProdutoResults" class="caixa-produto-results hidden" aria-live="polite"></div>
             </div>
@@ -2481,8 +2501,28 @@
       </div>
     </div>
 
+    <!-- Scanner de código de barras (câmera) -->
+    <div id="barcodeScannerModal" class="barcode-scanner-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="barcodeScannerTitle">
+      <div class="barcode-scanner-card">
+        <div class="barcode-scanner-head">
+          <div>
+            <h3 id="barcodeScannerTitle">Ler código de barras</h3>
+            <p id="barcodeScannerSubtitle" class="modal-subtitle">Aponte a câmera para o código. Funciona melhor com boa luz.</p>
+          </div>
+          <button id="closeBarcodeScannerBtn" type="button" class="btn btn-ghost">Fechar</button>
+        </div>
+        <div id="barcodeScannerViewport" class="barcode-scanner-viewport">
+          <video id="barcodeScannerVideo" class="barcode-scanner-video" playsinline muted></video>
+          <div id="barcodeScannerHtml5" class="barcode-scanner-html5"></div>
+          <div class="barcode-scanner-frame" aria-hidden="true"></div>
+        </div>
+        <p id="barcodeScannerStatus" class="barcode-scanner-status">Iniciando câmera…</p>
+        <p class="barcode-scanner-hint">Use HTTPS (ou localhost). No iPhone, permita o acesso à câmera nas configurações do Safari.</p>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260720caixa7"></script>
+    <script type="module" src="app.js?v=20260720barcode1"></script>
   </body>
 </html>

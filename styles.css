@@ -5771,3 +5771,129 @@ body.caixa-open {
 .caixa-produto-preco {
   font-size: 0.86rem !important;
 }
+
+/* Campo + botao de scan */
+.barcode-field-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: stretch;
+}
+.barcode-field-row input {
+  flex: 1;
+  min-width: 0;
+}
+.barcode-scan-btn {
+  flex-shrink: 0;
+  min-width: 2.75rem;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.caixa-search-wrap .barcode-field-row .caixa-search-input {
+  width: 100%;
+}
+
+/* Modal scanner */
+.barcode-scanner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(12, 16, 22, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+}
+.barcode-scanner-overlay.hidden {
+  display: none;
+}
+.barcode-scanner-card {
+  width: min(480px, 100%);
+  background: var(--bg-soft, #fbf8f2);
+  border: 1px solid var(--line, #d9d0bf);
+  border-radius: 16px;
+  padding: 0.85rem 1rem 1rem;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.3);
+  display: grid;
+  gap: 0.65rem;
+}
+.barcode-scanner-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.barcode-scanner-head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.barcode-scanner-viewport {
+  position: relative;
+  width: 100%;
+  min-height: 260px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #111;
+  border: 1px solid #333;
+}
+.barcode-scanner-video {
+  width: 100%;
+  height: min(52vh, 360px);
+  object-fit: cover;
+  display: block;
+  background: #000;
+}
+.barcode-scanner-video.hidden {
+  display: none;
+}
+.barcode-scanner-html5 {
+  width: 100%;
+  min-height: 260px;
+}
+.barcode-scanner-html5.hidden {
+  display: none;
+}
+.barcode-scanner-html5 video {
+  border-radius: 0 !important;
+}
+.barcode-scanner-frame {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(78%, 280px);
+  height: 88px;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 10px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.28);
+}
+.barcode-scanner-status {
+  margin: 0;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: #0f4744;
+}
+.barcode-scanner-hint {
+  margin: 0;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--muted, #6b6558);
+}
+body.barcode-scanner-open {
+  overflow: hidden;
+}
+@media (max-width: 520px) {
+  .barcode-scanner-card {
+    padding: 0.7rem;
+    border-radius: 12px;
+  }
+  .barcode-scanner-viewport {
+    min-height: 220px;
+  }
+  .barcode-scan-btn {
+    min-width: 2.5rem;
+    padding-left: 0.55rem;
+    padding-right: 0.55rem;
+  }
+}
