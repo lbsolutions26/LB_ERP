@@ -13725,6 +13725,25 @@ function attachEvents() {
       renderNovoDocumentoClienteSelect();
     });
   }
+
+  async function openCaixaHistoricoVendas() {
+    closeCaixaModal();
+    setSection("pedidos");
+    try {
+      await ensurePedidosLoaded();
+      renderPedidosSection();
+    } catch (error) {
+      showToast(`Erro ao abrir histórico: ${error.message}`, "error");
+    }
+  }
+
+  if (els.caixaHistoricoBtn) {
+    els.caixaHistoricoBtn.addEventListener("click", () => {
+      openCaixaHistoricoVendas().catch((error) => {
+        showToast(error.message || "Erro ao abrir histórico", "error");
+      });
+    });
+  }
   if (els.caixaProdutoSearch) {
     els.caixaProdutoSearch.addEventListener("input", () => {
       renderCaixaProdutoResults(els.caixaProdutoSearch.value || "");

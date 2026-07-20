@@ -5605,3 +5605,169 @@ body.caixa-open {
     border-top: 1px solid var(--line, #d9d0bf);
   }
 }
+
+/* Caixa compacto: mais itens visiveis sem scroll desnecessario */
+.caixa-overlay--fullscreen .caixa-header {
+  padding: 0.45rem 0.85rem;
+}
+.caixa-overlay--fullscreen .caixa-header-titles h2 {
+  font-size: 1.1rem;
+}
+.caixa-overlay--fullscreen .caixa-subtitle {
+  font-size: 0.82rem;
+  margin-top: 0.1rem;
+}
+.caixa-overlay--fullscreen .caixa-shortcuts-hint {
+  font-size: 0.7rem;
+  margin-top: 0.2rem;
+}
+.caixa-body--pdv {
+  gap: 0;
+}
+.caixa-main {
+  gap: 0.45rem;
+  padding: 0.65rem 0.85rem 0.75rem;
+}
+.caixa-search-input {
+  padding: 0.55rem 0.7rem;
+  font-size: 0.98rem;
+  border-radius: 10px;
+}
+.caixa-last-product {
+  grid-template-columns: 64px 1fr;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 10px;
+}
+.caixa-last-product-media {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+}
+.caixa-last-product-label {
+  font-size: 0.68rem;
+}
+.caixa-last-product-info strong {
+  font-size: 0.92rem;
+}
+.caixa-last-product-info span {
+  font-size: 0.8rem;
+}
+.caixa-cliente-row {
+  margin-top: 0;
+  padding-top: 0.35rem;
+}
+.caixa-cliente-input,
+.caixa-pay-block select,
+.caixa-pay-block input {
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
+  border-radius: 9px;
+}
+.caixa-cliente-label,
+.caixa-search-label,
+.caixa-pay-block label {
+  font-size: 0.8rem;
+  gap: 0.22rem;
+}
+.caixa-checkout {
+  gap: 0.4rem;
+  padding-top: 0.45rem;
+}
+.caixa-total-block {
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  gap: 0.05rem;
+}
+.caixa-total-label {
+  font-size: 0.72rem;
+}
+.caixa-total-value {
+  font-size: 1.35rem;
+}
+.caixa-itens-count {
+  font-size: 0.75rem;
+}
+.caixa-finalizar-btn {
+  min-height: 2.4rem;
+  font-size: 0.98rem;
+  border-radius: 10px;
+}
+.caixa-status-hint {
+  font-size: 0.72rem;
+}
+
+/* Direita: cards e fontes menores */
+.caixa-right--cart-only {
+  padding: 0.55rem 0.7rem 0.65rem;
+  gap: 0.4rem;
+}
+.caixa-right--cart-only .caixa-cart-head h3 {
+  font-size: 0.95rem;
+}
+.caixa-right--cart-only .caixa-cart-head .btn {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.5rem;
+}
+.caixa-cart-table {
+  gap: 0.28rem;
+}
+.caixa-cart-table-head {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.3rem;
+  grid-template-columns: minmax(0, 1fr) 6.4rem 3.8rem 1.35rem;
+}
+.caixa-cart-item {
+  grid-template-columns: minmax(0, 1fr) 6.4rem 3.8rem 1.35rem;
+  gap: 0.28rem;
+  padding: 0.28rem 0.35rem;
+  border-radius: 8px;
+}
+.caixa-cart-item-name strong {
+  font-size: 0.82rem;
+}
+.caixa-cart-item-unit {
+  font-size: 0.7rem;
+}
+.caixa-cart-item-controls button {
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.caixa-cart-item-controls input {
+  width: 2.35rem;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.1rem;
+  border-radius: 6px;
+}
+.caixa-cart-item-total {
+  font-size: 0.8rem;
+}
+.caixa-cart-item-remove {
+  font-size: 1rem;
+  width: 1.3rem;
+  height: 1.3rem;
+}
+.caixa-cart-empty {
+  font-size: 0.85rem;
+  padding: 0.85rem 0.4rem;
+}
+.caixa-produto-item {
+  padding: 0.45rem 0.55rem;
+  border-radius: 9px;
+}
+.caixa-produto-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+}
+.caixa-produto-item-text strong {
+  font-size: 0.86rem;
+}
+.caixa-produto-meta {
+  font-size: 0.72rem;
+}
+.caixa-produto-preco {
+  font-size: 0.86rem !important;
+}
