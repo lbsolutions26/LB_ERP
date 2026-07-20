@@ -12,7 +12,9 @@ alter table public.empresas
   add column if not exists cor_primaria text default '#165d59',
   add column if not exists pdf_termos text,
   add column if not exists pdf_aviso text,
-  add column if not exists doc_extra_config jsonb;
+  add column if not exists doc_extra_config jsonb,
+  add column if not exists tipo_empresa text default 'oficina',
+  add column if not exists ui_config jsonb default '{}'::jsonb;
 
 comment on column public.empresas.telefone is 'Telefone exibido no PDF e documentos';
 comment on column public.empresas.email is 'E-mail de contato da empresa';

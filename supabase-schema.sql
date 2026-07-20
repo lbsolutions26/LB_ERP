@@ -17,6 +17,8 @@ create table if not exists public.empresas (
   pdf_termos text,
   pdf_aviso text,
   doc_extra_config jsonb,
+  tipo_empresa text default 'oficina',
+  ui_config jsonb default '{}'::jsonb,
   created_at timestamp with time zone not null default now()
 );
 

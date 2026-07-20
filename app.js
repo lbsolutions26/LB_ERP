@@ -253,6 +253,37 @@ const els = {
   empresaCorPrimariaInput: document.getElementById("empresaCorPrimariaInput"),
   empresaConfigAplicarPadraoBtn: document.getElementById("empresaConfigAplicarPadraoBtn"),
   empresaConfigSubmitBtn: document.getElementById("empresaConfigSubmitBtn"),
+  empresaConfigTipoEmpresa: document.getElementById("empresaConfigTipoEmpresa"),
+  empresaConfigHomeSection: document.getElementById("empresaConfigHomeSection"),
+  empresaConfigModoVenda: document.getElementById("empresaConfigModoVenda"),
+  empresaConfigShowOrcamentos: document.getElementById("empresaConfigShowOrcamentos"),
+  empresaConfigClienteObrigatorio: document.getElementById("empresaConfigClienteObrigatorio"),
+  pedidosSectionTitle: document.getElementById("pedidosSectionTitle"),
+  pedidosSectionSubtitle: document.getElementById("pedidosSectionSubtitle"),
+  tabPedidos: document.querySelector("[data-tab-pedidos]"),
+  tabOrcamentos: document.querySelector("[data-tab-orcamentos]"),
+  caixaModal: document.getElementById("caixaModal"),
+  caixaModalTitle: document.getElementById("caixaModalTitle"),
+  caixaModalSubtitle: document.getElementById("caixaModalSubtitle"),
+  closeCaixaModalBtn: document.getElementById("closeCaixaModalBtn"),
+  caixaModoDocumentoBtn: document.getElementById("caixaModoDocumentoBtn"),
+  caixaProdutoSearch: document.getElementById("caixaProdutoSearch"),
+  caixaProdutoResults: document.getElementById("caixaProdutoResults"),
+  caixaClienteId: document.getElementById("caixaClienteId"),
+  caixaClienteSearch: document.getElementById("caixaClienteSearch"),
+  caixaClienteLimparBtn: document.getElementById("caixaClienteLimparBtn"),
+  caixaClienteOptions: document.getElementById("caixaClienteOptions"),
+  caixaClienteOpcionalHint: document.getElementById("caixaClienteOpcionalHint"),
+  caixaCartList: document.getElementById("caixaCartList"),
+  caixaLimparCarrinhoBtn: document.getElementById("caixaLimparCarrinhoBtn"),
+  caixaTotalValue: document.getElementById("caixaTotalValue"),
+  caixaItensCount: document.getElementById("caixaItensCount"),
+  caixaFormaPagamento: document.getElementById("caixaFormaPagamento"),
+  caixaObservacoes: document.getElementById("caixaObservacoes"),
+  caixaFinalizarBtn: document.getElementById("caixaFinalizarBtn"),
+  caixaStatusHint: document.getElementById("caixaStatusHint"),
+  caixaLastSaleBanner: document.getElementById("caixaLastSaleBanner"),
+  caixaShortcutsHint: document.getElementById("caixaShortcutsHint"),
   tabs: Array.from(document.querySelectorAll(".tab")),
   sections: Array.from(document.querySelectorAll(".app-section")),
   clienteForm: document.getElementById("clienteForm"),
@@ -940,6 +971,14 @@ function setSection(sectionName) {
     sectionName = "dashboard";
   }
 
+  // Perfil pode esconder orçamentos — evita cair numa aba oculta.
+  if (sectionName === "orcamentos") {
+    const ui = typeof getEmpresaUiProfile === "function" ? getEmpresaUiProfile() : null;
+    if (ui && ui.show_orcamentos === false) {
+      sectionName = ui.home_section || "pedidos";
+    }
+  }
+
   for (const tab of els.tabs) {
     tab.classList.toggle("active", tab.dataset.section === sectionName);
   }
@@ -947,6 +986,54 @@ function setSection(sectionName) {
     const isTarget = section.id === `section-${sectionName}`;
     section.classList.toggle("hidden", !isTarget);
     section.classList.toggle("active-section", isTarget);
+  }
+}
+
+function getHomeSection() {
+  const ui = typeof getEmpresaUiProfile === "function" ? getEmpresaUiProfile() : null;
+  const home = String(ui?.home_section || "dashboard").trim();
+  const allowed = new Set([
+    "dashboard",
+    "pedidos",
+    "clientes",
+    "produtos",
+    "estoque",
+    "financeiro",
+    "compras",
+    "despesas",
+    "calendario",
+    "configuracoes",
+    "relatorios"
+  ]);
+  if (home === "orcamentos" && ui?.show_orcamentos === false) return "pedidos";
+  return allowed.has(home) ? home : "dashboard";
+}
+
+async function openHomeSection() {
+  const sectionName = getHomeSection();
+  setSection(sectionName);
+  try {
+    if (sectionName === "pedidos") {
+      await ensurePedidosLoaded();
+      renderPedidosSection();
+    } else if (sectionName === "clientes") {
+      await ensureClientesLoaded();
+      renderSelects();
+      renderClientesTable();
+    } else if (sectionName === "produtos") {
+      await ensureProdutosLoaded();
+      await loadEstoqueReservas({ force: false });
+      renderProdutosTable();
+    } else if (sectionName === "estoque") {
+      await ensureEstoqueLoaded();
+    } else if (sectionName === "financeiro") {
+      await ensureContasReceberLoaded();
+      renderContasReceberTable();
+    } else if (sectionName === "dashboard") {
+      // dashboard já vem do refreshAll
+    }
+  } catch (error) {
+    console.warn("Falha ao abrir home section", error);
   }
 }
 
@@ -1265,14 +1352,18 @@ function renderNovoDocumentoProdutoCombo(item) {
 
 function getDocumentoModalConfig(tipo = "pedido") {
   const isOrcamento = tipo === "orcamento";
+  const ui = typeof getEmpresaUiProfile === "function" ? getEmpresaUiProfile() : null;
+  const pedidoLabel = ui?.pedido_label || "Pedido";
+  const defaultPedidoStatus =
+    ui?.default_pedido_status === "fechado" ? "fechado" : "aberto";
   return {
     tipo: isOrcamento ? "orcamento" : "pedido",
-    titulo: isOrcamento ? "Novo Orçamento" : "Novo Pedido",
+    titulo: isOrcamento ? "Novo Orçamento" : `Novo ${pedidoLabel}`,
     subtitulo: isOrcamento
       ? "Monte um orçamento com itens em grade e total calculado automaticamente."
-      : "Monte um pedido com itens em grade. Status Fechado baixa o estoque automaticamente.",
-    submitLabel: isOrcamento ? "Salvar Orçamento" : "Salvar Pedido",
-    defaultStatus: "aberto",
+      : `Monte um ${pedidoLabel.toLowerCase()} com itens em grade. Status Fechado baixa o estoque automaticamente.`,
+    submitLabel: isOrcamento ? "Salvar Orçamento" : `Salvar ${pedidoLabel}`,
+    defaultStatus: isOrcamento ? "aberto" : defaultPedidoStatus,
     statuses: isOrcamento
       ? [
           { value: "aberto", label: "Aberto" },
@@ -3868,6 +3959,500 @@ function closeNovoDocumentoModal() {
   els.novoDocumentoModal.classList.add("hidden");
 }
 
+function isCaixaOpen() {
+  return Boolean(els.caixaModal && !els.caixaModal.classList.contains("hidden"));
+}
+
+function normalizeCaixaSearchText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function getCaixaProdutoCodigo(produto) {
+  return String(
+    produto?.codigo ||
+      produto?.external_id ||
+      produto?.sku ||
+      produto?.codigo_barras ||
+      ""
+  ).trim();
+}
+
+/** Produtos ativos para o caixa (inativos ficam de fora do PDV). */
+function getCaixaProdutosBase() {
+  const list = Array.isArray(state.produtos) ? state.produtos : [];
+  return list.filter((p) => p.ativo !== false);
+}
+
+/**
+ * Match exato para leitor de código de barras / external_id / id.
+ * Retorna o produto ou null.
+ */
+function findCaixaProdutoByBarcode(query) {
+  const raw = String(query || "").trim();
+  if (!raw) return null;
+  const q = normalizeCaixaSearchText(raw);
+  const list = getCaixaProdutosBase();
+  // 1) código externo / barras exato
+  let hit = list.find((p) => normalizeCaixaSearchText(getCaixaProdutoCodigo(p)) === q);
+  if (hit) return hit;
+  // 2) id numérico exato
+  hit = list.find((p) => String(p.id) === raw);
+  if (hit) return hit;
+  return null;
+}
+
+function searchCaixaProdutos(query, limit = 40) {
+  const q = normalizeCaixaSearchText(query);
+  const list = getCaixaProdutosBase();
+  if (!q) {
+    return list.slice(0, Math.min(limit, 24));
+  }
+  const exact = findCaixaProdutoByBarcode(query);
+  if (exact) return [exact];
+
+  const scored = [];
+  for (const produto of list) {
+    const nome = normalizeCaixaSearchText(produto.nome || "");
+    const idStr = String(produto.id || "");
+    const codigo = normalizeCaixaSearchText(getCaixaProdutoCodigo(produto));
+    let score = 0;
+    if (codigo && codigo === q) score = 100;
+    else if (idStr === q) score = 95;
+    else if (codigo && codigo.startsWith(q)) score = 88;
+    else if (codigo && codigo.includes(q)) score = 80;
+    else if (nome.startsWith(q)) score = 70;
+    else if (nome.includes(q)) score = 50;
+    if (score > 0) scored.push({ produto, score });
+  }
+  scored.sort(
+    (a, b) =>
+      b.score - a.score ||
+      String(a.produto.nome || "").localeCompare(String(b.produto.nome || ""), "pt-BR")
+  );
+  return scored.slice(0, limit).map((entry) => entry.produto);
+}
+
+function playCaixaBeep(ok = true) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!playCaixaBeep._ctx) playCaixaBeep._ctx = new Ctx();
+    const ctx = playCaixaBeep._ctx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = ok ? 880 : 220;
+    gain.gain.value = 0.04;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const now = ctx.currentTime;
+    osc.start(now);
+    osc.stop(now + (ok ? 0.07 : 0.16));
+  } catch {
+    // silencioso se o browser bloquear áudio
+  }
+}
+
+function setCaixaLastSaleBanner(documentoId, total) {
+  if (!els.caixaLastSaleBanner) return;
+  const label = getEmpresaUiProfile().pedido_label || "Venda";
+  els.caixaLastSaleBanner.classList.remove("hidden");
+  els.caixaLastSaleBanner.innerHTML = `
+    <strong>${escapeHtml(label)} #${escapeHtml(String(documentoId))} finalizado</strong>
+    <span>${escapeHtml(moeda.format(Number(total || 0)))}</span>
+  `;
+  window.clearTimeout(setCaixaLastSaleBanner._timer);
+  setCaixaLastSaleBanner._timer = window.setTimeout(() => {
+    els.caixaLastSaleBanner?.classList.add("hidden");
+  }, 8000);
+}
+
+function renderCaixaFormaPagamentoSelect() {
+  if (!els.caixaFormaPagamento) return;
+  const current = String(
+    state.novoDocumentoModal?.pagamento?.formaPagamentoId || els.caixaFormaPagamento.value || ""
+  );
+  const options = ['<option value="">Selecione</option>'];
+  for (const forma of state.formasPagamento || []) {
+    const selected = String(forma.id) === current ? " selected" : "";
+    options.push(
+      `<option value="${escapeHtml(forma.id)}"${selected}>${escapeHtml(forma.nome || `Forma #${forma.id}`)}</option>`
+    );
+  }
+  els.caixaFormaPagamento.innerHTML = options.join("");
+  if (current && Array.from(els.caixaFormaPagamento.options).some((o) => o.value === current)) {
+    els.caixaFormaPagamento.value = current;
+  } else if ((state.formasPagamento || []).length === 1) {
+    els.caixaFormaPagamento.value = String(state.formasPagamento[0].id);
+    if (state.novoDocumentoModal?.pagamento) {
+      state.novoDocumentoModal.pagamento.formaPagamentoId = String(state.formasPagamento[0].id);
+    }
+  }
+}
+
+function renderCaixaProdutoResults(query = "") {
+  if (!els.caixaProdutoResults) return;
+  const produtos = searchCaixaProdutos(query);
+  if (!produtos.length) {
+    els.caixaProdutoResults.innerHTML =
+      '<p class="caixa-produto-empty">Nenhum produto encontrado. Cadastre produtos ou refine a busca.</p>';
+    return;
+  }
+  els.caixaProdutoResults.innerHTML = produtos
+    .map((produto) => {
+      const preco = moeda.format(Number(produto.preco || 0));
+      const metaParts = [];
+      const codigo = getCaixaProdutoCodigo(produto);
+      if (codigo) metaParts.push(codigo);
+      metaParts.push(`#${produto.id}`);
+      if (produto.controla_estoque) {
+        metaParts.push(`est. ${Number(produto.estoque || 0)}`);
+      }
+      if (produto.categoria && produto.categoria !== "-") {
+        metaParts.push(String(produto.categoria));
+      }
+      return `
+        <button type="button" class="caixa-produto-item" data-caixa-add-produto="${escapeHtml(produto.id)}">
+          <strong>${escapeHtml(produto.nome || "Produto")}</strong>
+          <span class="caixa-produto-preco">${escapeHtml(preco)}</span>
+          <span class="caixa-produto-meta">${escapeHtml(metaParts.join(" · "))}</span>
+        </button>`;
+    })
+    .join("");
+}
+
+function renderCaixaClienteOptions(query = "") {
+  if (!els.caixaClienteOptions) return;
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) {
+    els.caixaClienteOptions.classList.add("hidden");
+    els.caixaClienteOptions.innerHTML = "";
+    return;
+  }
+  const matches = (state.clientes || [])
+    .filter((c) => String(c.nome || "").toLowerCase().includes(q))
+    .slice(0, 12);
+  if (!matches.length) {
+    els.caixaClienteOptions.innerHTML =
+      '<button type="button" class="caixa-cliente-option" disabled>Nenhum cliente</button>';
+    els.caixaClienteOptions.classList.remove("hidden");
+    return;
+  }
+  els.caixaClienteOptions.innerHTML = matches
+    .map(
+      (c) =>
+        `<button type="button" class="caixa-cliente-option" data-caixa-cliente-id="${escapeHtml(c.id)}">${escapeHtml(c.nome || "")}</button>`
+    )
+    .join("");
+  els.caixaClienteOptions.classList.remove("hidden");
+}
+
+function getCaixaCartItens() {
+  return (state.novoDocumentoModal?.itens || []).filter((item) => isDocumentoItemFilled(item));
+}
+
+function renderCaixaCart() {
+  if (!els.caixaCartList) return;
+  const itens = getCaixaCartItens();
+  if (!itens.length) {
+    els.caixaCartList.innerHTML = '<p class="caixa-cart-empty">Carrinho vazio. Busque e toque em um produto.</p>';
+  } else {
+    els.caixaCartList.innerHTML = itens
+      .map((item) => {
+        const total = moeda.format(getNovoDocumentoItemTotal(item));
+        const qtd = Number(item.quantidade || 0);
+        return `
+          <article class="caixa-cart-item" data-caixa-cart-row="${escapeHtml(item.rowId)}">
+            <div class="caixa-cart-item-name">${escapeHtml(item.descricao || "Item")}</div>
+            <div class="caixa-cart-item-controls">
+              <button type="button" data-caixa-qty-dec="${escapeHtml(item.rowId)}" aria-label="Diminuir">−</button>
+              <input type="number" min="0.001" step="any" value="${escapeHtml(String(qtd))}" data-caixa-qty="${escapeHtml(item.rowId)}" />
+              <button type="button" data-caixa-qty-inc="${escapeHtml(item.rowId)}" aria-label="Aumentar">+</button>
+            </div>
+            <strong class="caixa-cart-item-total">${escapeHtml(total)}</strong>
+            <button type="button" class="caixa-cart-item-remove" data-caixa-remove="${escapeHtml(item.rowId)}">Remover</button>
+          </article>`;
+      })
+      .join("");
+  }
+
+  const subtotal = itens.reduce((sum, item) => sum + getNovoDocumentoItemTotal(item), 0);
+  const count = itens.length;
+  if (els.caixaTotalValue) els.caixaTotalValue.textContent = moeda.format(subtotal);
+  if (els.caixaItensCount) {
+    els.caixaItensCount.textContent = `${count} item${count === 1 ? "" : "s"}`;
+  }
+  if (els.caixaFinalizarBtn) {
+    els.caixaFinalizarBtn.disabled = count === 0 || state.novoDocumentoSaving;
+  }
+}
+
+function renderCaixaModal() {
+  if (!els.caixaModal) return;
+  const ui = getEmpresaUiProfile();
+  const pedidoLabel = ui.pedido_label || "Venda";
+  if (els.caixaModalTitle) els.caixaModalTitle.textContent = `Caixa · ${pedidoLabel}`;
+  if (els.caixaModalSubtitle) {
+    els.caixaModalSubtitle.textContent = "Busque o produto, confira o carrinho e finalize.";
+  }
+  if (els.caixaObservacoes && state.novoDocumentoModal) {
+    els.caixaObservacoes.value = state.novoDocumentoModal.observacoes || "";
+  }
+  if (els.caixaClienteId && state.novoDocumentoModal) {
+    els.caixaClienteId.value = state.novoDocumentoModal.clienteId || "";
+  }
+  if (els.caixaClienteSearch && state.novoDocumentoModal) {
+    const cliente = (state.clientes || []).find(
+      (c) => String(c.id) === String(state.novoDocumentoModal.clienteId || "")
+    );
+    if (cliente) {
+      els.caixaClienteSearch.value = cliente.nome || "";
+    } else if (!state.novoDocumentoModal.clienteId) {
+      // mantém o que o usuário digitou se ainda não selecionou
+    }
+  }
+  renderCaixaFormaPagamentoSelect();
+  renderCaixaProdutoResults(els.caixaProdutoSearch?.value || "");
+  renderCaixaCart();
+  applyEmpresaUiProfile();
+}
+
+function openCaixaModal({ reset = true } = {}) {
+  if (!els.caixaModal) return;
+  if (reset) {
+    state.novoDocumentoModal = createDocumentoDraft("pedido");
+    state.novoDocumentoModal.itens = [];
+    const ui = getEmpresaUiProfile();
+    state.novoDocumentoModal.status = ui.default_pedido_status || "fechado";
+    state.novoDocumentoModal.pagamento = {
+      ...createPagamentoDraft(),
+      modo: "avista",
+      parcelas: 1,
+      entrada: 0
+    };
+    if (els.caixaClienteSearch) els.caixaClienteSearch.value = "";
+    if (els.caixaClienteId) els.caixaClienteId.value = "";
+    if (els.caixaObservacoes) els.caixaObservacoes.value = "";
+    if (els.caixaProdutoSearch) els.caixaProdutoSearch.value = "";
+    if (els.caixaClienteOptions) {
+      els.caixaClienteOptions.classList.add("hidden");
+      els.caixaClienteOptions.innerHTML = "";
+    }
+  }
+  closeNovoDocumentoModal();
+  els.caixaModal.classList.remove("hidden");
+  document.body.classList.add("caixa-open");
+  renderCaixaModal();
+  window.requestAnimationFrame(() => {
+    els.caixaProdutoSearch?.focus();
+    els.caixaProdutoSearch?.select?.();
+  });
+}
+
+function closeCaixaModal() {
+  if (!els.caixaModal) return;
+  els.caixaModal.classList.add("hidden");
+  document.body.classList.remove("caixa-open");
+  if (els.caixaClienteOptions) {
+    els.caixaClienteOptions.classList.add("hidden");
+  }
+}
+
+function addProdutoToCaixa(produtoId, { qty = 1, silent = false } = {}) {
+  const produto = (state.produtos || []).find((p) => String(p.id) === String(produtoId));
+  if (!produto) {
+    if (!silent) {
+      showToast("Produto não encontrado", "error");
+      playCaixaBeep(false);
+    }
+    return false;
+  }
+  if (produto.ativo === false) {
+    showToast("Produto inativo", "error");
+    playCaixaBeep(false);
+    return false;
+  }
+  const addQty = Math.max(0.001, Number(qty) || 1);
+  const items = state.novoDocumentoModal.itens || (state.novoDocumentoModal.itens = []);
+  const existing = items.find(
+    (item) => isDocumentoItemFilled(item) && String(item.produtoId) === String(produto.id)
+  );
+  if (existing) {
+    existing.quantidade = Number(existing.quantidade || 0) + addQty;
+  } else {
+    const row = createDocumentoDraftItem(produto);
+    row.quantidade = addQty;
+    items.push(row);
+  }
+  if (els.caixaProdutoSearch) {
+    els.caixaProdutoSearch.value = "";
+  }
+  renderCaixaProdutoResults("");
+  renderCaixaCart();
+  playCaixaBeep(true);
+  window.requestAnimationFrame(() => els.caixaProdutoSearch?.focus());
+  return true;
+}
+
+/**
+ * Interpreta Enter no campo de busca do caixa.
+ * Suporta: código de barras, id, nome, e quantidade com * (ex.: 2*café ou café*2).
+ */
+function handleCaixaSearchSubmit() {
+  const raw = String(els.caixaProdutoSearch?.value || "").trim();
+  if (!raw) {
+    playCaixaBeep(false);
+    return;
+  }
+
+  let qty = 1;
+  let term = raw;
+  // padrões: 2*termo | termo*2 | 2x termo
+  const starLeft = raw.match(/^(\d+(?:[.,]\d+)?)\s*[\*xX]\s*(.+)$/);
+  const starRight = raw.match(/^(.+?)\s*[\*xX]\s*(\d+(?:[.,]\d+)?)$/);
+  if (starLeft) {
+    qty = Number(String(starLeft[1]).replace(",", "."));
+    term = starLeft[2].trim();
+  } else if (starRight) {
+    term = starRight[1].trim();
+    qty = Number(String(starRight[2]).replace(",", "."));
+  }
+  if (!Number.isFinite(qty) || qty <= 0) qty = 1;
+
+  const barcodeHit = findCaixaProdutoByBarcode(term);
+  if (barcodeHit) {
+    addProdutoToCaixa(barcodeHit.id, { qty });
+    return;
+  }
+
+  const produtos = searchCaixaProdutos(term);
+  if (produtos.length === 1) {
+    addProdutoToCaixa(produtos[0].id, { qty });
+    return;
+  }
+  if (produtos.length > 1) {
+    // Com leitor, se não for exato, mostra lista; com um termo longo adiciona o top.
+    if (/^\d{6,}$/.test(term)) {
+      showToast("Código não encontrado no cadastro", "error");
+      playCaixaBeep(false);
+      return;
+    }
+    renderCaixaProdutoResults(term);
+    showToast(`${produtos.length} produtos — escolha na lista ou refine a busca`);
+    return;
+  }
+  showToast("Nenhum produto encontrado", "error");
+  playCaixaBeep(false);
+}
+
+function updateCaixaItemQty(rowId, quantity) {
+  const item = (state.novoDocumentoModal.itens || []).find((entry) => entry.rowId === rowId);
+  if (!item) return;
+  const qtd = Number(quantity);
+  if (!Number.isFinite(qtd) || qtd <= 0) {
+    state.novoDocumentoModal.itens = state.novoDocumentoModal.itens.filter((entry) => entry.rowId !== rowId);
+  } else {
+    item.quantidade = qtd;
+  }
+  renderCaixaCart();
+}
+
+function syncCaixaDraftFromUi() {
+  const draft = state.novoDocumentoModal;
+  if (!draft) return draft;
+  draft.tipo = "pedido";
+  const ui = getEmpresaUiProfile();
+  draft.status = ui.default_pedido_status || "fechado";
+  draft.observacoes = String(els.caixaObservacoes?.value || "").trim();
+  draft.dataEmissao = formatDateInput(new Date());
+  draft.clienteId = String(els.caixaClienteId?.value || draft.clienteId || "").trim();
+  draft.pagamento = {
+    ...createPagamentoDraft(),
+    ...(draft.pagamento || {}),
+    modo: "avista",
+    parcelas: 1,
+    entrada: 0,
+    formaPagamentoId: String(els.caixaFormaPagamento?.value || draft.pagamento?.formaPagamentoId || "")
+  };
+  // Remove linhas vazias do carrinho
+  draft.itens = getCaixaCartItens();
+  draft.parcelasEditadas = null;
+  return draft;
+}
+
+async function finalizeCaixaVenda() {
+  if (state.novoDocumentoSaving) return;
+  syncCaixaDraftFromUi();
+  const ui = getEmpresaUiProfile();
+  const itens = getCaixaCartItens();
+  if (!itens.length) {
+    showToast("Adicione ao menos um produto no carrinho.", "error");
+    return;
+  }
+  if (ui.cliente_obrigatorio && !state.novoDocumentoModal.clienteId) {
+    showToast("Selecione o cliente para finalizar.", "error");
+    els.caixaClienteSearch?.focus();
+    return;
+  }
+  if (!state.novoDocumentoModal.pagamento?.formaPagamentoId) {
+    showToast("Selecione a forma de pagamento.", "error");
+    els.caixaFormaPagamento?.focus();
+    return;
+  }
+
+  // Reutiliza o salvamento do documento (pedido), com flags de origem caixa.
+  const fakeEvent = { preventDefault() {} };
+  // Marca no form (quando existir) para saveNovoDocumento ler status/cliente.
+  if (els.novoDocumentoClienteId) {
+    els.novoDocumentoClienteId.value = state.novoDocumentoModal.clienteId || "";
+  }
+  if (els.novoDocumentoStatusSelect) {
+    // garante option
+    const status = state.novoDocumentoModal.status || "fechado";
+    if (![...els.novoDocumentoStatusSelect.options].some((o) => o.value === status)) {
+      const opt = document.createElement("option");
+      opt.value = status;
+      opt.textContent = status;
+      els.novoDocumentoStatusSelect.appendChild(opt);
+    }
+    els.novoDocumentoStatusSelect.value = status;
+  }
+  if (els.novoDocumentoDataEmissao) {
+    els.novoDocumentoDataEmissao.value = state.novoDocumentoModal.dataEmissao;
+  }
+  if (els.novoDocumentoObservacoes) {
+    els.novoDocumentoObservacoes.value = state.novoDocumentoModal.observacoes || "";
+  }
+  if (els.novoDocumentoPagamentoModo) els.novoDocumentoPagamentoModo.value = "avista";
+  if (els.novoDocumentoPagamentoForma) {
+    els.novoDocumentoPagamentoForma.value = state.novoDocumentoModal.pagamento.formaPagamentoId || "";
+  }
+
+  state.novoDocumentoModal.rawPayloadBase = {
+    ...(state.novoDocumentoModal.rawPayloadBase || {}),
+    source: "caixa-pdv",
+    modo_venda: "caixa"
+  };
+
+  if (els.caixaFinalizarBtn) {
+    els.caixaFinalizarBtn.disabled = true;
+    els.caixaFinalizarBtn.textContent = "Finalizando...";
+  }
+  try {
+    await saveNovoDocumento(fakeEvent, { fromCaixa: true });
+  } finally {
+    if (els.caixaFinalizarBtn) {
+      const label = getEmpresaUiProfile().pedido_label || "Venda";
+      els.caixaFinalizarBtn.textContent = `Finalizar ${String(label).toLowerCase()}`;
+      els.caixaFinalizarBtn.disabled = getCaixaCartItens().length === 0;
+    }
+  }
+}
+
 function openNovoClienteRapidoModal() {
   if (!els.novoClienteRapidoModal) return;
   els.novoClienteRapidoModal.classList.remove("hidden");
@@ -6362,33 +6947,67 @@ async function generateDocumentoOrcamentoPdf(options = {}) {
   }
 }
 
-async function saveNovoDocumento(event) {
-  event.preventDefault();
+async function saveNovoDocumento(event, options = {}) {
+  event?.preventDefault?.();
   // Trava sincrona: clique duplo / Enter repetido nao pode abrir 2 inserts em paralelo.
   if (state.novoDocumentoSaving) return;
   state.novoDocumentoSaving = true;
 
-  const submitBtn = els.novoDocumentoSubmitBtn;
+  const fromCaixa = Boolean(options.fromCaixa) || isCaixaOpen();
+  if (fromCaixa) {
+    syncCaixaDraftFromUi();
+  } else {
+    syncNovoDocumentoDraftFromForm();
+  }
+
+  const submitBtn = fromCaixa ? els.caixaFinalizarBtn : els.novoDocumentoSubmitBtn;
   const submitLabelOriginal = submitBtn?.textContent || "Salvar";
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.textContent = "Salvando...";
+    submitBtn.textContent = fromCaixa ? "Finalizando..." : "Salvando...";
   }
 
   try {
     const draft = state.novoDocumentoModal;
     const isEdit = Boolean(draft.documentoId);
-    const formData = new FormData(els.novoDocumentoForm);
-    const clienteIdRaw = Number(formData.get("cliente_id"));
+    const ui = getEmpresaUiProfile();
+    const formData = els.novoDocumentoForm ? new FormData(els.novoDocumentoForm) : null;
+    const clienteIdFromDraft = Number(draft.clienteId);
+    const clienteIdFromForm = formData ? Number(formData.get("cliente_id")) : NaN;
+    const clienteIdRaw = Number.isFinite(clienteIdFromDraft) && clienteIdFromDraft > 0
+      ? clienteIdFromDraft
+      : clienteIdFromForm;
     const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
-    const status = String(formData.get("status") || draft.status || "aberto");
-    const observacoes = String(formData.get("observacoes") || "").trim();
-    const dataEmissaoInput = String(formData.get("data_emissao") || draft.dataEmissao || "").trim();
+    const status = String(
+      draft.status ||
+        (formData ? formData.get("status") : "") ||
+        (fromCaixa ? ui.default_pedido_status : "aberto") ||
+        "aberto"
+    );
+    const observacoes = String(
+      draft.observacoes != null
+        ? draft.observacoes
+        : formData
+          ? formData.get("observacoes")
+          : ""
+    ).trim();
+    const dataEmissaoInput = String(
+      draft.dataEmissao || (formData ? formData.get("data_emissao") : "") || ""
+    ).trim();
     const itens = getDocumentoItensPayload();
     const pagamentoState = getNovoDocumentoPagamentoState();
 
     if (!itens.length) {
       throw new Error("Adicione ao menos um item antes de salvar.");
+    }
+
+    if (!clienteId && (draft.tipo === "orcamento" || ui.cliente_obrigatorio)) {
+      throw new Error("Selecione um cliente antes de salvar.");
+    }
+
+    // No caixa, forma de pagamento é obrigatória (recebimento à vista).
+    if (fromCaixa && draft.tipo === "pedido" && !pagamentoState.formaPagamentoId) {
+      throw new Error("Selecione a forma de pagamento.");
     }
 
     const dataEmissaoIso = dataEmissaoInput
@@ -6405,7 +7024,11 @@ async function saveNovoDocumento(event) {
 
     const rawPayload = {
       ...rawPayloadBase,
-      source: draft.convertidoDeOrcamentoId ? "conversao-orcamento" : "novo-documento-modal",
+      source: draft.convertidoDeOrcamentoId
+        ? "conversao-orcamento"
+        : fromCaixa
+          ? "caixa-pdv"
+          : "novo-documento-modal",
       itens: itens.length,
       pagamento: pagamentoState
     };
@@ -6580,13 +7203,37 @@ async function saveNovoDocumento(event) {
       }
     }
 
-    closeNovoDocumentoModal();
-    state.novoDocumentoModal = createDocumentoDraft("pedido");
-    if (els.novoDocumentoClienteSearch) {
-      els.novoDocumentoClienteSearch.value = "";
+    if (fromCaixa) {
+      const vendaTotal = subtotal;
+      // Mantém o caixa aberto para a próxima venda.
+      state.novoDocumentoModal = createDocumentoDraft("pedido");
+      state.novoDocumentoModal.itens = [];
+      state.novoDocumentoModal.status = getEmpresaUiProfile().default_pedido_status || "fechado";
+      state.novoDocumentoModal.pagamento = {
+        ...createPagamentoDraft(),
+        modo: "avista",
+        parcelas: 1,
+        formaPagamentoId: String(els.caixaFormaPagamento?.value || "")
+      };
+      if (els.caixaClienteSearch) els.caixaClienteSearch.value = "";
+      if (els.caixaClienteId) els.caixaClienteId.value = "";
+      if (els.caixaObservacoes) els.caixaObservacoes.value = "";
+      if (els.caixaProdutoSearch) els.caixaProdutoSearch.value = "";
+      renderCaixaModal();
+      setCaixaLastSaleBanner(documentoId, vendaTotal);
+      playCaixaBeep(true);
+      window.requestAnimationFrame(() => els.caixaProdutoSearch?.focus());
+    } else {
+      closeNovoDocumentoModal();
+      state.novoDocumentoModal = createDocumentoDraft("pedido");
+      if (els.novoDocumentoClienteSearch) {
+        els.novoDocumentoClienteSearch.value = "";
+      }
     }
+
+    const pedidoLabel = getEmpresaUiProfile().pedido_label || "Pedido";
     if (conversaoMsg) {
-      showToast(`Pedido #${documentoId} criado a partir do orçamento.${conversaoMsg}`);
+      showToast(`${pedidoLabel} #${documentoId} criado a partir do orçamento.${conversaoMsg}`);
     } else {
       showToast(
         draft.tipo === "orcamento"
@@ -6594,16 +7241,25 @@ async function saveNovoDocumento(event) {
             ? "Orcamento atualizado"
             : "Orcamento salvo"
           : isEdit
-            ? "Pedido atualizado"
-            : "Pedido salvo"
+            ? `${pedidoLabel} atualizado`
+            : fromCaixa
+              ? `${pedidoLabel} #${documentoId} finalizado`
+              : `${pedidoLabel} salvo`
       );
     }
     await refreshAll();
+  } catch (error) {
+    console.error(error);
+    showToast(error?.message || "Erro ao salvar", "error");
   } finally {
     state.novoDocumentoSaving = false;
     if (submitBtn) {
       submitBtn.disabled = false;
-      if (els.novoDocumentoModal && !els.novoDocumentoModal.classList.contains("hidden")) {
+      if (fromCaixa) {
+        const label = getEmpresaUiProfile().pedido_label || "Venda";
+        submitBtn.textContent = `Finalizar ${String(label).toLowerCase()}`;
+        submitBtn.disabled = getCaixaCartItens().length === 0;
+      } else if (els.novoDocumentoModal && !els.novoDocumentoModal.classList.contains("hidden")) {
         const config = getDocumentoModalConfig(state.novoDocumentoModal.tipo);
         submitBtn.textContent = config?.submitLabel || submitLabelOriginal;
       } else {
@@ -7080,15 +7736,109 @@ const EMPRESA_CONFIG_DEFAULTS = {
     "1 - Condição de Pagamento\n2 - Orçamento válido por 5 dias\n3 - Após finalizado o serviço, o prazo de retirada é de no MÁXIMO 5 DIAS",
   pdf_aviso:
     "Atenção, cliente! Conforme acordo prévio, caso você não retire a bicicleta consertada e efetue o pagamento do orçamento autorizado dentro de 30 dias, a bicicleta será vendida para ressarcimento dos custos à oficina. Por favor, verifique o status do conserto e regularize sua situação conosco",
-  doc_extra_config: cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET)
+  doc_extra_config: cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET),
+  tipo_empresa: "oficina",
+  ui_config: {}
+};
+
+/** Presets de experiência por tipo de empresa (home, menu, modo de venda). */
+const EMPRESA_TIPO_PRESETS = {
+  oficina: {
+    tipo_empresa: "oficina",
+    home_section: "dashboard",
+    modo_venda: "documento",
+    show_orcamentos: true,
+    pedido_label: "Pedido",
+    pedidos_label: "Pedidos",
+    default_pedido_status: "aberto",
+    cliente_obrigatorio: true
+  },
+  mercadinho: {
+    tipo_empresa: "mercadinho",
+    home_section: "pedidos",
+    modo_venda: "caixa",
+    show_orcamentos: false,
+    pedido_label: "Venda",
+    pedidos_label: "Vendas",
+    default_pedido_status: "fechado",
+    cliente_obrigatorio: false
+  },
+  generico: {
+    tipo_empresa: "generico",
+    home_section: "dashboard",
+    modo_venda: "documento",
+    show_orcamentos: true,
+    pedido_label: "Pedido",
+    pedidos_label: "Pedidos",
+    default_pedido_status: "aberto",
+    cliente_obrigatorio: true
+  }
 };
 
 const EMPRESA_CONFIG_SELECT_FULL =
-  "empresa_id, role, empresas(id, nome, telefone, email, endereco, bairro, cidade, uf, logo_path, cor_primaria, pdf_termos, pdf_aviso, doc_extra_config)";
+  "empresa_id, role, empresas(id, nome, telefone, email, endereco, bairro, cidade, uf, logo_path, cor_primaria, pdf_termos, pdf_aviso, doc_extra_config, tipo_empresa, ui_config)";
 const EMPRESA_CONFIG_SELECT_BASIC = "empresa_id, role, empresas(id, nome)";
 
-function createEmptyEmpresaConfig(overrides = {}) {
+function normalizeTipoEmpresa(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "mercadinho" || raw === "mercado" || raw === "varejo" || raw === "pdv") {
+    return "mercadinho";
+  }
+  if (raw === "generico" || raw === "genérico" || raw === "geral") {
+    return "generico";
+  }
+  return "oficina";
+}
+
+function getTipoEmpresaPreset(tipo) {
+  const key = normalizeTipoEmpresa(tipo);
+  return { ...(EMPRESA_TIPO_PRESETS[key] || EMPRESA_TIPO_PRESETS.oficina) };
+}
+
+function normalizeUiConfig(raw, tipoEmpresa = "oficina") {
+  const preset = getTipoEmpresaPreset(tipoEmpresa);
+  const src = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const home = String(src.home_section != null ? src.home_section : preset.home_section).trim();
+  const modo = String(src.modo_venda != null ? src.modo_venda : preset.modo_venda).trim().toLowerCase();
+  const showOrc =
+    src.show_orcamentos != null ? Boolean(src.show_orcamentos) : Boolean(preset.show_orcamentos);
+  const clienteObr =
+    src.cliente_obrigatorio != null
+      ? Boolean(src.cliente_obrigatorio)
+      : Boolean(preset.cliente_obrigatorio);
+  const defaultStatus =
+    String(src.default_pedido_status != null ? src.default_pedido_status : preset.default_pedido_status)
+      .trim()
+      .toLowerCase() === "fechado"
+      ? "fechado"
+      : "aberto";
+
   return {
+    home_section: home || preset.home_section,
+    modo_venda: modo === "caixa" ? "caixa" : "documento",
+    show_orcamentos: showOrc,
+    pedido_label: String(src.pedido_label != null ? src.pedido_label : preset.pedido_label).trim() || preset.pedido_label,
+    pedidos_label:
+      String(src.pedidos_label != null ? src.pedidos_label : preset.pedidos_label).trim() ||
+      preset.pedidos_label,
+    default_pedido_status: defaultStatus,
+    cliente_obrigatorio: clienteObr
+  };
+}
+
+function getEmpresaUiProfile(config = null) {
+  const cfg = config || (typeof getEmpresaConfig === "function" ? getEmpresaConfig() : null) || {};
+  const tipo = normalizeTipoEmpresa(cfg.tipo_empresa);
+  const ui = normalizeUiConfig(cfg.ui_config, tipo);
+  return {
+    tipo_empresa: tipo,
+    ...ui
+  };
+}
+
+function createEmptyEmpresaConfig(overrides = {}) {
+  const tipo = normalizeTipoEmpresa(overrides.tipo_empresa || "oficina");
+  const base = {
     nome: "",
     telefone: "",
     email: "",
@@ -7101,13 +7851,23 @@ function createEmptyEmpresaConfig(overrides = {}) {
     pdf_termos: "",
     pdf_aviso: "",
     doc_extra_config: cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET),
-    ...overrides
+    tipo_empresa: tipo,
+    ui_config: getTipoEmpresaPreset(tipo)
   };
+  const merged = { ...base, ...overrides };
+  merged.tipo_empresa = normalizeTipoEmpresa(merged.tipo_empresa);
+  merged.ui_config = normalizeUiConfig(merged.ui_config, merged.tipo_empresa);
+  return merged;
 }
 
 function normalizeEmpresaConfig(raw, fallbackNome = "") {
   const src = raw && typeof raw === "object" ? raw : {};
   const cor = String(src.cor_primaria || "").trim();
+  const tipo = normalizeTipoEmpresa(src.tipo_empresa);
+  // Se ui_config veio vazio/ausente, usa 100% o preset do tipo.
+  const hasUi =
+    src.ui_config && typeof src.ui_config === "object" && Object.keys(src.ui_config).length > 0;
+  const ui = normalizeUiConfig(hasUi ? src.ui_config : getTipoEmpresaPreset(tipo), tipo);
   return createEmptyEmpresaConfig({
     nome: String(src.nome || fallbackNome || "").trim(),
     telefone: String(src.telefone || "").trim(),
@@ -7122,8 +7882,67 @@ function normalizeEmpresaConfig(raw, fallbackNome = "") {
     pdf_aviso: String(src.pdf_aviso || "").trim(),
     doc_extra_config: normalizeDocExtraConfig(
       src.doc_extra_config != null ? src.doc_extra_config : DOC_EXTRA_BIKE_PRESET
-    )
+    ),
+    tipo_empresa: tipo,
+    ui_config: ui
   });
+}
+
+function applyEmpresaUiProfile(config = null) {
+  const ui = getEmpresaUiProfile(config);
+  const pedidosLabel = ui.pedidos_label || "Pedidos";
+  const pedidoLabel = ui.pedido_label || "Pedido";
+
+  if (els.tabPedidos) {
+    els.tabPedidos.textContent = pedidosLabel;
+  }
+  if (els.tabOrcamentos) {
+    els.tabOrcamentos.classList.toggle("hidden", ui.show_orcamentos === false);
+  }
+  if (els.pedidosSectionTitle) {
+    els.pedidosSectionTitle.textContent = pedidosLabel;
+  }
+  if (els.pedidosSectionSubtitle) {
+    if (ui.modo_venda === "caixa") {
+      els.pedidosSectionSubtitle.textContent =
+        "Caixa rápido para o balcão. Use “Nova venda” para buscar produtos e finalizar em segundos.";
+    } else {
+      els.pedidosSectionSubtitle.textContent =
+        "Crie pedidos e orçamentos com itens em grade, subtotal automático e salvamento mais claro.";
+    }
+  }
+  if (els.openPedidoModalBtn) {
+    els.openPedidoModalBtn.textContent =
+      ui.modo_venda === "caixa" ? `Nova ${pedidoLabel}` : `Novo ${pedidoLabel}`;
+  }
+  if (els.fabNovoPedidoBtn) {
+    const label = ui.modo_venda === "caixa" ? `Nova ${pedidoLabel}` : `Novo ${pedidoLabel}`;
+    els.fabNovoPedidoBtn.title = label;
+    els.fabNovoPedidoBtn.setAttribute("aria-label", label);
+  }
+
+  // Switch orçamento no modal de documento
+  for (const btn of Array.from(document.querySelectorAll('[data-documento-tipo="orcamento"]'))) {
+    btn.classList.toggle("hidden", ui.show_orcamentos === false);
+  }
+  for (const btn of Array.from(document.querySelectorAll('[data-documento-tipo="pedido"]'))) {
+    if (btn.classList.contains("documento-switch-btn")) {
+      btn.textContent = pedidoLabel;
+    }
+  }
+
+  if (els.caixaClienteOpcionalHint) {
+    els.caixaClienteOpcionalHint.textContent = ui.cliente_obrigatorio ? "(obrigatório)" : "(opcional)";
+  }
+  if (els.caixaFinalizarBtn) {
+    els.caixaFinalizarBtn.textContent = `Finalizar ${pedidoLabel.toLowerCase()}`;
+  }
+  if (els.caixaStatusHint) {
+    els.caixaStatusHint.textContent =
+      ui.default_pedido_status === "fechado"
+        ? `${pedidoLabel} fecha o estoque e registra o recebimento à vista.`
+        : `${pedidoLabel} salvo com status aberto (ajuste se precisar baixar estoque).`;
+  }
 }
 
 /** Estado temporário do editor de campos extras na tela de configurações. */
@@ -7325,6 +8144,16 @@ function fillEmpresaConfigForm(config) {
   setVal("cor_primaria", cfg.cor_primaria || "#165d59");
   setVal("pdf_termos", cfg.pdf_termos);
   setVal("pdf_aviso", cfg.pdf_aviso);
+  setVal("tipo_empresa", cfg.tipo_empresa || "oficina");
+  const ui = getEmpresaUiProfile(cfg);
+  setVal("home_section", ui.home_section || "dashboard");
+  setVal("modo_venda", ui.modo_venda || "documento");
+  if (els.empresaConfigShowOrcamentos) {
+    els.empresaConfigShowOrcamentos.checked = ui.show_orcamentos !== false;
+  }
+  if (els.empresaConfigClienteObrigatorio) {
+    els.empresaConfigClienteObrigatorio.checked = ui.cliente_obrigatorio !== false;
+  }
   if (els.empresaLogoPathInput) els.empresaLogoPathInput.value = cfg.logo_path || "";
   if (els.empresaCorPrimariaInput) els.empresaCorPrimariaInput.value = cfg.cor_primaria || "#165d59";
   renderDocExtraCamposEditor(cfg.doc_extra_config);
@@ -7334,6 +8163,20 @@ function fillEmpresaConfigForm(config) {
 function readEmpresaConfigFromForm() {
   if (!els.empresaConfigForm) return getEmpresaConfig();
   const fd = new FormData(els.empresaConfigForm);
+  const tipo = normalizeTipoEmpresa(fd.get("tipo_empresa"));
+  const preset = getTipoEmpresaPreset(tipo);
+  const ui_config = normalizeUiConfig(
+    {
+      home_section: fd.get("home_section") || preset.home_section,
+      modo_venda: fd.get("modo_venda") || preset.modo_venda,
+      show_orcamentos: Boolean(els.empresaConfigShowOrcamentos?.checked),
+      cliente_obrigatorio: Boolean(els.empresaConfigClienteObrigatorio?.checked),
+      pedido_label: preset.pedido_label,
+      pedidos_label: preset.pedidos_label,
+      default_pedido_status: preset.default_pedido_status
+    },
+    tipo
+  );
   return normalizeEmpresaConfig({
     nome: fd.get("nome"),
     telefone: fd.get("telefone"),
@@ -7346,8 +8189,23 @@ function readEmpresaConfigFromForm() {
     cor_primaria: fd.get("cor_primaria") || els.empresaCorPrimariaInput?.value || "#165d59",
     pdf_termos: fd.get("pdf_termos"),
     pdf_aviso: fd.get("pdf_aviso"),
-    doc_extra_config: readDocExtraEditorFromDom()
+    doc_extra_config: readDocExtraEditorFromDom(),
+    tipo_empresa: tipo,
+    ui_config
   }, state.empresaNome);
+}
+
+function applyEmpresaTipoPresetToForm(tipo) {
+  const preset = getTipoEmpresaPreset(tipo);
+  if (els.empresaConfigTipoEmpresa) els.empresaConfigTipoEmpresa.value = preset.tipo_empresa;
+  if (els.empresaConfigHomeSection) els.empresaConfigHomeSection.value = preset.home_section;
+  if (els.empresaConfigModoVenda) els.empresaConfigModoVenda.value = preset.modo_venda;
+  if (els.empresaConfigShowOrcamentos) {
+    els.empresaConfigShowOrcamentos.checked = preset.show_orcamentos !== false;
+  }
+  if (els.empresaConfigClienteObrigatorio) {
+    els.empresaConfigClienteObrigatorio.checked = preset.cliente_obrigatorio !== false;
+  }
 }
 
 function applyEmpresaConfigPadraoGuPedal() {
@@ -7356,7 +8214,9 @@ function applyEmpresaConfigPadraoGuPedal() {
     ...EMPRESA_CONFIG_DEFAULTS,
     logo_path: current.logo_path || "",
     cor_primaria: current.cor_primaria || EMPRESA_CONFIG_DEFAULTS.cor_primaria,
-    doc_extra_config: cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET)
+    doc_extra_config: cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET),
+    tipo_empresa: "oficina",
+    ui_config: getTipoEmpresaPreset("oficina")
   });
   showToast("Modelo GuPedal preenchido. Revise e salve.");
 }
@@ -7459,7 +8319,9 @@ async function saveEmpresaConfig(event) {
     cor_primaria: cfg.cor_primaria || "#165d59",
     pdf_termos: cfg.pdf_termos || null,
     pdf_aviso: cfg.pdf_aviso || null,
-    doc_extra_config: cfg.doc_extra_config || cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET)
+    doc_extra_config: cfg.doc_extra_config || cloneDocExtraConfig(DOC_EXTRA_BIKE_PRESET),
+    tipo_empresa: cfg.tipo_empresa || "oficina",
+    ui_config: cfg.ui_config || getTipoEmpresaPreset(cfg.tipo_empresa || "oficina")
   };
 
   const submitBtn = els.empresaConfigSubmitBtn;
@@ -7470,16 +8332,37 @@ async function saveEmpresaConfig(event) {
   }
 
   try {
-    const { error } = await supabaseClient
+    let { error } = await supabaseClient
       .from("empresas")
       .update(payload)
       .eq("id", state.empresaId);
+
+    // Ambiente sem migration de perfil: salva o restante e avisa.
+    if (error && /column|does not exist|schema cache|tipo_empresa|ui_config/i.test(String(error.message || ""))) {
+      const { tipo_empresa, ui_config, ...legacyPayload } = payload;
+      ({ error } = await supabaseClient
+        .from("empresas")
+        .update(legacyPayload)
+        .eq("id", state.empresaId));
+      if (error) throw error;
+      state.empresaConfig = cfg;
+      state.empresaNome = cfg.nome;
+      fillEmpresaConfigForm(cfg);
+      updateAppBrandChrome();
+      applyEmpresaUiProfile(cfg);
+      showToast(
+        "Configurações salvas (rode supabase/add-empresa-ui-profile.sql para gravar tipo/home/caixa no banco).",
+        "error"
+      );
+      return;
+    }
     if (error) throw error;
 
     state.empresaConfig = cfg;
     state.empresaNome = cfg.nome;
     fillEmpresaConfigForm(cfg);
     updateAppBrandChrome();
+    applyEmpresaUiProfile(cfg);
     showToast("Configurações da empresa salvas");
   } finally {
     if (submitBtn) {
@@ -7532,6 +8415,7 @@ async function loadEmpresaContext() {
   state.empresaConfig = normalizeEmpresaConfig(empresaRow, state.empresaNome);
   fillEmpresaConfigForm(state.empresaConfig);
   updateAppBrandChrome();
+  applyEmpresaUiProfile(state.empresaConfig);
   updateOwnerUsersVisibility();
 }
 
@@ -7622,7 +8506,7 @@ async function loadProdutos() {
   const { data: catalogData, error: catalogError } = await supabaseClient
     .from("produto_catalogo")
     .select(
-      "id, nome, descricao, imagem_path, preco_venda, custo, margem_percentual, preco_formacao, estoque_atual, estoque_minimo, estoque_maximo, lead_time_dias, classe_abc, classe_abc_atualizado_em, ativo, controla_estoque, categoria:produto_categorias(nome)"
+      "id, nome, descricao, external_id, imagem_path, preco_venda, custo, margem_percentual, preco_formacao, estoque_atual, estoque_minimo, estoque_maximo, lead_time_dias, classe_abc, classe_abc_atualizado_em, ativo, controla_estoque, categoria:produto_categorias(nome)"
     )
     .eq("empresa_id", state.empresaId)
     .order("nome");
@@ -7634,6 +8518,9 @@ async function loadProdutos() {
     id: item.id,
     nome: item.nome,
     descricao: item.descricao || null,
+    // Código/SKU/barras legado ou cadastrado em external_id
+    codigo: item.external_id ? String(item.external_id).trim() : "",
+    external_id: item.external_id ? String(item.external_id).trim() : "",
     imagem_path: item.imagem_path || null,
     categoria: item.categoria?.nome || "-",
     preco: Number(item.preco_venda || 0),
@@ -12149,6 +13036,7 @@ async function handleSession(session) {
       await loadPlatformAdminStatus();
       await loadEmpresaContext();
       await refreshAll();
+      await openHomeSection();
     } catch (error) {
       showToast(error.message, "error");
     } finally {
@@ -12446,11 +13334,21 @@ function attachEvents() {
     });
   }
 
-  async function openNovoPedidoRapido() {
+  async function openNovoPedidoRapido(options = {}) {
+    const forceDocumento = Boolean(options.forceDocumento);
     try {
-      await Promise.all([ensureClientesLoaded(), ensureProdutosLoaded()]);
+      await Promise.all([
+        ensureClientesLoaded(),
+        ensureProdutosLoaded(),
+        loadFormasPagamento()
+      ]);
     } catch (error) {
       showToast(`Erro ao carregar dados para novo pedido: ${error.message}`, "error");
+    }
+    const ui = getEmpresaUiProfile();
+    if (!forceDocumento && ui.modo_venda === "caixa") {
+      openCaixaModal({ reset: true });
+      return;
     }
     openNovoDocumentoModal("pedido");
   }
@@ -12470,6 +13368,172 @@ function attachEvents() {
       });
     });
   }
+
+  // ---- Modo Caixa (PDV) ----
+  if (els.closeCaixaModalBtn) {
+    els.closeCaixaModalBtn.addEventListener("click", () => closeCaixaModal());
+  }
+  if (els.caixaModal) {
+    els.caixaModal.addEventListener("click", (event) => {
+      if (event.target === els.caixaModal) closeCaixaModal();
+    });
+  }
+  if (els.caixaModoDocumentoBtn) {
+    els.caixaModoDocumentoBtn.addEventListener("click", async () => {
+      syncCaixaDraftFromUi();
+      const draft = state.novoDocumentoModal;
+      // Garante linha em branco no formulário completo
+      if (!Array.isArray(draft.itens) || !draft.itens.length) {
+        draft.itens = [createDocumentoDraftItem()];
+      } else {
+        ensureTrailingEmptyDocumentoItem();
+      }
+      closeCaixaModal();
+      await Promise.all([ensureClientesLoaded(), ensureProdutosLoaded(), loadFormasPagamento()]);
+      renderNovoDocumentoModal();
+      if (els.novoDocumentoModal) els.novoDocumentoModal.classList.remove("hidden");
+      // Preenche combos a partir do draft do caixa
+      if (els.novoDocumentoClienteId) els.novoDocumentoClienteId.value = draft.clienteId || "";
+      renderNovoDocumentoClienteSelect();
+    });
+  }
+  if (els.caixaProdutoSearch) {
+    els.caixaProdutoSearch.addEventListener("input", () => {
+      renderCaixaProdutoResults(els.caixaProdutoSearch.value || "");
+    });
+    els.caixaProdutoSearch.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      handleCaixaSearchSubmit();
+    });
+  }
+  if (els.caixaProdutoResults) {
+    els.caixaProdutoResults.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-caixa-add-produto]");
+      if (!btn) return;
+      addProdutoToCaixa(btn.getAttribute("data-caixa-add-produto"));
+    });
+  }
+  if (els.caixaClienteSearch) {
+    els.caixaClienteSearch.addEventListener("input", () => {
+      if (els.caixaClienteId) els.caixaClienteId.value = "";
+      if (state.novoDocumentoModal) state.novoDocumentoModal.clienteId = "";
+      renderCaixaClienteOptions(els.caixaClienteSearch.value || "");
+    });
+    els.caixaClienteSearch.addEventListener("focus", () => {
+      if (els.caixaClienteSearch.value) {
+        renderCaixaClienteOptions(els.caixaClienteSearch.value);
+      }
+    });
+  }
+  if (els.caixaClienteOptions) {
+    els.caixaClienteOptions.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-caixa-cliente-id]");
+      if (!btn) return;
+      const id = btn.getAttribute("data-caixa-cliente-id");
+      const cliente = (state.clientes || []).find((c) => String(c.id) === String(id));
+      if (els.caixaClienteId) els.caixaClienteId.value = id || "";
+      if (els.caixaClienteSearch) els.caixaClienteSearch.value = cliente?.nome || "";
+      if (state.novoDocumentoModal) state.novoDocumentoModal.clienteId = id || "";
+      els.caixaClienteOptions.classList.add("hidden");
+    });
+  }
+  if (els.caixaClienteLimparBtn) {
+    els.caixaClienteLimparBtn.addEventListener("click", () => {
+      if (els.caixaClienteId) els.caixaClienteId.value = "";
+      if (els.caixaClienteSearch) els.caixaClienteSearch.value = "";
+      if (state.novoDocumentoModal) state.novoDocumentoModal.clienteId = "";
+      els.caixaClienteOptions?.classList.add("hidden");
+    });
+  }
+  if (els.caixaLimparCarrinhoBtn) {
+    els.caixaLimparCarrinhoBtn.addEventListener("click", () => {
+      if (!getCaixaCartItens().length) return;
+      if (!window.confirm("Limpar o carrinho?")) return;
+      state.novoDocumentoModal.itens = [];
+      renderCaixaCart();
+      els.caixaProdutoSearch?.focus();
+    });
+  }
+  if (els.caixaCartList) {
+    els.caixaCartList.addEventListener("click", (event) => {
+      const dec = event.target.closest("[data-caixa-qty-dec]");
+      const inc = event.target.closest("[data-caixa-qty-inc]");
+      const rem = event.target.closest("[data-caixa-remove]");
+      if (dec) {
+        const rowId = dec.getAttribute("data-caixa-qty-dec");
+        const item = (state.novoDocumentoModal.itens || []).find((i) => i.rowId === rowId);
+        updateCaixaItemQty(rowId, Number(item?.quantidade || 1) - 1);
+        return;
+      }
+      if (inc) {
+        const rowId = inc.getAttribute("data-caixa-qty-inc");
+        const item = (state.novoDocumentoModal.itens || []).find((i) => i.rowId === rowId);
+        updateCaixaItemQty(rowId, Number(item?.quantidade || 0) + 1);
+        return;
+      }
+      if (rem) {
+        updateCaixaItemQty(rem.getAttribute("data-caixa-remove"), 0);
+      }
+    });
+    els.caixaCartList.addEventListener("change", (event) => {
+      const input = event.target.closest("[data-caixa-qty]");
+      if (!(input instanceof HTMLInputElement)) return;
+      updateCaixaItemQty(input.getAttribute("data-caixa-qty"), input.value);
+    });
+  }
+  if (els.caixaFormaPagamento) {
+    els.caixaFormaPagamento.addEventListener("change", () => {
+      if (!state.novoDocumentoModal.pagamento) {
+        state.novoDocumentoModal.pagamento = createPagamentoDraft();
+      }
+      state.novoDocumentoModal.pagamento.formaPagamentoId = els.caixaFormaPagamento.value || "";
+    });
+  }
+  if (els.caixaFinalizarBtn) {
+    els.caixaFinalizarBtn.addEventListener("click", () => {
+      finalizeCaixaVenda().catch((error) => {
+        showToast(error.message || "Erro ao finalizar venda", "error");
+      });
+    });
+  }
+  if (els.empresaConfigTipoEmpresa) {
+    els.empresaConfigTipoEmpresa.addEventListener("change", () => {
+      applyEmpresaTipoPresetToForm(els.empresaConfigTipoEmpresa.value);
+    });
+  }
+  document.addEventListener("keydown", (event) => {
+    if (!isCaixaOpen()) return;
+    // Atalhos do PDV (não dispara se estiver digitando em outro modal empilhado)
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeCaixaModal();
+      return;
+    }
+    if (event.key === "F2") {
+      event.preventDefault();
+      els.caixaProdutoSearch?.focus();
+      els.caixaProdutoSearch?.select?.();
+      return;
+    }
+    if (event.key === "F4") {
+      event.preventDefault();
+      if (!state.novoDocumentoSaving) {
+        finalizeCaixaVenda().catch((error) => {
+          showToast(error.message || "Erro ao finalizar venda", "error");
+        });
+      }
+      return;
+    }
+    if (event.key === "F8") {
+      event.preventDefault();
+      if (getCaixaCartItens().length && window.confirm("Limpar o carrinho?")) {
+        state.novoDocumentoModal.itens = [];
+        renderCaixaCart();
+        els.caixaProdutoSearch?.focus();
+      }
+    }
+  });
 
   async function openNovoOrcamentoRapido() {
     try {

@@ -4724,3 +4724,472 @@ tr.is-clickable-row:hover {
     text-align: left;
   }
 }
+
+/* ========== Modo Caixa (PDV) ========== */
+.caixa-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(15, 22, 28, 0.55);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 0.75rem;
+}
+
+.caixa-overlay.hidden {
+  display: none;
+}
+
+.caixa-shell {
+  width: min(1280px, 100%);
+  max-height: 100%;
+  margin: auto;
+  background: var(--bg-soft, #fbf8f2);
+  border: 1px solid var(--line, #d9d0bf);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.caixa-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid var(--line, #d9d0bf);
+  background: linear-gradient(180deg, #fff 0%, #f7f3ea 100%);
+}
+
+.caixa-header-titles h2 {
+  margin: 0;
+  font-family: Sora, system-ui, sans-serif;
+  font-size: 1.35rem;
+}
+
+.caixa-subtitle {
+  margin: 0.2rem 0 0;
+  color: var(--muted, #6b6558);
+  font-size: 0.92rem;
+}
+
+.caixa-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.caixa-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
+  gap: 0;
+}
+
+.caixa-left {
+  padding: 1rem 1.1rem;
+  border-right: 1px solid var(--line, #d9d0bf);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.caixa-right {
+  padding: 1rem 1.1rem;
+  background: #f3efe6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  overflow: auto;
+}
+
+.caixa-search-label,
+.caixa-cliente-label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.caixa-search-input,
+.caixa-cliente-input,
+.caixa-pay-block select,
+.caixa-pay-block input {
+  width: 100%;
+  border: 1px solid #cabfa9;
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.75rem 0.85rem;
+  font: inherit;
+  font-size: 1.05rem;
+}
+
+.caixa-search-input:focus,
+.caixa-cliente-input:focus,
+.caixa-pay-block select:focus,
+.caixa-pay-block input:focus {
+  outline: 2px solid rgba(22, 93, 89, 0.35);
+  border-color: #165d59;
+}
+
+.caixa-produto-results {
+  display: grid;
+  gap: 0.45rem;
+  max-height: min(48vh, 420px);
+  overflow: auto;
+}
+
+.caixa-produto-empty {
+  padding: 1.25rem 0.75rem;
+  color: var(--muted, #6b6558);
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.caixa-produto-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem 0.75rem;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #d9d0bf;
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.7rem 0.85rem;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.caixa-produto-item:hover,
+.caixa-produto-item:focus-visible {
+  border-color: #165d59;
+  box-shadow: 0 0 0 2px rgba(22, 93, 89, 0.15);
+  outline: none;
+}
+
+.caixa-produto-item strong {
+  grid-column: 1;
+  font-size: 1rem;
+}
+
+.caixa-produto-item .caixa-produto-preco {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-weight: 700;
+  color: #0f4744;
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+
+.caixa-produto-item .caixa-produto-meta {
+  grid-column: 1;
+  color: var(--muted, #6b6558);
+  font-size: 0.82rem;
+}
+
+.caixa-cliente-row {
+  position: relative;
+  margin-top: auto;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #d9d0bf;
+}
+
+.caixa-cliente-combo {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.caixa-cliente-combo .caixa-cliente-input {
+  flex: 1;
+}
+
+.caixa-cliente-clear {
+  min-width: 2.4rem;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.45rem;
+}
+
+.caixa-hint {
+  font-weight: 500;
+  color: var(--muted, #6b6558);
+  font-size: 0.85rem;
+}
+
+.caixa-cliente-options {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.25rem);
+  max-height: 200px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #cabfa9;
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+  z-index: 5;
+}
+
+.caixa-cliente-options.hidden {
+  display: none;
+}
+
+.caixa-cliente-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 0.65rem 0.85rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.caixa-cliente-option:hover,
+.caixa-cliente-option:focus-visible {
+  background: #e8f3f1;
+  outline: none;
+}
+
+.caixa-cart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.caixa-cart-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.caixa-cart-list {
+  flex: 1;
+  min-height: 120px;
+  max-height: none;
+  overflow: auto;
+  display: grid;
+  gap: 0.45rem;
+  align-content: start;
+}
+
+.caixa-cart-empty {
+  color: var(--muted, #6b6558);
+  text-align: center;
+  padding: 1.5rem 0.5rem;
+  font-size: 0.95rem;
+}
+
+.caixa-cart-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem 0.5rem;
+  background: #fff;
+  border: 1px solid #d9d0bf;
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+}
+
+.caixa-cart-item-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  grid-column: 1 / -1;
+}
+
+.caixa-cart-item-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.caixa-cart-item-controls button {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  border: 1px solid #cabfa9;
+  background: #fbf8f2;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.caixa-cart-item-controls button:hover {
+  background: #e8f3f1;
+  border-color: #165d59;
+}
+
+.caixa-cart-item-controls input {
+  width: 3.2rem;
+  text-align: center;
+  border: 1px solid #cabfa9;
+  border-radius: 8px;
+  padding: 0.3rem;
+  font: inherit;
+}
+
+.caixa-cart-item-total {
+  font-weight: 700;
+  color: #0f4744;
+  align-self: center;
+}
+
+.caixa-cart-item-remove {
+  grid-column: 1 / -1;
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: #8a3b2b;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.caixa-total-block {
+  background: #165d59;
+  color: #fff;
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.caixa-total-label {
+  font-size: 0.85rem;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.caixa-total-value {
+  font-size: 1.85rem;
+  font-family: Sora, system-ui, sans-serif;
+  line-height: 1.1;
+}
+
+.caixa-itens-count {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.caixa-pay-block {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.caixa-pay-block label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.caixa-finalizar-btn {
+  width: 100%;
+  min-height: 3.1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  background: #165d59;
+  border-color: #165d59;
+}
+
+.caixa-finalizar-btn:hover {
+  filter: brightness(1.06);
+}
+
+.caixa-finalizar-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.caixa-status-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted, #6b6558);
+  text-align: center;
+}
+
+body.caixa-open {
+  overflow: hidden;
+}
+
+@media (max-width: 860px) {
+  .caixa-overlay {
+    padding: 0;
+  }
+
+  .caixa-shell {
+    border-radius: 0;
+    max-height: 100%;
+    height: 100%;
+  }
+
+  .caixa-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .caixa-left {
+    border-right: 0;
+    border-bottom: 1px solid var(--line, #d9d0bf);
+    max-height: 46vh;
+  }
+
+  .caixa-produto-results {
+    max-height: 28vh;
+  }
+
+  .caixa-header {
+    flex-direction: column;
+  }
+
+  .caixa-header-actions {
+    width: 100%;
+  }
+}
+
+/* Caixa: atalhos e ultima venda */
+.caixa-shortcuts-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted, #6b6558);
+  line-height: 1.4;
+}
+.caixa-shortcuts-hint kbd,
+.caixa-shortcuts-hint code {
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  border-radius: 5px;
+  border: 1px solid #cabfa9;
+  background: #fff;
+  font-size: 0.75rem;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.caixa-last-sale {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 1.1rem;
+  background: #e8f3f1;
+  border-bottom: 1px solid rgba(22, 93, 89, 0.25);
+  color: #0f4744;
+  font-size: 0.95rem;
+}
+.caixa-last-sale.hidden {
+  display: none;
+}
+.caixa-last-sale strong {
+  font-weight: 700;
+}

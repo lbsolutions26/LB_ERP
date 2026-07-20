@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260717docextra2" />
+    <link rel="stylesheet" href="styles.css?v=20260719caixa2" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -53,10 +53,10 @@
       <nav class="menu-tabs">
         <button class="tab active" data-section="dashboard">Dashboard</button>
         <button class="tab" data-section="clientes">Clientes</button>
-        <button class="tab" data-section="pedidos">Pedidos</button>
+        <button class="tab" data-section="pedidos" data-tab-pedidos>Pedidos</button>
         <button class="tab" data-section="financeiro">Contas a Receber</button>
         <button class="tab" data-section="compras">Compras</button>
-        <button class="tab" data-section="orcamentos">Orcamentos</button>
+        <button class="tab" data-section="orcamentos" data-tab-orcamentos>Orcamentos</button>
         <button class="tab" data-section="despesas">Contas a Pagar</button>
         <button class="tab" data-section="produtos">Produtos</button>
         <button class="tab" data-section="estoque">Estoque</button>
@@ -312,7 +312,7 @@
         <section id="section-pedidos" class="card app-section hidden">
           <div class="pedidos-section-header">
             <div class="pedidos-section-title">
-              <h2>Pedidos</h2>
+              <h2 id="pedidosSectionTitle">Pedidos</h2>
               <p id="pedidosSectionSubtitle" class="section-subtitle">Crie pedidos e orcamentos com itens em grade, subtotal automatico e salvamento mais claro.</p>
             </div>
 
@@ -1106,6 +1106,49 @@
 
               <div class="empresa-config-fields">
                 <article class="form-block">
+                  <h3>Tipo de empresa e experiência</h3>
+                  <p class="field-hint">
+                    Define a tela inicial, se o orçamento aparece no menu e se a venda usa o formulário clássico ou o
+                    <strong>modo caixa</strong> (ideal para mercadinho).
+                  </p>
+                  <div class="empresa-config-grid">
+                    <label class="produto-form-field produto-form-field-full">
+                      Tipo de empresa
+                      <select name="tipo_empresa" id="empresaConfigTipoEmpresa">
+                        <option value="oficina">Oficina / serviços sob medida</option>
+                        <option value="mercadinho">Mercadinho / varejo (caixa)</option>
+                        <option value="generico">Genérico</option>
+                      </select>
+                    </label>
+                    <label class="produto-form-field">
+                      Tela inicial ao entrar
+                      <select name="home_section" id="empresaConfigHomeSection">
+                        <option value="dashboard">Dashboard</option>
+                        <option value="pedidos">Pedidos / Vendas</option>
+                        <option value="produtos">Produtos</option>
+                        <option value="estoque">Estoque</option>
+                        <option value="financeiro">Contas a Receber</option>
+                      </select>
+                    </label>
+                    <label class="produto-form-field">
+                      Modo de nova venda
+                      <select name="modo_venda" id="empresaConfigModoVenda">
+                        <option value="documento">Formulário completo (pedido)</option>
+                        <option value="caixa">Caixa rápido (PDV)</option>
+                      </select>
+                    </label>
+                    <label class="produto-form-field produto-form-field-full empresa-config-check" style="display:flex;align-items:center;gap:0.5rem;margin-top:0.35rem">
+                      <input type="checkbox" name="show_orcamentos" id="empresaConfigShowOrcamentos" value="1" checked />
+                      Mostrar aba Orçamentos no menu
+                    </label>
+                    <label class="produto-form-field produto-form-field-full empresa-config-check" style="display:flex;align-items:center;gap:0.5rem">
+                      <input type="checkbox" name="cliente_obrigatorio" id="empresaConfigClienteObrigatorio" value="1" checked />
+                      Exigir cliente na venda
+                    </label>
+                  </div>
+                </article>
+
+                <article class="form-block">
                   <h3>Dados da empresa</h3>
                   <div class="empresa-config-grid">
                     <label class="produto-form-field produto-form-field-full">
@@ -1595,7 +1638,7 @@
               <div class="documento-field">
                 <span class="documento-field-label" id="novoDocumentoClienteFieldLabel">Cliente</span>
                 <div class="cliente-combo" data-cliente-combo>
-                  <input id="novoDocumentoClienteId" name="cliente_id" type="hidden" required />
+                  <input id="novoDocumentoClienteId" name="cliente_id" type="hidden" />
                   <button id="novoDocumentoClienteTrigger" class="cliente-combo-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="novoDocumentoClienteFieldLabel">
                     <span id="novoDocumentoClienteLabel">Selecione um cliente</span>
                     <span class="cliente-combo-caret">▾</span>
@@ -2332,8 +2375,93 @@
       <span aria-hidden="true">+</span>
     </button>
 
+    <!-- Modo caixa (PDV) — mesma venda/pedido, UX de balcão -->
+    <div id="caixaModal" class="caixa-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="caixaModalTitle">
+      <div class="caixa-shell">
+        <header class="caixa-header">
+          <div class="caixa-header-titles">
+            <h2 id="caixaModalTitle">Caixa</h2>
+            <p id="caixaModalSubtitle" class="caixa-subtitle">Busque o produto, confira o carrinho e finalize a venda.</p>
+            <p id="caixaShortcutsHint" class="caixa-shortcuts-hint">
+              <kbd>F2</kbd> busca · <kbd>Enter</kbd> adiciona · <kbd>F4</kbd> finalizar · <kbd>F8</kbd> limpar · <kbd>Esc</kbd> fechar
+              · qtde: <code>2*produto</code>
+            </p>
+          </div>
+          <div class="caixa-header-actions">
+            <button id="caixaModoDocumentoBtn" type="button" class="btn btn-ghost" title="Abrir formulário completo">Formulário completo</button>
+            <button id="closeCaixaModalBtn" type="button" class="btn btn-ghost">Fechar</button>
+          </div>
+        </header>
+
+        <div id="caixaLastSaleBanner" class="caixa-last-sale hidden" role="status" aria-live="polite"></div>
+
+        <div class="caixa-body">
+          <section class="caixa-left">
+            <label class="caixa-search-label" for="caixaProdutoSearch">
+              Buscar produto / código de barras
+              <input
+                id="caixaProdutoSearch"
+                type="search"
+                class="caixa-search-input"
+                placeholder="Nome, código, barras ou 2*produto + Enter"
+                autocomplete="off"
+                enterkeyhint="search"
+              />
+            </label>
+            <div id="caixaProdutoResults" class="caixa-produto-results" aria-live="polite"></div>
+
+            <div class="caixa-cliente-row">
+              <label class="caixa-cliente-label" for="caixaClienteSearch">
+                Cliente <span id="caixaClienteOpcionalHint" class="caixa-hint">(opcional)</span>
+                <div class="caixa-cliente-combo">
+                  <input id="caixaClienteId" type="hidden" value="" />
+                  <input
+                    id="caixaClienteSearch"
+                    type="search"
+                    class="caixa-cliente-input"
+                    placeholder="Buscar cliente ou deixe em branco"
+                    autocomplete="off"
+                  />
+                  <button id="caixaClienteLimparBtn" type="button" class="btn btn-ghost caixa-cliente-clear" title="Remover cliente">×</button>
+                </div>
+              </label>
+              <div id="caixaClienteOptions" class="caixa-cliente-options hidden"></div>
+            </div>
+          </section>
+
+          <aside class="caixa-right">
+            <div class="caixa-cart-head">
+              <h3>Carrinho</h3>
+              <button id="caixaLimparCarrinhoBtn" type="button" class="btn btn-ghost">Limpar</button>
+            </div>
+            <div id="caixaCartList" class="caixa-cart-list"></div>
+
+            <div class="caixa-total-block">
+              <span class="caixa-total-label">Total</span>
+              <strong id="caixaTotalValue" class="caixa-total-value">R$ 0,00</strong>
+              <span id="caixaItensCount" class="caixa-itens-count">0 itens</span>
+            </div>
+
+            <div class="caixa-pay-block">
+              <label>
+                Forma de pagamento
+                <select id="caixaFormaPagamento"></select>
+              </label>
+              <label class="caixa-obs-label">
+                Observações
+                <input id="caixaObservacoes" type="text" placeholder="Opcional" maxlength="200" />
+              </label>
+            </div>
+
+            <button id="caixaFinalizarBtn" type="button" class="btn caixa-finalizar-btn" title="Atalho: F4">Finalizar venda (F4)</button>
+            <p id="caixaStatusHint" class="caixa-status-hint">Venda fecha estoque e registra o recebimento.</p>
+          </aside>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260717docextra2"></script>
+    <script type="module" src="app.js?v=20260719caixa2"></script>
   </body>
 </html>
