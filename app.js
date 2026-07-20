@@ -89,6 +89,7 @@ const state = {
   },
   produtoFilters: {
     nome: "",
+    codigo: "",
     categoria: "",
     preco: "",
     custo: "",
@@ -101,6 +102,8 @@ const state = {
     status_estoque: "",
     ativo: ""
   },
+  /** Última venda do caixa (para reimprimir cupom). */
+  lastCaixaSale: null,
   tableViews: {
     clientes: {
       sort: { field: "nome", direction: "asc" },
@@ -515,6 +518,7 @@ const els = {
   clientesTable: document.getElementById("clientesTable"),
   produtosTable: document.getElementById("produtosTable"),
   filtroProdutoNome: document.getElementById("filtroProdutoNome"),
+  filtroProdutoCodigo: document.getElementById("filtroProdutoCodigo"),
   filtroProdutoCategoria: document.getElementById("filtroProdutoCategoria"),
   filtroProdutoPreco: document.getElementById("filtroProdutoPreco"),
   filtroProdutoCusto: document.getElementById("filtroProdutoCusto"),
@@ -4062,13 +4066,223 @@ function setCaixaLastSaleBanner(documentoId, total) {
   const label = getEmpresaUiProfile().pedido_label || "Venda";
   els.caixaLastSaleBanner.classList.remove("hidden");
   els.caixaLastSaleBanner.innerHTML = `
-    <strong>${escapeHtml(label)} #${escapeHtml(String(documentoId))} finalizado</strong>
-    <span>${escapeHtml(moeda.format(Number(total || 0)))}</span>
+    <div class="caixa-last-sale-text">
+      <strong>${escapeHtml(label)} #${escapeHtml(String(documentoId))} finalizado</strong>
+      <span>${escapeHtml(moeda.format(Number(total || 0)))}</span>
+    </div>
+    <div class="caixa-last-sale-actions">
+      <button type="button" class="btn btn-ghost" data-caixa-print-last title="Imprimir cupom da última venda">Imprimir cupom</button>
+    </div>
   `;
+  // Não auto-esconde se quiser reimprimir; some após 30s
   window.clearTimeout(setCaixaLastSaleBanner._timer);
   setCaixaLastSaleBanner._timer = window.setTimeout(() => {
     els.caixaLastSaleBanner?.classList.add("hidden");
-  }, 8000);
+  }, 30000);
+}
+
+function captureCaixaSaleSnapshot(documentoId, subtotal) {
+  const draft = state.novoDocumentoModal || {};
+  const itens = getCaixaCartItens().map((item) => ({
+    descricao: item.descricao || "",
+    quantidade: Number(item.quantidade || 0),
+    valorUnitario: Number(item.valorUnitario || 0),
+    total: getNovoDocumentoItemTotal(item),
+    codigo: (() => {
+      const p = (state.produtos || []).find((x) => String(x.id) === String(item.produtoId));
+      return p ? getCaixaProdutoCodigo(p) : "";
+    })()
+  }));
+  const formaId = draft.pagamento?.formaPagamentoId || els.caixaFormaPagamento?.value || "";
+  const formaNome = getFormaPagamentoNome(formaId) || "—";
+  let clienteNome = "Consumidor final";
+  if (draft.clienteId) {
+    const c = (state.clientes || []).find((x) => String(x.id) === String(draft.clienteId));
+    if (c?.nome) clienteNome = c.nome;
+  }
+  state.lastCaixaSale = {
+    documentoId,
+    total: Number(subtotal || 0),
+    dataEmissao: draft.dataEmissao || formatDateInput(new Date()),
+    hora: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+    clienteNome,
+    formaNome,
+    observacoes: String(draft.observacoes || "").trim(),
+    itens
+  };
+  return state.lastCaixaSale;
+}
+
+function buildCaixaCupomHtml(sale = null) {
+  const data = sale || state.lastCaixaSale;
+  if (!data) return "";
+  const empresa = getEmpresaConfig();
+  const ui = getEmpresaUiProfile();
+  const label = ui.pedido_label || "Venda";
+  const linhasEmpresa = [
+    empresa.nome || state.empresaNome || "Empresa",
+    [empresa.endereco, empresa.bairro].filter(Boolean).join(" — "),
+    [empresa.cidade, empresa.uf].filter(Boolean).join(" / "),
+    empresa.telefone ? `Tel: ${empresa.telefone}` : ""
+  ].filter(Boolean);
+
+  const itensHtml = (data.itens || [])
+    .map((item) => {
+      const qtd = Number(item.quantidade || 0);
+      const unit = Number(item.valorUnitario || 0);
+      const tot = Number(item.total != null ? item.total : qtd * unit);
+      const cod = item.codigo ? `<div class="cupom-item-cod">${escapeHtml(item.codigo)}</div>` : "";
+      return `
+        <div class="cupom-item">
+          <div class="cupom-item-name">${escapeHtml(item.descricao || "Item")}</div>
+          ${cod}
+          <div class="cupom-item-row">
+            <span>${escapeHtml(String(qtd))} x ${escapeHtml(moeda.format(unit))}</span>
+            <strong>${escapeHtml(moeda.format(tot))}</strong>
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  const dataLabel = data.dataEmissao
+    ? String(data.dataEmissao).split("-").reverse().join("/")
+    : new Date().toLocaleDateString("pt-BR");
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cupom ${escapeHtml(label)} #${escapeHtml(String(data.documentoId || ""))}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 10px;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 12px;
+      color: #111;
+      background: #fff;
+    }
+    .cupom {
+      width: 280px;
+      max-width: 100%;
+      margin: 0 auto;
+    }
+    .cupom-head {
+      text-align: center;
+      margin-bottom: 8px;
+      border-bottom: 1px dashed #333;
+      padding-bottom: 8px;
+    }
+    .cupom-head h1 {
+      margin: 0 0 4px;
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .cupom-head p { margin: 1px 0; font-size: 11px; }
+    .cupom-meta {
+      margin: 8px 0;
+      font-size: 11px;
+      border-bottom: 1px dashed #333;
+      padding-bottom: 8px;
+    }
+    .cupom-meta div { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
+    .cupom-item { margin: 6px 0; }
+    .cupom-item-name { font-weight: 700; }
+    .cupom-item-cod { font-size: 10px; color: #444; }
+    .cupom-item-row { display: flex; justify-content: space-between; gap: 8px; }
+    .cupom-total {
+      margin-top: 10px;
+      border-top: 1px dashed #333;
+      padding-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .cupom-obs {
+      margin-top: 8px;
+      font-size: 11px;
+      border-top: 1px dashed #999;
+      padding-top: 6px;
+    }
+    .cupom-foot {
+      margin-top: 12px;
+      text-align: center;
+      font-size: 11px;
+      border-top: 1px dashed #333;
+      padding-top: 8px;
+    }
+    .no-print { margin: 12px auto; width: 280px; text-align: center; }
+    .no-print button {
+      font: inherit;
+      padding: 8px 14px;
+      cursor: pointer;
+      border: 1px solid #333;
+      background: #f5f5f5;
+      border-radius: 6px;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button type="button" onclick="window.print()">Imprimir</button>
+  </div>
+  <div class="cupom">
+    <header class="cupom-head">
+      <h1>${escapeHtml(linhasEmpresa[0] || "Empresa")}</h1>
+      ${linhasEmpresa
+        .slice(1)
+        .map((l) => `<p>${escapeHtml(l)}</p>`)
+        .join("")}
+    </header>
+    <section class="cupom-meta">
+      <div><span>${escapeHtml(label)}</span><strong>#${escapeHtml(String(data.documentoId || ""))}</strong></div>
+      <div><span>Data</span><span>${escapeHtml(dataLabel)} ${escapeHtml(data.hora || "")}</span></div>
+      <div><span>Cliente</span><span>${escapeHtml(data.clienteNome || "Consumidor final")}</span></div>
+      <div><span>Pagamento</span><span>${escapeHtml(data.formaNome || "—")}</span></div>
+    </section>
+    <section class="cupom-itens">
+      ${itensHtml || "<p>Sem itens</p>"}
+    </section>
+    <div class="cupom-total">
+      <span>TOTAL</span>
+      <span>${escapeHtml(moeda.format(Number(data.total || 0)))}</span>
+    </div>
+    ${
+      data.observacoes
+        ? `<div class="cupom-obs"><strong>Obs.:</strong> ${escapeHtml(data.observacoes)}</div>`
+        : ""
+    }
+    <footer class="cupom-foot">
+      Obrigado pela preferência!<br />
+      Documento não fiscal
+    </footer>
+  </div>
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        try { window.focus(); window.print(); } catch (e) {}
+      }, 250);
+    });
+  </script>
+</body>
+</html>`;
+}
+
+function printCaixaCupom(sale = null) {
+  const data = sale || state.lastCaixaSale;
+  if (!data) {
+    showToast("Nenhuma venda do caixa para imprimir.", "error");
+    return false;
+  }
+  const html = buildCaixaCupomHtml(data);
+  return openOrcamentoHtmlPreview(html);
 }
 
 function renderCaixaFormaPagamentoSelect() {
@@ -7205,6 +7419,8 @@ async function saveNovoDocumento(event, options = {}) {
 
     if (fromCaixa) {
       const vendaTotal = subtotal;
+      // Snapshot antes de limpar o carrinho (cupom / reimpressão).
+      captureCaixaSaleSnapshot(documentoId, vendaTotal);
       // Mantém o caixa aberto para a próxima venda.
       state.novoDocumentoModal = createDocumentoDraft("pedido");
       state.novoDocumentoModal.itens = [];
@@ -7222,6 +7438,12 @@ async function saveNovoDocumento(event, options = {}) {
       renderCaixaModal();
       setCaixaLastSaleBanner(documentoId, vendaTotal);
       playCaixaBeep(true);
+      // Abre cupom automaticamente (usuário pode cancelar o print do navegador).
+      try {
+        printCaixaCupom(state.lastCaixaSale);
+      } catch (cupomErr) {
+        console.warn("Falha ao abrir cupom", cupomErr);
+      }
       window.requestAnimationFrame(() => els.caixaProdutoSearch?.focus());
     } else {
       closeNovoDocumentoModal();
@@ -7596,6 +7818,10 @@ function setProdutoFormMode({ editing = false, produto = null } = {}) {
   };
 
   setValue("nome", produto.nome || "");
+  setValue(
+    "codigo",
+    produto.codigo || produto.external_id || produto.sku || produto.codigo_barras || ""
+  );
   setValue("categoria", produto.categoria && produto.categoria !== "-" ? produto.categoria : "");
   setValue("preco", produto.preco ?? 0);
   setValue("custo", produto.custo ?? "");
@@ -11275,6 +11501,7 @@ function renderProdutosTable() {
         ? formatEstoqueStatusBadge(est.status)
         : `<span class="estoque-status" title="Sem controle de estoque">N/A</span>`;
 
+      const codigo = String(produto.codigo || produto.external_id || "").trim();
       return `
       <tr>
         <td class="pedido-actions-cell">${renderProdutoRowActionsMenu(produto.id, { controlaEstoque: est.controla })}</td>
@@ -11282,6 +11509,7 @@ function renderProdutosTable() {
           ${renderProdutoThumbHtml(produto)}
           <span>${escapeHtml(produto.nome)}</span>
         </td>
+        <td class="produto-cell-codigo">${codigo ? escapeHtml(codigo) : '<span class="field-hint">—</span>'}</td>
         <td>${escapeHtml(produto.categoria || "-")}</td>
         <td>${moeda.format(produto.preco || 0)}</td>
         <td>${produto.custo == null ? "-" : moeda.format(produto.custo)}</td>
@@ -11325,6 +11553,10 @@ function updateProdutoSortHeaders() {
 function getProdutoFieldValue(produto, field) {
   if (field === "ativo") {
     return produto.ativo ? "sim" : "nao";
+  }
+
+  if (field === "codigo") {
+    return String(produto.codigo || produto.external_id || produto.sku || "");
   }
 
   if (field === "classe_abc") {
@@ -12619,10 +12851,25 @@ async function createProduto(event) {
   const saldoInicial = Math.max(0, Math.trunc(Number(formData.get("estoque") || 0) || 0));
   const controlaEstoque = String(formData.get("controla_estoque") || "sim") === "sim";
 
+  const codigo = String(formData.get("codigo") || "").trim();
+  // Evita código/barras duplicado na mesma empresa (exceto o próprio produto em edição).
+  if (codigo) {
+    const codigoNorm = codigo.toLowerCase();
+    const dup = (state.produtos || []).find((p) => {
+      if (editId && Number(p.id) === Number(editId)) return false;
+      const other = String(p.codigo || p.external_id || "").trim().toLowerCase();
+      return other && other === codigoNorm;
+    });
+    if (dup) {
+      throw new Error(`Código/barras já usado no produto “${dup.nome || dup.id}”.`);
+    }
+  }
+
   const payloadCatalogo = {
     empresa_id: state.empresaId,
     categoria_id: categoriaId,
     nome,
+    external_id: codigo || null,
     preco_venda: Number(formData.get("preco") || 0),
     custo: String(formData.get("custo") || "").trim() ? Number(formData.get("custo")) : null,
     margem_percentual: String(formData.get("margem") || "").trim() ? Number(formData.get("margem")) : null,
@@ -13495,6 +13742,13 @@ function attachEvents() {
       finalizeCaixaVenda().catch((error) => {
         showToast(error.message || "Erro ao finalizar venda", "error");
       });
+    });
+  }
+  if (els.caixaLastSaleBanner) {
+    els.caixaLastSaleBanner.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-caixa-print-last]");
+      if (!btn) return;
+      printCaixaCupom();
     });
   }
   if (els.empresaConfigTipoEmpresa) {
@@ -14405,6 +14659,7 @@ function attachEvents() {
 
   const filterBindings = [
     ["nome", els.filtroProdutoNome],
+    ["codigo", els.filtroProdutoCodigo],
     ["categoria", els.filtroProdutoCategoria],
     ["preco", els.filtroProdutoPreco],
     ["custo", els.filtroProdutoCusto],
