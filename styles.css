@@ -5560,3 +5560,48 @@ body.caixa-open {
     grid-template-columns: minmax(0, 1fr) 7rem 4.2rem 1.5rem;
   }
 }
+
+/* Checkout na esquerda; direita so lista */
+.caixa-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  overflow: auto;
+}
+.caixa-checkout {
+  margin-top: auto;
+  display: grid;
+  gap: 0.65rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed #d9d0bf;
+}
+.caixa-right--cart-only {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: #f3efe6;
+  padding: 0.85rem 1rem 1rem;
+}
+.caixa-right--cart-only .caixa-cart-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.caixa-body--pdv {
+  grid-template-columns: minmax(300px, 0.95fr) minmax(360px, 1.15fr);
+}
+@media (max-width: 900px) {
+  .caixa-body--pdv {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(240px, 1fr);
+  }
+  .caixa-checkout {
+    margin-top: 0.5rem;
+  }
+  .caixa-right--cart-only {
+    max-height: 50vh;
+    border-top: 1px solid var(--line, #d9d0bf);
+  }
+}

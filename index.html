@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260719caixa4" />
+    <link rel="stylesheet" href="styles.css?v=20260719caixa6" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -2409,7 +2409,7 @@
         <div id="caixaLastSaleBanner" class="caixa-last-sale hidden" role="status" aria-live="polite"></div>
 
         <div class="caixa-body caixa-body--pdv">
-          <!-- Esquerda: busca + foto na seleção -->
+          <!-- Esquerda: busca, foto, cliente, total e finalizar -->
           <section class="caixa-main">
             <div class="caixa-search-wrap">
               <label class="caixa-search-label" for="caixaProdutoSearch">
@@ -2423,7 +2423,6 @@
                   enterkeyhint="search"
                 />
               </label>
-              <!-- Sugestões com foto só ao digitar/selecionar -->
               <div id="caixaProdutoResults" class="caixa-produto-results hidden" aria-live="polite"></div>
             </div>
 
@@ -2446,35 +2445,37 @@
               </label>
               <div id="caixaClienteOptions" class="caixa-cliente-options hidden"></div>
             </div>
+
+            <div class="caixa-checkout">
+              <div class="caixa-total-block">
+                <span class="caixa-total-label">Total</span>
+                <strong id="caixaTotalValue" class="caixa-total-value">R$ 0,00</strong>
+                <span id="caixaItensCount" class="caixa-itens-count">0 itens</span>
+              </div>
+
+              <div class="caixa-pay-block">
+                <label>
+                  Forma de pagamento
+                  <select id="caixaFormaPagamento"></select>
+                </label>
+                <label class="caixa-obs-label">
+                  Observações
+                  <input id="caixaObservacoes" type="text" placeholder="Opcional" maxlength="200" />
+                </label>
+              </div>
+
+              <button id="caixaFinalizarBtn" type="button" class="btn caixa-finalizar-btn" title="Atalho: F4">Finalizar venda (F4)</button>
+              <p id="caixaStatusHint" class="caixa-status-hint">Venda fecha estoque e registra o recebimento.</p>
+            </div>
           </section>
 
-          <!-- Direita: lista do carrinho (simples) + pagamento -->
-          <aside class="caixa-right">
+          <!-- Direita: só a lista de compras -->
+          <aside class="caixa-right caixa-right--cart-only">
             <div class="caixa-cart-head">
               <h3>Itens da venda</h3>
               <button id="caixaLimparCarrinhoBtn" type="button" class="btn btn-ghost">Limpar</button>
             </div>
             <div id="caixaCartList" class="caixa-cart-list"></div>
-
-            <div class="caixa-total-block">
-              <span class="caixa-total-label">Total</span>
-              <strong id="caixaTotalValue" class="caixa-total-value">R$ 0,00</strong>
-              <span id="caixaItensCount" class="caixa-itens-count">0 itens</span>
-            </div>
-
-            <div class="caixa-pay-block">
-              <label>
-                Forma de pagamento
-                <select id="caixaFormaPagamento"></select>
-              </label>
-              <label class="caixa-obs-label">
-                Observações
-                <input id="caixaObservacoes" type="text" placeholder="Opcional" maxlength="200" />
-              </label>
-            </div>
-
-            <button id="caixaFinalizarBtn" type="button" class="btn caixa-finalizar-btn" title="Atalho: F4">Finalizar venda (F4)</button>
-            <p id="caixaStatusHint" class="caixa-status-hint">Venda fecha estoque e registra o recebimento.</p>
           </aside>
         </div>
       </div>
@@ -2482,6 +2483,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260719caixa4"></script>
+    <script type="module" src="app.js?v=20260719caixa6"></script>
   </body>
 </html>
