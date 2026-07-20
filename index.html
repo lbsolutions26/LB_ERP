@@ -2409,6 +2409,7 @@
         <div id="caixaLastSaleBanner" class="caixa-last-sale hidden" role="status" aria-live="polite"></div>
 
         <div class="caixa-body caixa-body--pdv">
+          <!-- Esquerda: busca + foto na seleção -->
           <section class="caixa-main">
             <div class="caixa-search-wrap">
               <label class="caixa-search-label" for="caixaProdutoSearch">
@@ -2422,17 +2423,11 @@
                   enterkeyhint="search"
                 />
               </label>
-              <!-- Só aparece enquanto digita (não lista o catálogo inteiro) -->
+              <!-- Sugestões com foto só ao digitar/selecionar -->
               <div id="caixaProdutoResults" class="caixa-produto-results hidden" aria-live="polite"></div>
             </div>
 
             <div id="caixaLastProductPreview" class="caixa-last-product hidden" aria-live="polite"></div>
-
-            <div class="caixa-cart-head">
-              <h3>Carrinho</h3>
-              <button id="caixaLimparCarrinhoBtn" type="button" class="btn btn-ghost">Limpar</button>
-            </div>
-            <div id="caixaCartList" class="caixa-cart-list"></div>
 
             <div class="caixa-cliente-row">
               <label class="caixa-cliente-label" for="caixaClienteSearch">
@@ -2453,7 +2448,14 @@
             </div>
           </section>
 
+          <!-- Direita: lista do carrinho (simples) + pagamento -->
           <aside class="caixa-right">
+            <div class="caixa-cart-head">
+              <h3>Itens da venda</h3>
+              <button id="caixaLimparCarrinhoBtn" type="button" class="btn btn-ghost">Limpar</button>
+            </div>
+            <div id="caixaCartList" class="caixa-cart-list"></div>
+
             <div class="caixa-total-block">
               <span class="caixa-total-label">Total</span>
               <strong id="caixaTotalValue" class="caixa-total-value">R$ 0,00</strong>

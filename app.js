@@ -4434,39 +4434,39 @@ function renderCaixaCart() {
   const itens = getCaixaCartItens();
   if (!itens.length) {
     els.caixaCartList.innerHTML =
-      '<p class="caixa-cart-empty">Carrinho vazio. Digite o nome ou código e pressione Enter.</p>';
+      '<p class="caixa-cart-empty">Nenhum item. Busque à esquerda e pressione Enter.</p>';
   } else {
-    els.caixaCartList.innerHTML = itens
-      .map((item) => {
-        const total = moeda.format(getNovoDocumentoItemTotal(item));
-        const qtd = Number(item.quantidade || 0);
-        const produto = (state.produtos || []).find(
-          (p) => String(p.id) === String(item.produtoId)
-        );
-        const thumb = renderProdutoThumbHtml(
-          produto || { nome: item.descricao, imagem_path: null },
-          "caixa-cart-thumb"
-        );
-        const unit = moeda.format(Number(item.valorUnitario || 0));
-        return `
-          <article class="caixa-cart-item" data-caixa-cart-row="${escapeHtml(item.rowId)}">
-            ${thumb}
-            <div class="caixa-cart-item-body">
-              <div class="caixa-cart-item-name">${escapeHtml(item.descricao || "Item")}</div>
-              <div class="caixa-cart-item-unit">${escapeHtml(unit)} un.</div>
-              <div class="caixa-cart-item-controls">
-                <button type="button" data-caixa-qty-dec="${escapeHtml(item.rowId)}" aria-label="Diminuir">−</button>
-                <input type="number" min="0.001" step="any" value="${escapeHtml(String(qtd))}" data-caixa-qty="${escapeHtml(item.rowId)}" />
-                <button type="button" data-caixa-qty-inc="${escapeHtml(item.rowId)}" aria-label="Aumentar">+</button>
-              </div>
+    // Lista simples à direita: nome, qtd editável, total — sem foto no carrinho.
+    els.caixaCartList.innerHTML = `
+      <div class="caixa-cart-table" role="table" aria-label="Itens da venda">
+        <div class="caixa-cart-table-head" role="row">
+          <span role="columnheader">Produto</span>
+          <span role="columnheader">Qtd</span>
+          <span role="columnheader">Total</span>
+          <span role="columnheader"></span>
+        </div>
+        ${itens
+          .map((item) => {
+            const total = moeda.format(getNovoDocumentoItemTotal(item));
+            const qtd = Number(item.quantidade || 0);
+            const unit = moeda.format(Number(item.valorUnitario || 0));
+            return `
+          <div class="caixa-cart-item" role="row" data-caixa-cart-row="${escapeHtml(item.rowId)}">
+            <div class="caixa-cart-item-name" role="cell" title="${escapeHtml(item.descricao || "Item")}">
+              <strong>${escapeHtml(item.descricao || "Item")}</strong>
+              <span class="caixa-cart-item-unit">${escapeHtml(unit)}</span>
             </div>
-            <div class="caixa-cart-item-side">
-              <strong class="caixa-cart-item-total">${escapeHtml(total)}</strong>
-              <button type="button" class="caixa-cart-item-remove" data-caixa-remove="${escapeHtml(item.rowId)}">Remover</button>
+            <div class="caixa-cart-item-controls" role="cell">
+              <button type="button" data-caixa-qty-dec="${escapeHtml(item.rowId)}" aria-label="Diminuir">−</button>
+              <input type="number" min="0.001" step="any" value="${escapeHtml(String(qtd))}" data-caixa-qty="${escapeHtml(item.rowId)}" title="Quantidade" />
+              <button type="button" data-caixa-qty-inc="${escapeHtml(item.rowId)}" aria-label="Aumentar">+</button>
             </div>
-          </article>`;
-      })
-      .join("");
+            <strong class="caixa-cart-item-total" role="cell">${escapeHtml(total)}</strong>
+            <button type="button" class="caixa-cart-item-remove" data-caixa-remove="${escapeHtml(item.rowId)}" title="Remover" aria-label="Remover">×</button>
+          </div>`;
+          })
+          .join("")}
+      </div>`;
   }
 
   const subtotal = itens.reduce((sum, item) => sum + getNovoDocumentoItemTotal(item), 0);
