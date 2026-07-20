@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260719caixa3" />
+    <link rel="stylesheet" href="styles.css?v=20260719caixa4" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -2408,20 +2408,31 @@
 
         <div id="caixaLastSaleBanner" class="caixa-last-sale hidden" role="status" aria-live="polite"></div>
 
-        <div class="caixa-body">
-          <section class="caixa-left">
-            <label class="caixa-search-label" for="caixaProdutoSearch">
-              Buscar produto / código de barras
-              <input
-                id="caixaProdutoSearch"
-                type="search"
-                class="caixa-search-input"
-                placeholder="Nome, código, barras ou 2*produto + Enter"
-                autocomplete="off"
-                enterkeyhint="search"
-              />
-            </label>
-            <div id="caixaProdutoResults" class="caixa-produto-results" aria-live="polite"></div>
+        <div class="caixa-body caixa-body--pdv">
+          <section class="caixa-main">
+            <div class="caixa-search-wrap">
+              <label class="caixa-search-label" for="caixaProdutoSearch">
+                Buscar produto / código de barras
+                <input
+                  id="caixaProdutoSearch"
+                  type="search"
+                  class="caixa-search-input"
+                  placeholder="Digite o nome ou leia o código e pressione Enter"
+                  autocomplete="off"
+                  enterkeyhint="search"
+                />
+              </label>
+              <!-- Só aparece enquanto digita (não lista o catálogo inteiro) -->
+              <div id="caixaProdutoResults" class="caixa-produto-results hidden" aria-live="polite"></div>
+            </div>
+
+            <div id="caixaLastProductPreview" class="caixa-last-product hidden" aria-live="polite"></div>
+
+            <div class="caixa-cart-head">
+              <h3>Carrinho</h3>
+              <button id="caixaLimparCarrinhoBtn" type="button" class="btn btn-ghost">Limpar</button>
+            </div>
+            <div id="caixaCartList" class="caixa-cart-list"></div>
 
             <div class="caixa-cliente-row">
               <label class="caixa-cliente-label" for="caixaClienteSearch">
@@ -2443,12 +2454,6 @@
           </section>
 
           <aside class="caixa-right">
-            <div class="caixa-cart-head">
-              <h3>Carrinho</h3>
-              <button id="caixaLimparCarrinhoBtn" type="button" class="btn btn-ghost">Limpar</button>
-            </div>
-            <div id="caixaCartList" class="caixa-cart-list"></div>
-
             <div class="caixa-total-block">
               <span class="caixa-total-label">Total</span>
               <strong id="caixaTotalValue" class="caixa-total-value">R$ 0,00</strong>
@@ -2475,6 +2480,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260719caixa3"></script>
+    <script type="module" src="app.js?v=20260719caixa4"></script>
   </body>
 </html>

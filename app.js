@@ -287,6 +287,7 @@ const els = {
   caixaStatusHint: document.getElementById("caixaStatusHint"),
   caixaLastSaleBanner: document.getElementById("caixaLastSaleBanner"),
   caixaShortcutsHint: document.getElementById("caixaShortcutsHint"),
+  caixaLastProductPreview: document.getElementById("caixaLastProductPreview"),
   tabs: Array.from(document.querySelectorAll(".tab")),
   sections: Array.from(document.querySelectorAll(".app-section")),
   clienteForm: document.getElementById("clienteForm"),
@@ -1014,7 +1015,10 @@ function getHomeSection() {
 }
 
 async function openHomeSection() {
-  const sectionName = getHomeSection();
+  const ui = typeof getEmpresaUiProfile === "function" ? getEmpresaUiProfile() : null;
+  // Perfil caixa: a "home" é a venda em tela cheia (aba pedidos fica por baixo).
+  const sectionName =
+    ui?.modo_venda === "caixa" ? "pedidos" : getHomeSection();
   setSection(sectionName);
   try {
     if (sectionName === "pedidos") {
@@ -1035,6 +1039,16 @@ async function openHomeSection() {
       renderContasReceberTable();
     } else if (sectionName === "dashboard") {
       // dashboard já vem do refreshAll
+    }
+
+    // Mercadinho / PDV: abre o caixa fullscreen logo após o login.
+    if (ui?.modo_venda === "caixa") {
+      await Promise.all([
+        ensureClientesLoaded(),
+        ensureProdutosLoaded(),
+        loadFormasPagamento()
+      ]);
+      openCaixaModal({ reset: true });
     }
   } catch (error) {
     console.warn("Falha ao abrir home section", error);
@@ -4308,35 +4322,81 @@ function renderCaixaFormaPagamentoSelect() {
   }
 }
 
+/**
+ * Sugestões de produto só enquanto digita (não lista o catálogo inteiro).
+ * Com query vazia a área some — o caixa fica focado no carrinho.
+ */
 function renderCaixaProdutoResults(query = "") {
   if (!els.caixaProdutoResults) return;
-  const produtos = searchCaixaProdutos(query);
-  if (!produtos.length) {
-    els.caixaProdutoResults.innerHTML =
-      '<p class="caixa-produto-empty">Nenhum produto encontrado. Cadastre produtos ou refine a busca.</p>';
+  const q = String(query || "").trim();
+  if (!q) {
+    els.caixaProdutoResults.innerHTML = "";
+    els.caixaProdutoResults.classList.add("hidden");
+    els.caixaProdutoResults.classList.remove("is-open");
     return;
   }
+
+  const produtos = searchCaixaProdutos(q, 12);
+  els.caixaProdutoResults.classList.remove("hidden");
+  els.caixaProdutoResults.classList.add("is-open");
+
+  if (!produtos.length) {
+    els.caixaProdutoResults.innerHTML =
+      '<p class="caixa-produto-empty">Nenhum produto encontrado. Ajuste a busca ou cadastre o item.</p>';
+    return;
+  }
+
   els.caixaProdutoResults.innerHTML = produtos
     .map((produto) => {
       const preco = moeda.format(Number(produto.preco || 0));
       const metaParts = [];
       const codigo = getCaixaProdutoCodigo(produto);
       if (codigo) metaParts.push(codigo);
-      metaParts.push(`#${produto.id}`);
       if (produto.controla_estoque) {
         metaParts.push(`est. ${Number(produto.estoque || 0)}`);
       }
       if (produto.categoria && produto.categoria !== "-") {
         metaParts.push(String(produto.categoria));
       }
+      const thumb = renderProdutoThumbHtml(produto, "caixa-produto-thumb");
       return `
         <button type="button" class="caixa-produto-item" data-caixa-add-produto="${escapeHtml(produto.id)}">
-          <strong>${escapeHtml(produto.nome || "Produto")}</strong>
+          ${thumb}
+          <span class="caixa-produto-item-text">
+            <strong>${escapeHtml(produto.nome || "Produto")}</strong>
+            <span class="caixa-produto-meta">${escapeHtml(metaParts.join(" · ") || "—")}</span>
+          </span>
           <span class="caixa-produto-preco">${escapeHtml(preco)}</span>
-          <span class="caixa-produto-meta">${escapeHtml(metaParts.join(" · "))}</span>
         </button>`;
     })
     .join("");
+}
+
+function renderCaixaLastProductPreview(produto = null) {
+  if (!els.caixaLastProductPreview) return;
+  if (!produto) {
+    els.caixaLastProductPreview.classList.add("hidden");
+    els.caixaLastProductPreview.innerHTML = "";
+    return;
+  }
+  const url = resolveProdutoImageUrl(produto.imagem_path);
+  const preco = moeda.format(Number(produto.preco || 0));
+  const codigo = getCaixaProdutoCodigo(produto);
+  els.caixaLastProductPreview.classList.remove("hidden");
+  els.caixaLastProductPreview.innerHTML = `
+    <div class="caixa-last-product-media">
+      ${
+        url
+          ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(produto.nome || "")}" class="caixa-last-product-img is-clickable" data-image-preview="${escapeHtml(url)}" data-image-title="${escapeHtml(produto.nome || "")}" />`
+          : `<div class="caixa-last-product-placeholder">Sem foto</div>`
+      }
+    </div>
+    <div class="caixa-last-product-info">
+      <span class="caixa-last-product-label">Último item</span>
+      <strong>${escapeHtml(produto.nome || "Produto")}</strong>
+      <span>${escapeHtml(preco)}${codigo ? ` · ${escapeHtml(codigo)}` : ""}</span>
+    </div>
+  `;
 }
 
 function renderCaixaClienteOptions(query = "") {
@@ -4373,22 +4433,37 @@ function renderCaixaCart() {
   if (!els.caixaCartList) return;
   const itens = getCaixaCartItens();
   if (!itens.length) {
-    els.caixaCartList.innerHTML = '<p class="caixa-cart-empty">Carrinho vazio. Busque e toque em um produto.</p>';
+    els.caixaCartList.innerHTML =
+      '<p class="caixa-cart-empty">Carrinho vazio. Digite o nome ou código e pressione Enter.</p>';
   } else {
     els.caixaCartList.innerHTML = itens
       .map((item) => {
         const total = moeda.format(getNovoDocumentoItemTotal(item));
         const qtd = Number(item.quantidade || 0);
+        const produto = (state.produtos || []).find(
+          (p) => String(p.id) === String(item.produtoId)
+        );
+        const thumb = renderProdutoThumbHtml(
+          produto || { nome: item.descricao, imagem_path: null },
+          "caixa-cart-thumb"
+        );
+        const unit = moeda.format(Number(item.valorUnitario || 0));
         return `
           <article class="caixa-cart-item" data-caixa-cart-row="${escapeHtml(item.rowId)}">
-            <div class="caixa-cart-item-name">${escapeHtml(item.descricao || "Item")}</div>
-            <div class="caixa-cart-item-controls">
-              <button type="button" data-caixa-qty-dec="${escapeHtml(item.rowId)}" aria-label="Diminuir">−</button>
-              <input type="number" min="0.001" step="any" value="${escapeHtml(String(qtd))}" data-caixa-qty="${escapeHtml(item.rowId)}" />
-              <button type="button" data-caixa-qty-inc="${escapeHtml(item.rowId)}" aria-label="Aumentar">+</button>
+            ${thumb}
+            <div class="caixa-cart-item-body">
+              <div class="caixa-cart-item-name">${escapeHtml(item.descricao || "Item")}</div>
+              <div class="caixa-cart-item-unit">${escapeHtml(unit)} un.</div>
+              <div class="caixa-cart-item-controls">
+                <button type="button" data-caixa-qty-dec="${escapeHtml(item.rowId)}" aria-label="Diminuir">−</button>
+                <input type="number" min="0.001" step="any" value="${escapeHtml(String(qtd))}" data-caixa-qty="${escapeHtml(item.rowId)}" />
+                <button type="button" data-caixa-qty-inc="${escapeHtml(item.rowId)}" aria-label="Aumentar">+</button>
+              </div>
             </div>
-            <strong class="caixa-cart-item-total">${escapeHtml(total)}</strong>
-            <button type="button" class="caixa-cart-item-remove" data-caixa-remove="${escapeHtml(item.rowId)}">Remover</button>
+            <div class="caixa-cart-item-side">
+              <strong class="caixa-cart-item-total">${escapeHtml(total)}</strong>
+              <button type="button" class="caixa-cart-item-remove" data-caixa-remove="${escapeHtml(item.rowId)}">Remover</button>
+            </div>
           </article>`;
       })
       .join("");
@@ -4430,6 +4505,7 @@ function renderCaixaModal() {
     }
   }
   renderCaixaFormaPagamentoSelect();
+  // Só mostra sugestões se já houver texto na busca (sem catálogo aberto).
   renderCaixaProdutoResults(els.caixaProdutoSearch?.value || "");
   renderCaixaCart();
   applyEmpresaUiProfile();
@@ -4456,10 +4532,13 @@ function openCaixaModal({ reset = true } = {}) {
       els.caixaClienteOptions.classList.add("hidden");
       els.caixaClienteOptions.innerHTML = "";
     }
+    renderCaixaLastProductPreview(null);
   }
   closeNovoDocumentoModal();
   els.caixaModal.classList.remove("hidden");
   document.body.classList.add("caixa-open");
+  // Tela cheia real no perfil caixa (sem “janela” flutuante).
+  els.caixaModal.classList.add("caixa-overlay--fullscreen");
   renderCaixaModal();
   window.requestAnimationFrame(() => {
     els.caixaProdutoSearch?.focus();
@@ -4507,6 +4586,7 @@ function addProdutoToCaixa(produtoId, { qty = 1, silent = false } = {}) {
   }
   renderCaixaProdutoResults("");
   renderCaixaCart();
+  renderCaixaLastProductPreview(produto);
   playCaixaBeep(true);
   window.requestAnimationFrame(() => els.caixaProdutoSearch?.focus());
   return true;
@@ -7435,6 +7515,7 @@ async function saveNovoDocumento(event, options = {}) {
       if (els.caixaClienteId) els.caixaClienteId.value = "";
       if (els.caixaObservacoes) els.caixaObservacoes.value = "";
       if (els.caixaProdutoSearch) els.caixaProdutoSearch.value = "";
+      renderCaixaLastProductPreview(null);
       renderCaixaModal();
       setCaixaLastSaleBanner(documentoId, vendaTotal);
       playCaixaBeep(true);
