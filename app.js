@@ -270,6 +270,7 @@ const els = {
   caixaModalSubtitle: document.getElementById("caixaModalSubtitle"),
   closeCaixaModalBtn: document.getElementById("closeCaixaModalBtn"),
   caixaModoDocumentoBtn: document.getElementById("caixaModoDocumentoBtn"),
+  caixaHistoricoBtn: document.getElementById("caixaHistoricoBtn"),
   caixaProdutoSearch: document.getElementById("caixaProdutoSearch"),
   caixaProdutoResults: document.getElementById("caixaProdutoResults"),
   caixaClienteId: document.getElementById("caixaClienteId"),
