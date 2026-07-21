@@ -4,6 +4,7 @@
 -- CTE (que geravam statement timeout em bases grandes). Validamos que o usuario
 -- chamador tem acesso a target_empresa_id via usuarios_empresas ou platform_admins
 -- antes de retornar qualquer dado.
+-- Datas de negocio em America/Sao_Paulo (mesmo criterio do diario / monthly cash).
 
 -- Indices auxiliares para acelerar as agregacoes por mes.
 create index if not exists idx_clientes_empresa_created
@@ -48,12 +49,12 @@ begin
   end if;
 
   with base as (
-    select date_trunc('month', now())::date as ref
+    select date_trunc('month', timezone('America/Sao_Paulo', now()))::date as ref
   ),
   forecast_range as (
     select
       coalesce(
-        max(date_trunc('month', p.vencimento)::date),
+        max(date_trunc('month', timezone('America/Sao_Paulo', p.vencimento))::date),
         (select ref from base)
       ) as latest
     from public.contas_receber_parcelas p
@@ -69,14 +70,14 @@ begin
     )::date as mes
   ),
   recebidos as (
-    select date_trunc('month', r.data_recebimento)::date as mes,
+    select date_trunc('month', timezone('America/Sao_Paulo', r.data_recebimento))::date as mes,
            sum(r.valor)::numeric as total
     from public.recebimentos r
     where r.empresa_id = target_empresa_id
     group by 1
   ),
   previstos as (
-    select date_trunc('month', p.vencimento)::date as mes,
+    select date_trunc('month', timezone('America/Sao_Paulo', p.vencimento))::date as mes,
            sum(coalesce(p.valor_parcela,0) - coalesce(p.valor_recebido,0))::numeric as total
     from public.contas_receber_parcelas p
     where p.empresa_id = target_empresa_id
@@ -85,23 +86,24 @@ begin
     group by 1
   ),
   faturado as (
-    select date_trunc('month', d.data_emissao)::date as mes,
+    select date_trunc('month', timezone('America/Sao_Paulo', d.data_emissao))::date as mes,
            sum(d.total)::numeric as total,
            count(*)::int as pedidos_count
     from public.documentos_venda d
     where d.empresa_id = target_empresa_id
       and d.tipo_documento = 'pedido'
+      and lower(coalesce(d.status, '')) <> 'cancelado'
     group by 1
   ),
   clientes_mes as (
-    select date_trunc('month', c.created_at)::date as mes,
+    select date_trunc('month', timezone('America/Sao_Paulo', c.created_at))::date as mes,
            count(*)::int as total
     from public.clientes c
     where c.empresa_id = target_empresa_id
     group by 1
   ),
   despesas_mes as (
-    select date_trunc('month', d.data_despesa)::date as mes,
+    select date_trunc('month', timezone('America/Sao_Paulo', d.data_despesa))::date as mes,
            sum(d.valor)::numeric as total,
            count(*)::int as despesas_count
     from public.despesas d
@@ -130,7 +132,9 @@ begin
     select
       (select count(*)::int from public.clientes c where c.empresa_id = target_empresa_id) as clientes,
       (select count(*)::int from public.documentos_venda d
-        where d.empresa_id = target_empresa_id and d.tipo_documento = 'pedido') as pedidos,
+        where d.empresa_id = target_empresa_id
+          and d.tipo_documento = 'pedido'
+          and lower(coalesce(d.status, '')) <> 'cancelado') as pedidos,
       (select count(*)::int from public.despesas d where d.empresa_id = target_empresa_id) as despesas,
       (select count(*)::int from public.produto_catalogo p where p.empresa_id = target_empresa_id) as produtos_total,
       (
@@ -155,6 +159,7 @@ begin
         select coalesce(sum(d.total), 0)::numeric from public.documentos_venda d
         where d.empresa_id = target_empresa_id
           and d.tipo_documento = 'pedido'
+          and lower(coalesce(d.status, '')) <> 'cancelado'
       ) as faturamento_total
   )
   select jsonb_build_object(

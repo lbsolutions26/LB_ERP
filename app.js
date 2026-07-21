@@ -571,13 +571,19 @@ const els = {
   faturamentoBadge: document.getElementById("faturamentoBadge"),
   faturamentoHint: document.getElementById("faturamentoHint"),
   entradasCaixaResumo: document.getElementById("entradasCaixaResumo"),
+  entradasCaixaResumoBtn: document.getElementById("entradasCaixaResumoBtn"),
   entradasCaixaTitulo: document.getElementById("entradasCaixaTitulo"),
   entradasCaixaSubtitulo: document.getElementById("entradasCaixaSubtitulo"),
-   entradasCaixaLegenda: document.getElementById("entradasCaixaLegenda"),
+  entradasCaixaLegenda: document.getElementById("entradasCaixaLegenda"),
   dashboardCashModeButtons: Array.from(document.querySelectorAll("[data-dashboard-cash-mode]")),
   dashboardCashRangeButtons: Array.from(document.querySelectorAll("[data-dashboard-cash-range]")),
   entradasCaixaChart: document.getElementById("entradasCaixaChart"),
   entradasCaixaGrid: document.getElementById("entradasCaixaGrid"),
+  caixaMesBreakdownModal: document.getElementById("caixaMesBreakdownModal"),
+  caixaMesBreakdownTitle: document.getElementById("caixaMesBreakdownTitle"),
+  caixaMesBreakdownSubtitle: document.getElementById("caixaMesBreakdownSubtitle"),
+  caixaMesBreakdownBody: document.getElementById("caixaMesBreakdownBody"),
+  closeCaixaMesBreakdownModalBtn: document.getElementById("closeCaixaMesBreakdownModalBtn"),
   dailyFaturamentoChart: document.getElementById("dailyFaturamentoChart"),
   dailyFaturamentoResumo: document.getElementById("dailyFaturamentoResumo"),
   dailyFaturamentoHoje: document.getElementById("dailyFaturamentoHoje"),
@@ -12679,25 +12685,52 @@ function renderMetrics(options = {}) {
   const monthlyCashEntries = getMonthlyCashEntries(state.dashboardCashChartMode);
   const currentMonthKey = formatMonthKey(new Date());
   const currentMonthEntry = monthlyCashEntries.find((item) => item.monthKey === currentMonthKey)?.total || 0;
+  const isFaturamentoMode = state.dashboardCashChartMode === "faturamento";
 
   if (els.entradasCaixaTitulo) {
-    els.entradasCaixaTitulo.textContent = state.dashboardCashChartMode === "faturamento" ? "Faturamento por Mês" : "Recebimentos por Mês";
+    els.entradasCaixaTitulo.textContent = isFaturamentoMode ? "Faturamento por Mês" : "Recebimentos por Mês";
   }
   if (els.entradasCaixaSubtitulo) {
-    els.entradasCaixaSubtitulo.textContent = state.dashboardCashChartMode === "faturamento"
-      ? "Valor total dos pedidos considerando a data de emissão."
-      : "Previsto e realizado considerando recebimentos e títulos em aberto.";
+    els.entradasCaixaSubtitulo.textContent = isFaturamentoMode
+      ? "Valor total dos pedidos (data de emissão). Deve bater com o Total do mês em Faturamento por Dia."
+      : "Caixa do mês: valores já recebidos + títulos em aberto com vencimento no período (pode diferir do faturamento).";
   }
 
   if (els.entradasCaixaLegenda) {
-    els.entradasCaixaLegenda.innerHTML = state.dashboardCashChartMode === "faturamento"
+    els.entradasCaixaLegenda.innerHTML = isFaturamentoMode
       ? `
-        <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-faturamento"></i> Faturamento</span>
+        <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-faturamento"></i> Faturamento (pedidos)</span>
       `
       : `
         <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-realized"></i> Realizado</span>
         <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-forecast"></i> Previsto</span>
       `;
+  }
+
+  if (els.entradasCaixaResumo) {
+    els.entradasCaixaResumo.textContent = moeda.format(currentMonthEntry);
+  }
+  if (els.entradasCaixaResumoBtn) {
+    const labelEl = els.entradasCaixaResumoBtn.querySelector("span");
+    if (labelEl) {
+      labelEl.textContent = isFaturamentoMode ? "Faturamento este mês" : "Caixa este mês";
+    }
+    const hintEl = els.entradasCaixaResumoBtn.querySelector(".dashboard-cash-summary-hint");
+    if (hintEl) {
+      hintEl.textContent = isFaturamentoMode
+        ? "pedidos emitidos no mês"
+        : "toque para detalhar";
+    }
+    els.entradasCaixaResumoBtn.classList.toggle("is-faturamento-mode", isFaturamentoMode);
+    els.entradasCaixaResumoBtn.title = isFaturamentoMode
+      ? "Soma dos pedidos emitidos no mês (mesma base do Faturamento por Dia). Clique para ver o resumo."
+      : "Recebido no mês + títulos em aberto com vencimento neste mês. Clique para ver quanto é deste mês e quanto é de outros.";
+    els.entradasCaixaResumoBtn.setAttribute(
+      "aria-label",
+      isFaturamentoMode
+        ? `Faturamento este mês ${moeda.format(currentMonthEntry)}. Clique para detalhes.`
+        : `Caixa este mês ${moeda.format(currentMonthEntry)}. Clique para ver origem do mês e de outros períodos.`
+    );
   }
 
   for (const button of els.dashboardCashModeButtons || []) {
@@ -12716,18 +12749,13 @@ function renderMetrics(options = {}) {
   renderDashboardForecastCard();
   renderDashboardResultCards();
 
-  if (els.entradasCaixaResumo) {
-    els.entradasCaixaResumo.textContent = moeda.format(currentMonthEntry);
-  }
-
   if (els.entradasCaixaGrid) {
     if (!monthlyCashEntries.length) {
       els.entradasCaixaGrid.innerHTML = '<div class="documento-empty-state">Sem recebimentos registrados.</div>';
     } else {
-      const isFaturamento = state.dashboardCashChartMode === "faturamento";
       // Mais recentes primeiro: mais legível que cards empilhados.
       const rows = [...monthlyCashEntries].reverse();
-      const head = isFaturamento
+      const head = isFaturamentoMode
         ? `
           <tr>
             <th scope="col">Mês</th>
@@ -12751,7 +12779,7 @@ function renderMetrics(options = {}) {
           const isCurrent = item.monthKey === currentMonthKey;
           const realizedPct = total > 0 ? Math.round((realized / total) * 100) : 0;
           const forecastPct = Math.max(0, 100 - realizedPct);
-          if (isFaturamento) {
+          if (isFaturamentoMode) {
             return `
               <tr class="${isCurrent ? "is-current" : ""}">
                 <td>
@@ -12804,23 +12832,23 @@ function renderMetrics(options = {}) {
         const realizedHeight = value > 0 ? Math.max(0, Math.round((realized / value) * totalHeight)) : 0;
         const forecastHeight = Math.max(0, totalHeight - realizedHeight);
         const isCurrentMonth = item.monthKey === currentMonthKey;
-        const title = state.dashboardCashChartMode === "faturamento"
+        const title = isFaturamentoMode
           ? `${item.label}: ${moeda.format(value)}`
           : `${item.label}: ${moeda.format(value)} | Realizado ${moeda.format(realized)} | Previsto ${moeda.format(forecast)}`;
         return `
-          <div class="cash-bar-wrap${isCurrentMonth ? " cash-bar-wrap-current" : ""}" title="${escapeHtml(title)}">
-            <div class="cash-bar-value${state.dashboardCashChartMode === "recebimentos" ? " cash-bar-value-split" : ""}">
-              ${state.dashboardCashChartMode === "recebimentos"
-                ? `<span class="cash-bar-value-realized">${moeda.format(realized)}</span><span class="cash-bar-value-forecast">${moeda.format(forecast)}</span>`
-                : moeda.format(value)}
+          <div class="cash-bar-wrap${isCurrentMonth ? " cash-bar-wrap-current" : ""}" data-month-key="${escapeHtml(item.monthKey)}" title="${escapeHtml(title)}">
+            <div class="cash-bar-value${isFaturamentoMode ? "" : " cash-bar-value-split"}">
+              ${isFaturamentoMode
+                ? moeda.format(value)
+                : `<span class="cash-bar-value-realized">${moeda.format(realized)}</span><span class="cash-bar-value-forecast">${moeda.format(forecast)}</span>`}
             </div>
             <div class="cash-bar-track" aria-hidden="true">
-              ${state.dashboardCashChartMode === "recebimentos"
-                ? `
+              ${isFaturamentoMode
+                ? `<div class="cash-bar-fill${isCurrentMonth ? " cash-bar-fill-current" : ""}" data-bar-h="${totalHeight}%" style="height:0%"></div>`
+                : `
                   <div class="cash-bar-fill cash-bar-fill-realized" data-bar-h="${realizedHeight}%" style="height:0%"></div>
                   <div class="cash-bar-fill cash-bar-fill-forecast" data-bar-h="${forecastHeight}%" style="height:0%"></div>
-                `
-                : `<div class="cash-bar-fill${isCurrentMonth ? " cash-bar-fill-current" : ""}" data-bar-h="${totalHeight}%" style="height:0%"></div>`}
+                `}
             </div>
             <div class="cash-bar-label">${escapeHtml(item.label)}</div>
           </div>
@@ -12829,8 +12857,14 @@ function renderMetrics(options = {}) {
       .join("");
     els.entradasCaixaChart.innerHTML = chartBars || '<div class="documento-empty-state">Sem recebimentos registrados.</div>';
     animateDashboardBars(els.entradasCaixaChart);
+    // Centraliza no mes corrente (evita ir para meses futuros so de previsto).
     window.requestAnimationFrame(() => {
-      els.entradasCaixaChart.scrollLeft = els.entradasCaixaChart.scrollWidth;
+      const currentBar = els.entradasCaixaChart.querySelector(`[data-month-key="${currentMonthKey}"]`);
+      if (currentBar && typeof currentBar.scrollIntoView === "function") {
+        currentBar.scrollIntoView({ inline: "center", block: "nearest", behavior: "auto" });
+      } else {
+        els.entradasCaixaChart.scrollLeft = els.entradasCaixaChart.scrollWidth;
+      }
     });
   }
 }
@@ -13064,23 +13098,437 @@ function renderDashboardDailyCharts() {
   );
 }
 
+function unwrapRelation(value) {
+  if (Array.isArray(value)) return value[0] || null;
+  return value || null;
+}
+
+function getCurrentMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
+  return {
+    start,
+    end,
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+    key: formatMonthKey(now),
+    label: start.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+  };
+}
+
+function monthKeyFromTimestamp(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}`;
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return formatMonthKey(date);
+}
+
+/**
+ * Classifica um lançamento de caixa como "deste mês" ou "outros"
+ * com base na data de emissão do pedido (ou da conta, se sem pedido).
+ */
+function classifyCashOriginMonth(meta, currentKey) {
+  const docMonth = monthKeyFromTimestamp(meta?.documentoDataEmissao);
+  if (docMonth) {
+    return docMonth === currentKey ? "mes" : "outros";
+  }
+  const contaMonth = monthKeyFromTimestamp(meta?.contaEmissao);
+  if (contaMonth) {
+    return contaMonth === currentKey ? "mes" : "outros";
+  }
+  // Sem documento/conta: assume do mês (vencimento/recebimento já filtrados no período).
+  return "mes";
+}
+
+function emptyCashMonthBreakdown(range) {
+  return {
+    range,
+    total: 0,
+    realized: 0,
+    forecast: 0,
+    doMes: 0,
+    deOutros: 0,
+    realizedDoMes: 0,
+    realizedDeOutros: 0,
+    forecastDoMes: 0,
+    forecastDeOutros: 0,
+    faturamentoMes: getDashboardFaturamentoMesAtual(),
+    counts: {
+      recebimentosDoMes: 0,
+      recebimentosOutros: 0,
+      previstosDoMes: 0,
+      previstosOutros: 0
+    }
+  };
+}
+
+async function loadContasOrigemMap(contaIds) {
+  const ids = [...new Set((contaIds || []).map((id) => Number(id)).filter(Number.isFinite))];
+  const byContaId = new Map();
+  if (!ids.length) return byContaId;
+
+  const chunkSize = 80;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const { data, error } = await supabaseClient
+      .from("contas_receber")
+      .select("id, emissao, documento_id")
+      .eq("empresa_id", state.empresaId)
+      .in("id", chunk);
+    if (error) throw error;
+
+    const docIds = [...new Set((data || []).map((c) => Number(c.documento_id)).filter(Number.isFinite))];
+    const docById = new Map();
+    if (docIds.length) {
+      const { data: docs, error: docsError } = await supabaseClient
+        .from("documentos_venda")
+        .select("id, data_emissao, total, tipo_documento")
+        .eq("empresa_id", state.empresaId)
+        .in("id", docIds);
+      if (docsError) throw docsError;
+      for (const doc of docs || []) {
+        docById.set(Number(doc.id), doc);
+      }
+    }
+
+    for (const conta of data || []) {
+      const doc = conta.documento_id != null ? docById.get(Number(conta.documento_id)) : null;
+      byContaId.set(Number(conta.id), {
+        contaEmissao: conta.emissao || null,
+        documentoDataEmissao: doc?.data_emissao || null
+      });
+    }
+  }
+
+  return byContaId;
+}
+
+async function loadParcelasMetaMap(parcelaIds) {
+  const ids = [...new Set((parcelaIds || []).map((id) => Number(id)).filter(Number.isFinite))];
+  const byParcelaId = new Map();
+  if (!ids.length) return byParcelaId;
+
+  const chunkSize = 80;
+  const parcelaToConta = new Map();
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const { data, error } = await supabaseClient
+      .from("contas_receber_parcelas")
+      .select("id, conta_receber_id")
+      .eq("empresa_id", state.empresaId)
+      .in("id", chunk);
+    if (error) throw error;
+    for (const row of data || []) {
+      parcelaToConta.set(Number(row.id), Number(row.conta_receber_id));
+    }
+  }
+
+  const contaMap = await loadContasOrigemMap([...parcelaToConta.values()]);
+  for (const [parcelaId, contaId] of parcelaToConta.entries()) {
+    byParcelaId.set(parcelaId, contaMap.get(contaId) || { contaEmissao: null, documentoDataEmissao: null });
+  }
+  return byParcelaId;
+}
+
+async function loadDashboardCashMonthBreakdown() {
+  const range = getCurrentMonthRange();
+  const empty = emptyCashMonthBreakdown(range);
+
+  if (!state.empresaId || !supabaseClient) {
+    return empty;
+  }
+
+  // Janela um pouco maior + filtro local por mes (evita perder meia-noite UTC do legado).
+  const queryStartIso = new Date(range.start.getTime() - 36 * 60 * 60 * 1000).toISOString();
+  const queryEndIso = new Date(range.end.getTime() + 36 * 60 * 60 * 1000).toISOString();
+  const isInRangeMonth = (value) => monthKeyFromTimestamp(value) === range.key;
+
+  try {
+    const [recebidosResp, previstosResp] = await Promise.all([
+      fetchAllSupabaseRows(() =>
+        supabaseClient
+          .from("recebimentos")
+          .select("id, valor, data_recebimento, parcela_id")
+          .eq("empresa_id", state.empresaId)
+          .gte("data_recebimento", queryStartIso)
+          .lt("data_recebimento", queryEndIso)
+          .order("data_recebimento", { ascending: true })
+      ),
+      fetchAllSupabaseRows(() =>
+        supabaseClient
+          .from("contas_receber_parcelas")
+          .select("id, valor_parcela, valor_recebido, vencimento, status, conta_receber_id")
+          .eq("empresa_id", state.empresaId)
+          .gte("vencimento", queryStartIso)
+          .lt("vencimento", queryEndIso)
+          .order("vencimento", { ascending: true })
+      )
+    ]);
+
+    if (recebidosResp.error) throw recebidosResp.error;
+    if (previstosResp.error) throw previstosResp.error;
+
+    const recebimentos = (recebidosResp.data || []).filter((row) => isInRangeMonth(row.data_recebimento));
+    const previstosRaw = (previstosResp.data || []).filter((row) => isInRangeMonth(row.vencimento));
+    const previstos = previstosRaw.filter((row) => {
+      const status = String(row.status || "").toLowerCase();
+      if (status === "recebido" || status === "cancelado" || status === "quitado") return false;
+      const aberto = Math.max(0, Number(row.valor_parcela || 0) - Number(row.valor_recebido || 0));
+      return aberto > 0.00001;
+    });
+
+    const parcelaIdsFromRecebimentos = recebimentos.map((r) => Number(r.parcela_id));
+    const contaIdsFromPrevistos = previstos.map((p) => Number(p.conta_receber_id));
+
+    const [parcelaOrigemMap, contaOrigemMap] = await Promise.all([
+      loadParcelasMetaMap(parcelaIdsFromRecebimentos),
+      loadContasOrigemMap(contaIdsFromPrevistos)
+    ]);
+
+    const breakdown = emptyCashMonthBreakdown(range);
+
+    for (const row of recebimentos) {
+      const valor = Math.max(0, Number(row.valor || 0));
+      if (valor <= 0) continue;
+      const meta = parcelaOrigemMap.get(Number(row.parcela_id)) || {};
+      const bucket = classifyCashOriginMonth(meta, range.key);
+      breakdown.realized += valor;
+      if (bucket === "mes") {
+        breakdown.realizedDoMes += valor;
+        breakdown.counts.recebimentosDoMes += 1;
+      } else {
+        breakdown.realizedDeOutros += valor;
+        breakdown.counts.recebimentosOutros += 1;
+      }
+    }
+
+    for (const row of previstos) {
+      const aberto = Math.max(0, Number(row.valor_parcela || 0) - Number(row.valor_recebido || 0));
+      if (aberto <= 0.00001) continue;
+      const meta = contaOrigemMap.get(Number(row.conta_receber_id)) || {};
+      const bucket = classifyCashOriginMonth(meta, range.key);
+      breakdown.forecast += aberto;
+      if (bucket === "mes") {
+        breakdown.forecastDoMes += aberto;
+        breakdown.counts.previstosDoMes += 1;
+      } else {
+        breakdown.forecastDeOutros += aberto;
+        breakdown.counts.previstosOutros += 1;
+      }
+    }
+
+    const round2 = (n) => Number(Number(n || 0).toFixed(2));
+    breakdown.realized = round2(breakdown.realized);
+    breakdown.forecast = round2(breakdown.forecast);
+    breakdown.realizedDoMes = round2(breakdown.realizedDoMes);
+    breakdown.realizedDeOutros = round2(breakdown.realizedDeOutros);
+    breakdown.forecastDoMes = round2(breakdown.forecastDoMes);
+    breakdown.forecastDeOutros = round2(breakdown.forecastDeOutros);
+    breakdown.doMes = round2(breakdown.realizedDoMes + breakdown.forecastDoMes);
+    breakdown.deOutros = round2(breakdown.realizedDeOutros + breakdown.forecastDeOutros);
+    breakdown.total = round2(breakdown.realized + breakdown.forecast);
+    breakdown.faturamentoMes = round2(getDashboardFaturamentoMesAtual());
+
+    return breakdown;
+  } catch (error) {
+    console.warn("Falha ao detalhar caixa do mês", error.message || error);
+    throw error;
+  }
+}
+
+function renderCaixaMesBreakdownBody(breakdown, mode = "recebimentos") {
+  if (!els.caixaMesBreakdownBody) return;
+
+  if (mode === "faturamento") {
+    const fat = Number(breakdown.faturamentoMes || 0);
+    const monthLabel = breakdown.range?.label || "mês atual";
+    els.caixaMesBreakdownBody.innerHTML = `
+      <div class="caixa-mes-total">
+        <span>Faturamento de ${escapeHtml(monthLabel)}</span>
+        <strong>${moeda.format(fat)}</strong>
+      </div>
+      <div class="caixa-mes-split">
+        <article class="caixa-mes-split-card caixa-mes-split-card--mes">
+          <span>Deste mês</span>
+          <strong>${moeda.format(fat)}</strong>
+          <small>Pedidos emitidos no período (data de emissão).</small>
+        </article>
+        <article class="caixa-mes-split-card caixa-mes-split-card--outros">
+          <span>Outros meses</span>
+          <strong>${moeda.format(0)}</strong>
+          <small>Faturamento por emissão não inclui vendas de outros meses.</small>
+        </article>
+      </div>
+      <p class="caixa-mes-note">
+        Este valor é a soma dos pedidos do mês — a mesma base do gráfico
+        <strong>Faturamento por Dia</strong>. Para ver caixa (recebido + a receber), use a aba
+        <strong>Recebimentos</strong>.
+      </p>
+    `;
+    return;
+  }
+
+  const total = Number(breakdown.total || 0);
+  const doMes = Number(breakdown.doMes || 0);
+  const deOutros = Number(breakdown.deOutros || 0);
+  const pctMes = total > 0 ? Math.round((doMes / total) * 100) : 0;
+  const pctOutros = total > 0 ? Math.max(0, 100 - pctMes) : 0;
+  const monthLabel = breakdown.range?.label || "mês atual";
+  const monthName = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+
+  els.caixaMesBreakdownBody.innerHTML = `
+    <div class="caixa-mes-total">
+      <span>Total em caixa · ${escapeHtml(monthName)}</span>
+      <strong>${moeda.format(total)}</strong>
+    </div>
+    <div class="caixa-mes-split">
+      <article class="caixa-mes-split-card caixa-mes-split-card--mes">
+        <span>Vendas deste mês</span>
+        <strong>${moeda.format(doMes)}</strong>
+        <small>${pctMes}% do caixa · pedidos emitidos em ${escapeHtml(monthName)}</small>
+      </article>
+      <article class="caixa-mes-split-card caixa-mes-split-card--outros">
+        <span>De outros meses</span>
+        <strong>${moeda.format(deOutros)}</strong>
+        <small>${pctOutros}% do caixa · vendas anteriores com recebimento ou vencimento agora</small>
+      </article>
+    </div>
+    <div class="caixa-mes-bars" aria-hidden="true">
+      <div class="caixa-mes-bar-row">
+        <span>Deste mês</span>
+        <div class="caixa-mes-bar-track"><div class="caixa-mes-bar-fill caixa-mes-bar-fill--mes" style="width:${pctMes}%"></div></div>
+        <strong>${pctMes}%</strong>
+      </div>
+      <div class="caixa-mes-bar-row">
+        <span>Outros</span>
+        <div class="caixa-mes-bar-track"><div class="caixa-mes-bar-fill caixa-mes-bar-fill--outros" style="width:${pctOutros}%"></div></div>
+        <strong>${pctOutros}%</strong>
+      </div>
+    </div>
+    <div class="caixa-mes-details">
+      <h4>Composição</h4>
+      <div class="caixa-mes-detail-row">
+        <span>Recebido (realizado)</span>
+        <strong>${moeda.format(breakdown.realized)}</strong>
+      </div>
+      <div class="caixa-mes-detail-row">
+        <span>↳ de vendas deste mês</span>
+        <strong>${moeda.format(breakdown.realizedDoMes)}</strong>
+      </div>
+      <div class="caixa-mes-detail-row">
+        <span>↳ de vendas de outros meses</span>
+        <strong>${moeda.format(breakdown.realizedDeOutros)}</strong>
+      </div>
+      <div class="caixa-mes-detail-row">
+        <span>A receber (previsto no mês)</span>
+        <strong>${moeda.format(breakdown.forecast)}</strong>
+      </div>
+      <div class="caixa-mes-detail-row">
+        <span>↳ de vendas deste mês</span>
+        <strong>${moeda.format(breakdown.forecastDoMes)}</strong>
+      </div>
+      <div class="caixa-mes-detail-row">
+        <span>↳ de vendas de outros meses</span>
+        <strong>${moeda.format(breakdown.forecastDeOutros)}</strong>
+      </div>
+    </div>
+    <div class="caixa-mes-details">
+      <h4>Comparativo com faturamento</h4>
+      <div class="caixa-mes-detail-row">
+        <span>Faturamento do mês (pedidos)</span>
+        <strong>${moeda.format(breakdown.faturamentoMes)}</strong>
+      </div>
+      <div class="caixa-mes-detail-row">
+        <span>Caixa do mês (recebido + previsto)</span>
+        <strong>${moeda.format(total)}</strong>
+      </div>
+      <div class="caixa-mes-detail-row">
+        <span>Diferença</span>
+        <strong>${moeda.format(total - Number(breakdown.faturamentoMes || 0))}</strong>
+      </div>
+    </div>
+    <p class="caixa-mes-note">
+      “De outros meses” são pagamentos ou parcelas que caem neste mês, mas vieram de pedidos
+      emitidos antes. Por isso o caixa pode ser maior (ou menor) que o faturamento do mês.
+    </p>
+  `;
+}
+
+function closeCaixaMesBreakdownModal() {
+  if (els.caixaMesBreakdownModal) {
+    els.caixaMesBreakdownModal.classList.add("hidden");
+  }
+}
+
+async function openCaixaMesBreakdownModal() {
+  if (!els.caixaMesBreakdownModal || !els.caixaMesBreakdownBody) return;
+
+  const mode = state.dashboardCashChartMode === "faturamento" ? "faturamento" : "recebimentos";
+  const range = getCurrentMonthRange();
+  const monthLabel = range.label.charAt(0).toUpperCase() + range.label.slice(1);
+
+  if (els.caixaMesBreakdownTitle) {
+    els.caixaMesBreakdownTitle.textContent = mode === "faturamento"
+      ? "Faturamento deste mês"
+      : "Caixa deste mês";
+  }
+  if (els.caixaMesBreakdownSubtitle) {
+    els.caixaMesBreakdownSubtitle.textContent = mode === "faturamento"
+      ? `Pedidos emitidos em ${monthLabel}`
+      : `Quanto do caixa de ${monthLabel} vem de vendas do mês e quanto de outros períodos`;
+  }
+
+  els.caixaMesBreakdownBody.innerHTML = '<p class="section-subtitle">Carregando detalhamento…</p>';
+  els.caixaMesBreakdownModal.classList.remove("hidden");
+
+  try {
+    if (mode === "faturamento") {
+      renderCaixaMesBreakdownBody(emptyCashMonthBreakdown(range), "faturamento");
+      return;
+    }
+    const breakdown = await loadDashboardCashMonthBreakdown();
+    renderCaixaMesBreakdownBody(breakdown, "recebimentos");
+  } catch (error) {
+    els.caixaMesBreakdownBody.innerHTML = `
+      <p class="section-subtitle">Não foi possível carregar o detalhamento.</p>
+      <p class="caixa-mes-note">${escapeHtml(error.message || String(error))}</p>
+    `;
+  }
+}
+
 function getMonthlyCashEntries(mode = "recebimentos") {
   const rows = state.dashboardMonthlyCash || [];
   if (!rows.length) return [];
+
+  // Mes corrente: fonte de verdade do faturamento e o grafico diario
+  // (mesma base de "Total do mes" em Faturamento por Dia).
+  const currentKey = formatMonthKey(new Date());
+  const dailyFaturamentoMes = getDashboardFaturamentoMesAtual();
 
   return rows.map((row) => {
     const reference = parseMonthDate(row.mes) || new Date();
     const monthKey = formatMonthKey(reference);
     const label = reference.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+    const isCurrent = monthKey === currentKey;
 
     if (mode === "faturamento") {
-      const value = Number(row.faturamento || 0);
+      const snapshotValue = Number(row.faturamento || 0);
+      // Preferir o diario no mes atual para nao divergir do card "Total do mes".
+      const value = isCurrent
+        ? Math.max(snapshotValue, dailyFaturamentoMes)
+        : snapshotValue;
       return {
         monthKey,
         label,
         total: value,
         realized: value,
-        forecast: 0
+        forecast: 0,
+        isCurrent
       };
     }
 
@@ -13091,7 +13539,8 @@ function getMonthlyCashEntries(mode = "recebimentos") {
       label,
       total: realized + forecast,
       realized,
-      forecast
+      forecast,
+      isCurrent
     };
   });
 }
@@ -15060,6 +15509,22 @@ function attachEvents() {
     button.addEventListener("click", () => {
       state.dashboardCashChartMode = button.getAttribute("data-dashboard-cash-mode") === "faturamento" ? "faturamento" : "recebimentos";
       renderMetrics();
+    });
+  }
+
+  if (els.entradasCaixaResumoBtn) {
+    els.entradasCaixaResumoBtn.addEventListener("click", () => {
+      openCaixaMesBreakdownModal().catch((error) => {
+        showToast(`Erro ao detalhar caixa: ${error.message || error}`, "error");
+      });
+    });
+  }
+  if (els.closeCaixaMesBreakdownModalBtn) {
+    els.closeCaixaMesBreakdownModalBtn.addEventListener("click", () => closeCaixaMesBreakdownModal());
+  }
+  if (els.caixaMesBreakdownModal) {
+    els.caixaMesBreakdownModal.addEventListener("click", (event) => {
+      if (event.target === els.caixaMesBreakdownModal) closeCaixaMesBreakdownModal();
     });
   }
 

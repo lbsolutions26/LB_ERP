@@ -860,6 +860,201 @@ h3 {
   transition: opacity 0.2s ease;
 }
 
+button.dashboard-cash-summary {
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: right;
+}
+
+.dashboard-cash-summary--clickable {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+
+.dashboard-cash-summary--clickable:hover,
+.dashboard-cash-summary--clickable:focus-visible {
+  border-color: rgba(124, 58, 237, 0.45);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+  outline: none;
+}
+
+.dashboard-cash-summary--clickable:active {
+  transform: translateY(1px);
+}
+
+.dashboard-cash-summary-hint {
+  display: block;
+  margin: 0;
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.dashboard-cash-summary--clickable.is-faturamento-mode .dashboard-cash-summary-hint {
+  opacity: 0.75;
+}
+
+.modal-caixa-mes-card {
+  width: min(520px, 100%);
+}
+
+.caixa-mes-breakdown-body {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 0.35rem;
+}
+
+.caixa-mes-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(124, 58, 237, 0.1) 0%, rgba(255, 255, 255, 0.9) 65%);
+  border: 1px solid rgba(124, 58, 237, 0.22);
+}
+
+.caixa-mes-total span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.caixa-mes-total strong {
+  font-family: "Sora", sans-serif;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.caixa-mes-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+@media (max-width: 520px) {
+  .caixa-mes-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.caixa-mes-split-card {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.caixa-mes-split-card--mes {
+  border-color: rgba(22, 93, 89, 0.28);
+  background: linear-gradient(145deg, rgba(22, 93, 89, 0.08) 0%, rgba(255, 255, 255, 0.9) 70%);
+}
+
+.caixa-mes-split-card--outros {
+  border-color: rgba(180, 120, 40, 0.3);
+  background: linear-gradient(145deg, rgba(234, 179, 8, 0.1) 0%, rgba(255, 255, 255, 0.9) 70%);
+}
+
+.caixa-mes-split-card span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.caixa-mes-split-card strong {
+  font-family: "Sora", sans-serif;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.caixa-mes-split-card small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.caixa-mes-bars {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.caixa-mes-bar-row {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.82rem;
+}
+
+.caixa-mes-bar-track {
+  height: 0.55rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.caixa-mes-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  min-width: 0;
+}
+
+.caixa-mes-bar-fill--mes {
+  background: #165d59;
+}
+
+.caixa-mes-bar-fill--outros {
+  background: #c4831a;
+}
+
+.caixa-mes-details {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.caixa-mes-details h4 {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.caixa-mes-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.caixa-mes-detail-row strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.caixa-mes-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .cash-chart-legend {
   margin-top: 0.65rem;
   display: flex;

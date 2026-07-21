@@ -12,7 +12,7 @@ create index if not exists idx_contas_receber_parcelas_empresa_status_vencimento
 create index if not exists idx_recebimentos_empresa_data
   on public.recebimentos (empresa_id, data_recebimento);
 
--- Reescreve a funcao com filtros mais estreitos.
+-- Datas de negocio em America/Sao_Paulo (mesmo criterio do diario).
 create or replace function public.dashboard_monthly_cash(
   target_empresa_id uuid,
   months_back integer default 11
@@ -28,12 +28,12 @@ language sql
 stable
 as $$
   with base as (
-    select date_trunc('month', now())::date as ref
+    select date_trunc('month', timezone('America/Sao_Paulo', now()))::date as ref
   ),
   forecast_range as (
     select
       coalesce(
-        max(date_trunc('month', p.vencimento)::date),
+        max(date_trunc('month', timezone('America/Sao_Paulo', p.vencimento))::date),
         (select ref from base)
       ) as latest
     from public.contas_receber_parcelas p
@@ -49,14 +49,14 @@ as $$
     )::date as mes
   ),
   recebidos as (
-    select date_trunc('month', r.data_recebimento)::date as mes,
+    select date_trunc('month', timezone('America/Sao_Paulo', r.data_recebimento))::date as mes,
            sum(r.valor)::numeric as total
     from public.recebimentos r
     where r.empresa_id = target_empresa_id
     group by 1
   ),
   previstos as (
-    select date_trunc('month', p.vencimento)::date as mes,
+    select date_trunc('month', timezone('America/Sao_Paulo', p.vencimento))::date as mes,
            sum(coalesce(p.valor_parcela,0) - coalesce(p.valor_recebido,0))::numeric as total
     from public.contas_receber_parcelas p
     where p.empresa_id = target_empresa_id
@@ -65,11 +65,12 @@ as $$
     group by 1
   ),
   faturado as (
-    select date_trunc('month', d.data_emissao)::date as mes,
+    select date_trunc('month', timezone('America/Sao_Paulo', d.data_emissao))::date as mes,
            sum(d.total)::numeric as total
     from public.documentos_venda d
     where d.empresa_id = target_empresa_id
       and d.tipo_documento = 'pedido'
+      and lower(coalesce(d.status, '')) <> 'cancelado'
     group by 1
   )
   select

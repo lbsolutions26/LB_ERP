@@ -1,5 +1,6 @@
 -- Retorna faturamento e numero de pedidos dia a dia para o mes corrente.
 -- Usado nos graficos "Faturamento por Dia" e "Pedidos por Dia" do dashboard.
+-- Datas de negocio em America/Sao_Paulo (alinhado com dashboard_monthly_cash / snapshot).
 create or replace function public.dashboard_daily_current_month(
   target_empresa_id uuid
 )
@@ -12,8 +13,9 @@ as $$
 declare
   caller_id uuid := auth.uid();
   has_access boolean;
-  ref_start date := date_trunc('month', now())::date;
-  ref_end date := (date_trunc('month', now()) + interval '1 month' - interval '1 day')::date;
+  -- Limites do mes civil no fuso de negocio (Brasil).
+  ref_start date := date_trunc('month', timezone('America/Sao_Paulo', now()))::date;
+  ref_end date := (date_trunc('month', timezone('America/Sao_Paulo', now())) + interval '1 month' - interval '1 day')::date;
   result jsonb;
 begin
   if caller_id is not null then
@@ -38,14 +40,15 @@ begin
   ),
   agg as (
     select
-      (d.data_emissao at time zone 'America/Sao_Paulo')::date as dia,
+      timezone('America/Sao_Paulo', d.data_emissao)::date as dia,
       sum(d.total)::numeric as faturamento,
       count(*)::int as pedidos_count
     from public.documentos_venda d
     where d.empresa_id = target_empresa_id
       and d.tipo_documento = 'pedido'
-      and d.data_emissao >= ref_start
-      and d.data_emissao < (ref_end + interval '1 day')
+      and lower(coalesce(d.status, '')) <> 'cancelado'
+      and timezone('America/Sao_Paulo', d.data_emissao)::date >= ref_start
+      and timezone('America/Sao_Paulo', d.data_emissao)::date <= ref_end
     group by 1
   ),
   daily as (
