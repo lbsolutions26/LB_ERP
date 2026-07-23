@@ -13319,22 +13319,15 @@ function monthKeyFromTimestamp(value) {
 }
 
 /**
- * Classifica um lançamento de caixa como "deste mês" ou "outros"
- * EXCLUSIVAMENTE pelo mês de emissão do pedido/conta (America/Sao_Paulo).
- *
- * Importante: NÃO usar status/tipo aqui. Se o pedido foi emitido em julho,
- * o recebimento entra em "deste mês" — mesmo que o status seja atípico.
- * Antes, cancelado/tipo inesperado ia para "outros meses" e a lista mostrava
- * emissão de julho, o que confundia (ex.: R$ 1.605 "outros" com emissão 17/07).
+ * Classifica origem do lançamento de caixa:
+ * - mes: pedido válido emitido no mês corrente (compara com faturamento)
+ * - outros: emissão em outro mês
+ * - atipico: cancelado, não-pedido, sem data — NÃO entra no comparativo com faturamento
+ *   e NÃO é rotulado como "outros meses" (evita confusão com emissão em julho).
  */
-function classifyCashOriginMonth(meta, currentKey) {
-  const emissionRaw = meta?.documentoDataEmissao || meta?.contaEmissao || null;
-  const emissionMonth = businessMonthKeyFromTimestamp(emissionRaw);
-  if (!emissionMonth || !currentKey) return "outros";
-  return emissionMonth === currentKey ? "mes" : "outros";
-}
-
 function resolveCashOriginMeta(meta, currentKey) {
+  const tipo = String(meta?.documentoTipo || "").trim().toLowerCase();
+  const status = String(meta?.documentoStatus || "").trim().toLowerCase();
   const emissionRaw = meta?.documentoDataEmissao || meta?.contaEmissao || null;
   const emissionSource = meta?.documentoDataEmissao
     ? "pedido"
@@ -13342,14 +13335,41 @@ function resolveCashOriginMeta(meta, currentKey) {
       ? "conta"
       : "nenhuma";
   const emissionMonth = businessMonthKeyFromTimestamp(emissionRaw);
-  const bucket = emissionMonth && currentKey && emissionMonth === currentKey ? "mes" : "outros";
+
+  let bucket = "atipico";
+  let reason = "sem_data_emissao";
+
+  if (emissionMonth && currentKey) {
+    if (status === "cancelado") {
+      bucket = "atipico";
+      reason = "pedido_cancelado";
+    } else if (tipo && tipo !== "pedido") {
+      bucket = "atipico";
+      reason = "nao_e_pedido";
+    } else if (emissionMonth === currentKey) {
+      bucket = "mes";
+      reason = "emissao_mes_corrente";
+    } else {
+      bucket = "outros";
+      reason = "emissao_outro_mes";
+    }
+  } else if (!emissionMonth) {
+    bucket = "atipico";
+    reason = "sem_data_emissao";
+  }
+
   return {
     bucket,
+    reason,
     emissionRaw,
     emissionMonth,
     emissionSource,
     emissionLabel: formatBusinessDateLabel(emissionRaw)
   };
+}
+
+function classifyCashOriginMonth(meta, currentKey) {
+  return resolveCashOriginMeta(meta, currentKey).bucket;
 }
 
 function emptyCashMonthBreakdown(range) {
@@ -13360,29 +13380,137 @@ function emptyCashMonthBreakdown(range) {
     forecast: 0,
     doMes: 0,
     deOutros: 0,
+    deAtipicos: 0,
     realizedDoMes: 0,
     realizedDeOutros: 0,
+    realizedAtipicos: 0,
     forecastDoMes: 0,
     forecastDeOutros: 0,
+    forecastAtipicos: 0,
     faturamentoMes: getDashboardFaturamentoMesAtual(),
+    // Soma dos totais dos pedidos únicos com recebimento no mês (para comparativo).
+    faturamentoPedidosComRecebimento: 0,
+    // Soma dos recebimentos que ultrapassam o total do pedido.
+    excessoRecebido: 0,
     counts: {
       recebimentosDoMes: 0,
       recebimentosOutros: 0,
+      recebimentosAtipicos: 0,
       previstosDoMes: 0,
-      previstosOutros: 0
+      previstosOutros: 0,
+      previstosAtipicos: 0,
+      pedidosComExcesso: 0
     },
     items: {
       total: [],
       doMes: [],
       deOutros: [],
+      deAtipicos: [],
       realized: [],
       realizedDoMes: [],
       realizedDeOutros: [],
+      realizedAtipicos: [],
       forecast: [],
       forecastDoMes: [],
       forecastDeOutros: [],
-      faturamento: []
+      forecastAtipicos: [],
+      faturamento: [],
+      excesso: []
     }
+  };
+}
+
+/**
+ * Agrupa recebimentos do mês por pedido e calcula quanto passou do total vendido.
+ */
+function computeRecebidoExcessoPorPedido(realizedMesItems) {
+  const byDoc = new Map();
+  for (const item of realizedMesItems || []) {
+    const docId = item.documentoId != null ? Number(item.documentoId) : null;
+    const key = docId != null && Number.isFinite(docId) ? `doc-${docId}` : `row-${item.recebimentoId || item.parcelaId || Math.random()}`;
+    if (!byDoc.has(key)) {
+      byDoc.set(key, {
+        documentoId: docId,
+        pedidoLabel: item.pedidoLabel || (docId ? `Pedido #${docId}` : "Sem pedido"),
+        clienteNome: item.clienteNome || "—",
+        documentoTotal: item.documentoTotal != null ? Number(item.documentoTotal) : null,
+        recebido: 0,
+        items: []
+      });
+    }
+    const group = byDoc.get(key);
+    group.recebido += Number(item.valor || 0);
+    if (group.documentoTotal == null && item.documentoTotal != null) {
+      group.documentoTotal = Number(item.documentoTotal);
+    }
+    group.items.push(item);
+  }
+
+  let faturamentoComRecebimento = 0;
+  let excessoRecebido = 0;
+  const excessoItems = [];
+
+  for (const group of byDoc.values()) {
+    const totalPedido = group.documentoTotal != null ? Math.max(0, Number(group.documentoTotal)) : null;
+    if (totalPedido != null) {
+      faturamentoComRecebimento += totalPedido;
+      const excesso = Math.max(0, Number(group.recebido || 0) - totalPedido);
+      if (excesso > 0.009) {
+        excessoRecebido += excesso;
+        excessoItems.push({
+          kind: "excesso",
+          bucket: "mes",
+          valor: Number(excesso.toFixed(2)),
+          dataRef: null,
+          dataLabel: "—",
+          emissaoLabel: "—",
+          emissaoPrefix: "Emissão",
+          emissionMonth: null,
+          documentoId: group.documentoId,
+          documentoTotal: totalPedido,
+          clienteNome: group.clienteNome,
+          pedidoLabel: group.pedidoLabel,
+          recebidoNoMes: Number(group.recebido.toFixed(2)),
+          excesso: Number(excesso.toFixed(2))
+        });
+      }
+    }
+  }
+
+  return {
+    faturamentoPedidosComRecebimento: Number(faturamentoComRecebimento.toFixed(2)),
+    excessoRecebido: Number(excessoRecebido.toFixed(2)),
+    pedidosComExcesso: excessoItems.length,
+    excessoItems
+  };
+}
+
+function bucketTargetKeys(bucket, kind) {
+  // kind: 'recebimento' | 'previsto'
+  if (bucket === "mes") {
+    return {
+      group: "doMes",
+      realized: "realizedDoMes",
+      forecast: "forecastDoMes",
+      countRealized: "recebimentosDoMes",
+      countForecast: "previstosDoMes"
+    };
+  }
+  if (bucket === "outros") {
+    return {
+      group: "deOutros",
+      realized: "realizedDeOutros",
+      forecast: "forecastDeOutros",
+      countRealized: "recebimentosOutros",
+      countForecast: "previstosOutros"
+    };
+  }
+  return {
+    group: "deAtipicos",
+    realized: "realizedAtipicos",
+    forecast: "forecastAtipicos",
+    countRealized: "recebimentosAtipicos",
+    countForecast: "previstosAtipicos"
   };
 }
 
@@ -13511,8 +13639,8 @@ function buildCashItemFromMeta({
   const titulo = meta.numeroTitulo ? String(meta.numeroTitulo) : null;
   const pedidoLabel = docId ? `Pedido #${docId}` : (titulo || "Sem pedido");
   const origin = resolveCashOriginMeta(meta, currentKey);
-  // Preferir o bucket recalculado pela emissão (fonte da verdade na UI).
-  const finalBucket = currentKey ? origin.bucket : (bucket || origin.bucket || "outros");
+  // Preferir o bucket recalculado (fonte da verdade na UI).
+  const finalBucket = currentKey ? origin.bucket : (bucket || origin.bucket || "atipico");
   const emissaoPrefix = origin.emissionSource === "conta"
     ? "Emissão conta"
     : origin.emissionSource === "pedido"
@@ -13521,6 +13649,7 @@ function buildCashItemFromMeta({
   return {
     kind,
     bucket: finalBucket,
+    reason: origin.reason || null,
     valor: Number(valor || 0),
     dataRef: dataRef || null,
     dataLabel: formatBusinessDateLabel(dataRef),
@@ -13612,18 +13741,13 @@ async function loadDashboardCashMonthBreakdown() {
         currentKey: range.key,
         extra: { recebimentoId: Number(row.id) }
       });
-      const bucket = item.bucket;
+      const targets = bucketTargetKeys(item.bucket, "recebimento");
       breakdown.realized += valor;
-      pushCashBreakdownItem(breakdown, ["total", "realized", bucket === "mes" ? "doMes" : "deOutros"], item);
-      if (bucket === "mes") {
-        breakdown.realizedDoMes += valor;
-        breakdown.counts.recebimentosDoMes += 1;
-        pushCashBreakdownItem(breakdown, "realizedDoMes", item);
-      } else {
-        breakdown.realizedDeOutros += valor;
-        breakdown.counts.recebimentosOutros += 1;
-        pushCashBreakdownItem(breakdown, "realizedDeOutros", item);
-      }
+      pushCashBreakdownItem(breakdown, ["total", "realized", targets.group, targets.realized], item);
+      breakdown[targets.realized === "realizedDoMes" ? "realizedDoMes"
+        : targets.realized === "realizedDeOutros" ? "realizedDeOutros"
+          : "realizedAtipicos"] += valor;
+      breakdown.counts[targets.countRealized] += 1;
     }
 
     for (const row of previstos) {
@@ -13641,18 +13765,13 @@ async function loadDashboardCashMonthBreakdown() {
         meta,
         currentKey: range.key
       });
-      const bucket = item.bucket;
+      const targets = bucketTargetKeys(item.bucket, "previsto");
       breakdown.forecast += aberto;
-      pushCashBreakdownItem(breakdown, ["total", "forecast", bucket === "mes" ? "doMes" : "deOutros"], item);
-      if (bucket === "mes") {
-        breakdown.forecastDoMes += aberto;
-        breakdown.counts.previstosDoMes += 1;
-        pushCashBreakdownItem(breakdown, "forecastDoMes", item);
-      } else {
-        breakdown.forecastDeOutros += aberto;
-        breakdown.counts.previstosOutros += 1;
-        pushCashBreakdownItem(breakdown, "forecastDeOutros", item);
-      }
+      pushCashBreakdownItem(breakdown, ["total", "forecast", targets.group, targets.forecast], item);
+      breakdown[targets.forecast === "forecastDoMes" ? "forecastDoMes"
+        : targets.forecast === "forecastDeOutros" ? "forecastDeOutros"
+          : "forecastAtipicos"] += aberto;
+      breakdown.counts[targets.countForecast] += 1;
     }
 
     const round2 = (n) => Number(Number(n || 0).toFixed(2));
@@ -13660,20 +13779,35 @@ async function loadDashboardCashMonthBreakdown() {
     breakdown.forecast = round2(breakdown.forecast);
     breakdown.realizedDoMes = round2(breakdown.realizedDoMes);
     breakdown.realizedDeOutros = round2(breakdown.realizedDeOutros);
+    breakdown.realizedAtipicos = round2(breakdown.realizedAtipicos);
     breakdown.forecastDoMes = round2(breakdown.forecastDoMes);
     breakdown.forecastDeOutros = round2(breakdown.forecastDeOutros);
+    breakdown.forecastAtipicos = round2(breakdown.forecastAtipicos);
     breakdown.doMes = round2(breakdown.realizedDoMes + breakdown.forecastDoMes);
     breakdown.deOutros = round2(breakdown.realizedDeOutros + breakdown.forecastDeOutros);
+    breakdown.deAtipicos = round2(breakdown.realizedAtipicos + breakdown.forecastAtipicos);
     breakdown.total = round2(breakdown.realized + breakdown.forecast);
-    breakdown.faturamentoMes = round2(getDashboardFaturamentoMesAtual());
+
+    // Excesso: pagou mais que o total do pedido (duplicidade / acréscimo).
+    const excessoInfo = computeRecebidoExcessoPorPedido(breakdown.items.realizedDoMes);
+    breakdown.faturamentoPedidosComRecebimento = excessoInfo.faturamentoPedidosComRecebimento;
+    breakdown.excessoRecebido = excessoInfo.excessoRecebido;
+    breakdown.counts.pedidosComExcesso = excessoInfo.pedidosComExcesso;
+    breakdown.items.excesso = excessoInfo.excessoItems;
 
     // Itens de faturamento: pedidos do mês (mesma base do card).
     try {
       const fatItems = await loadFaturamentoMesItems(range);
       breakdown.items.faturamento = fatItems;
+      const fatSum = fatItems.reduce((sum, row) => sum + Number(row.valor || 0), 0);
+      // Preferir a lista carregada (mesma base do "ver lançamentos") se disponível.
+      breakdown.faturamentoMes = fatSum > 0
+        ? round2(fatSum)
+        : round2(getDashboardFaturamentoMesAtual());
     } catch (fatError) {
       console.warn("Falha ao listar pedidos do faturamento do mês", fatError.message || fatError);
       breakdown.items.faturamento = [];
+      breakdown.faturamentoMes = round2(getDashboardFaturamentoMesAtual());
     }
 
     return breakdown;
@@ -13771,18 +13905,23 @@ function renderCaixaMesBreakdownBody(breakdown, mode = "recebimentos") {
   const total = Number(breakdown.total || 0);
   const doMes = Number(breakdown.doMes || 0);
   const deOutros = Number(breakdown.deOutros || 0);
+  const deAtipicos = Number(breakdown.deAtipicos || 0);
   const realized = Number(breakdown.realized || 0);
   const realizedDoMes = Number(breakdown.realizedDoMes || 0);
   const realizedDeOutros = Number(breakdown.realizedDeOutros || 0);
+  const realizedAtipicos = Number(breakdown.realizedAtipicos || 0);
   const faturamentoMes = Number(breakdown.faturamentoMes || 0);
+  const excessoRecebido = Number(breakdown.excessoRecebido || 0);
+  const pedidosComExcesso = Number(breakdown.counts?.pedidosComExcesso || 0);
   const pctMes = total > 0 ? Math.round((doMes / total) * 100) : 0;
-  const pctOutros = total > 0 ? Math.max(0, 100 - pctMes) : 0;
+  const pctOutros = total > 0 ? Math.round((deOutros / total) * 100) : 0;
+  const pctAtipicos = Math.max(0, 100 - pctMes - pctOutros);
   const monthLabel = breakdown.range?.label || "mês atual";
   const monthName = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
-  const recebidoSobreFaturadoPct = faturamentoMes > 0
-    ? Math.min(999, Math.round((realizedDoMes / faturamentoMes) * 100))
-    : 0;
+  // Comparativo justo: só pedidos válidos do mês vs o que foi recebido deles.
   const incoerente = realizedDoMes > faturamentoMes + 0.009;
+  const faltaReceberDoFaturado = Math.max(0, faturamentoMes - realizedDoMes);
+  const recebidoAcimaFaturado = Math.max(0, realizedDoMes - faturamentoMes);
 
   els.caixaMesBreakdownBody.innerHTML = `
     <button type="button" class="caixa-mes-total caixa-mes-total--clickable" data-caixa-items="total">
@@ -13790,24 +13929,32 @@ function renderCaixaMesBreakdownBody(breakdown, mode = "recebimentos") {
       <strong>${moeda.format(total)}<em class="caixa-mes-click-hint">ver todos os lançamentos</em></strong>
     </button>
     <p class="caixa-mes-note caixa-mes-note--lead">
-      Este total é <strong>dinheiro</strong> (recebido neste mês + títulos com vencimento neste mês).
-      O faturamento é a <strong>soma dos pedidos emitidos</strong> — são contas diferentes.
-      <strong>Toque em qualquer valor</strong> para ver os pedidos/títulos.
+      <strong>Caixa</strong> = dinheiro que entrou ou vence neste mês.<br>
+      <strong>Faturamento</strong> = soma dos totais dos pedidos emitidos no mês.<br>
+      São contas diferentes: você pode receber no mês mais (ou menos) do que vendeu no mês.
     </p>
     <div class="caixa-mes-split">
       <button type="button" class="caixa-mes-split-card caixa-mes-split-card--mes caixa-mes-split-card--clickable" data-caixa-items="doMes">
-        <span>Caixa de pedidos deste mês</span>
+        <span>Pedidos válidos deste mês</span>
         <strong>${moeda.format(doMes)}</strong>
-        <small>${pctMes}% do caixa · ligado a pedidos emitidos em ${escapeHtml(monthName)}</small>
+        <small>${pctMes}% · emissão em ${escapeHtml(monthName)}, não cancelados</small>
         <em class="caixa-mes-click-hint">toque para listar</em>
       </button>
       <button type="button" class="caixa-mes-split-card caixa-mes-split-card--outros caixa-mes-split-card--clickable" data-caixa-items="deOutros">
-        <span>Caixa de outros períodos</span>
+        <span>Outros meses</span>
         <strong>${moeda.format(deOutros)}</strong>
-        <small>${pctOutros}% · pedidos antigos pagos ou a vencer agora</small>
+        <small>${pctOutros}% · emissão em mês diferente</small>
         <em class="caixa-mes-click-hint">toque para listar</em>
       </button>
     </div>
+    ${deAtipicos > 0.009 ? `
+      <button type="button" class="caixa-mes-split-card caixa-mes-split-card--atipico caixa-mes-split-card--clickable" data-caixa-items="deAtipicos" style="width:100%;margin-top:0.5rem">
+        <span>Atípicos (não comparam com faturamento)</span>
+        <strong>${moeda.format(deAtipicos)}</strong>
+        <small>${pctAtipicos}% · cancelados, sem pedido ou sem data de emissão</small>
+        <em class="caixa-mes-click-hint">toque para listar</em>
+      </button>
+    ` : ""}
     <div class="caixa-mes-bars" aria-hidden="true">
       <div class="caixa-mes-bar-row">
         <span>Deste mês</span>
@@ -13819,47 +13966,64 @@ function renderCaixaMesBreakdownBody(breakdown, mode = "recebimentos") {
         <div class="caixa-mes-bar-track"><div class="caixa-mes-bar-fill caixa-mes-bar-fill--outros" style="width:${pctOutros}%"></div></div>
         <strong>${pctOutros}%</strong>
       </div>
+      ${deAtipicos > 0.009 ? `
+        <div class="caixa-mes-bar-row">
+          <span>Atípicos</span>
+          <div class="caixa-mes-bar-track"><div class="caixa-mes-bar-fill" style="width:${pctAtipicos}%;background:#7c3aed"></div></div>
+          <strong>${pctAtipicos}%</strong>
+        </div>
+      ` : ""}
     </div>
     <div class="caixa-mes-details">
       <h4>De onde veio o dinheiro recebido</h4>
       ${cashBucketButton("realized", "Recebido no mês (total)", moeda.format(realized))}
-      ${cashBucketButton("realizedDoMes", `↳ de pedidos emitidos em ${escapeHtml(monthName)}`, moeda.format(realizedDoMes))}
-      ${cashBucketButton("realizedDeOutros", "↳ de pedidos de outros meses", moeda.format(realizedDeOutros))}
+      ${cashBucketButton("realizedDoMes", `↳ pedidos válidos de ${escapeHtml(monthName)}`, moeda.format(realizedDoMes))}
+      ${cashBucketButton("realizedDeOutros", "↳ pedidos de outros meses", moeda.format(realizedDeOutros))}
+      ${realizedAtipicos > 0.009 ? cashBucketButton("realizedAtipicos", "↳ atípicos (cancelado/sem pedido)", moeda.format(realizedAtipicos)) : ""}
       ${cashBucketButton("forecast", `A receber (vencimento em ${escapeHtml(monthName)})`, moeda.format(breakdown.forecast))}
-      ${cashBucketButton("forecastDoMes", `↳ de pedidos emitidos em ${escapeHtml(monthName)}`, moeda.format(breakdown.forecastDoMes))}
-      ${cashBucketButton("forecastDeOutros", "↳ de pedidos de outros meses", moeda.format(breakdown.forecastDeOutros))}
+      ${cashBucketButton("forecastDoMes", `↳ pedidos válidos de ${escapeHtml(monthName)}`, moeda.format(breakdown.forecastDoMes))}
+      ${cashBucketButton("forecastDeOutros", "↳ pedidos de outros meses", moeda.format(breakdown.forecastDeOutros))}
+      ${Number(breakdown.forecastAtipicos || 0) > 0.009 ? cashBucketButton("forecastAtipicos", "↳ atípicos", moeda.format(breakdown.forecastAtipicos)) : ""}
     </div>
     <div class="caixa-mes-details">
-      <h4>Por que não bate com o faturamento?</h4>
-      ${cashBucketButton("faturamento", "Faturamento (soma dos pedidos emitidos)", moeda.format(faturamentoMes))}
-      ${cashBucketButton("realizedDoMes", "Já recebido desses pedidos do mês", moeda.format(realizedDoMes))}
+      <h4>Comparativo justo com o faturamento</h4>
+      <p class="caixa-mes-note" style="margin-bottom:0.45rem">
+        Aqui comparamos só <strong>pedidos válidos emitidos em ${escapeHtml(monthName)}</strong>
+        (mesma regra do faturamento: tipo pedido, não cancelado).
+      </p>
+      ${cashBucketButton("faturamento", `A) Vendeu em ${escapeHtml(monthName)} (faturamento)`, moeda.format(faturamentoMes))}
+      ${cashBucketButton("realizedDoMes", `B) Recebeu no mês desses pedidos`, moeda.format(realizedDoMes))}
       <div class="caixa-mes-detail-row">
-        <span>% recebido sobre o faturado</span>
-        <strong>${recebidoSobreFaturadoPct}%</strong>
+        <span>B − A (recebido − faturado)</span>
+        <strong>${moeda.format(realizedDoMes - faturamentoMes)}</strong>
       </div>
+      ${excessoRecebido > 0.009 ? cashBucketButton(
+        "excesso",
+        "↳ excesso por pedido (recebido maior que o total)",
+        moeda.format(excessoRecebido)
+      ) : ""}
       ${cashBucketButton("total", "Caixa total do mês (recebido + previsto)", moeda.format(total))}
-      <div class="caixa-mes-detail-row">
-        <span>Caixa − faturamento</span>
-        <strong>${moeda.format(total - faturamentoMes)}</strong>
-      </div>
     </div>
     ${incoerente ? `
       <p class="caixa-mes-note caixa-mes-note--warn">
-        Atenção: o recebido de pedidos de ${escapeHtml(monthName)}
-        (${moeda.format(realizedDoMes)}) está <strong>maior</strong> que o faturamento
-        (${moeda.format(faturamentoMes)}). Toque no valor para inspecionar os lançamentos —
-        pode haver duplicidade, acréscimo ou pedido cancelado com pagamento mantido.
+        <strong>Não dá para receber ${moeda.format(realizedDoMes)} de vendas que somam só ${moeda.format(faturamentoMes)}</strong>
+        sem inconsistência nos lançamentos.
+        Diferença: <strong>${moeda.format(recebidoAcimaFaturado)}</strong>.
+        ${excessoRecebido > 0.009
+          ? ` Detectamos <strong>${moeda.format(excessoRecebido)}</strong> em
+             <strong>${pedidosComExcesso}</strong> pedido(s) com recebimento maior que o total
+             (duplicidade ou acréscimo) — toque em “excesso por pedido”.`
+          : " Toque em “Recebeu no mês desses pedidos” e confira se o mesmo pedido aparece mais de uma vez."}
       </p>
     ` : `
       <p class="caixa-mes-note">
-        O faturamento (${moeda.format(faturamentoMes)}) é o valor das <strong>vendas abertas</strong>
-        no mês. O caixa (${moeda.format(total)}) é o que <strong>entrou ou vence</strong> no mês —
-        inclusive de vendas antigas. Clique em qualquer valor para ver os títulos.
-        ${realizedDoMes + 0.009 < faturamentoMes
-          ? `Dos pedidos de ${escapeHtml(monthName)}, ainda há cerca de
-             <strong>${moeda.format(Math.max(0, faturamentoMes - realizedDoMes))}</strong>
-             que não entrou como recebimento neste mês (parcelas futuras ou em aberto).`
-          : ""}
+        Dos <strong>${moeda.format(faturamentoMes)}</strong> faturados em ${escapeHtml(monthName)},
+        já entrou <strong>${moeda.format(realizedDoMes)}</strong> no caixa neste mês.
+        ${faltaReceberDoFaturado > 0.009
+          ? ` Ainda faltam cerca de <strong>${moeda.format(faltaReceberDoFaturado)}</strong>
+             (parcelas futuras ou em aberto).`
+          : " Os pedidos do mês estão cobertos pelos recebimentos deste mês."}
+        O caixa total (${moeda.format(total)}) ainda pode incluir vendas de outros meses.
       </p>
     `}
   `;
@@ -13868,15 +14032,19 @@ function renderCaixaMesBreakdownBody(breakdown, mode = "recebimentos") {
 
 const CAIXA_ITEMS_TITLES = {
   total: "Todos os lançamentos do caixa",
-  doMes: "Caixa de pedidos deste mês",
-  deOutros: "Caixa de outros períodos",
+  doMes: "Caixa de pedidos válidos deste mês",
+  deOutros: "Caixa de outros meses",
+  deAtipicos: "Lançamentos atípicos",
   realized: "Recebimentos do mês",
-  realizedDoMes: "Recebido de pedidos deste mês",
+  realizedDoMes: "Recebido de pedidos válidos deste mês",
   realizedDeOutros: "Recebido de pedidos de outros meses",
+  realizedAtipicos: "Recebido atípico (cancelado/sem pedido)",
   forecast: "A receber (vencimento no mês)",
-  forecastDoMes: "A receber de pedidos deste mês",
+  forecastDoMes: "A receber de pedidos válidos deste mês",
   forecastDeOutros: "A receber de pedidos de outros meses",
-  faturamento: "Pedidos do faturamento do mês"
+  forecastAtipicos: "A receber atípico",
+  faturamento: "Pedidos do faturamento do mês",
+  excesso: "Pedidos com recebimento acima do total"
 };
 
 function bindCaixaMesItemsTriggers(root) {
@@ -13950,6 +14118,12 @@ function renderCaixaMesItemsBody(key, items, totalValue) {
     const statusTxt = item.documentoStatus
       ? ` · status ${escapeHtml(String(item.documentoStatus))}`
       : "";
+    const excessoTxt = item.kind === "excesso" && item.recebidoNoMes != null
+      ? ` · recebido ${moeda.format(item.recebidoNoMes)} / pedido ${moeda.format(item.documentoTotal || 0)}`
+      : "";
+    const reasonTxt = item.reason
+      ? ` · ${escapeHtml(String(item.reason).replace(/_/g, " "))}`
+      : "";
     const actions = [];
     if (item.documentoId) {
       actions.push(`<button type="button" class="btn btn-ghost" data-caixa-open-pedido="${item.documentoId}">Pedido</button>`);
@@ -13958,12 +14132,16 @@ function renderCaixaMesItemsBody(key, items, totalValue) {
       actions.push(`<button type="button" class="btn btn-ghost" data-caixa-open-receber="${item.contaId}">Título</button>`);
     }
 
+    const badge = item.kind === "excesso"
+      ? '<span class="caixa-mes-items-badge" style="background:rgba(220,38,38,0.12);color:#7f1d1d">Excesso</span>'
+      : `<span class="caixa-mes-items-badge ${badgeClass}">${badgeLabel}</span>`;
+
     return `
       <tr>
         <td>
-          <span class="caixa-mes-items-badge ${badgeClass}">${badgeLabel}</span>
+          ${badge}
           <strong style="display:block;margin-top:0.25rem">${escapeHtml(item.pedidoLabel || "—")}</strong>
-          <span class="item-meta">${escapeHtml(item.clienteNome || "—")}${tituloTxt}${parcelaTxt}${pedidoTotalTxt}${statusTxt}</span>
+          <span class="item-meta">${escapeHtml(item.clienteNome || "—")}${tituloTxt}${parcelaTxt}${pedidoTotalTxt}${statusTxt}${excessoTxt}${reasonTxt}</span>
         </td>
         <td>
           ${escapeHtml(dateColLabel)}
@@ -14042,13 +14220,17 @@ function openCaixaMesItemsModal(key) {
     total: breakdown.total,
     doMes: breakdown.doMes,
     deOutros: breakdown.deOutros,
+    deAtipicos: breakdown.deAtipicos,
     realized: breakdown.realized,
     realizedDoMes: breakdown.realizedDoMes,
     realizedDeOutros: breakdown.realizedDeOutros,
+    realizedAtipicos: breakdown.realizedAtipicos,
     forecast: breakdown.forecast,
     forecastDoMes: breakdown.forecastDoMes,
     forecastDeOutros: breakdown.forecastDeOutros,
-    faturamento: breakdown.faturamentoMes
+    forecastAtipicos: breakdown.forecastAtipicos,
+    faturamento: breakdown.faturamentoMes,
+    excesso: breakdown.excessoRecebido
   };
 
   if (els.caixaMesItemsTitle) {
