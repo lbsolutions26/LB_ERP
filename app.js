@@ -13258,32 +13258,53 @@ function getCurrentMonthRange() {
   };
 }
 
-function monthKeyFromTimestamp(value) {
-  if (!value) return null;
-  if (typeof value === "string") {
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (match) return `${match[1]}-${match[2]}`;
-  }
+/**
+ * Mês civil no fuso de negócio (America/Sao_Paulo), alinhado às RPCs do dashboard.
+ * Não usar o prefixo YYYY-MM do ISO em UTC: meia-noite UTC vira dia anterior no Brasil
+ * e distorce "deste mês" vs faturamento.
+ */
+function businessMonthKeyFromTimestamp(value) {
+  if (value == null || value === "") return null;
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date);
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    if (year && month) return `${year}-${month}`;
+  } catch (_error) {
+    // fallback abaixo
+  }
   return formatMonthKey(date);
+}
+
+// Compat: vários pontos usavam monthKeyFromTimestamp; mantém alias com regra de negócio.
+function monthKeyFromTimestamp(value) {
+  return businessMonthKeyFromTimestamp(value);
 }
 
 /**
  * Classifica um lançamento de caixa como "deste mês" ou "outros"
- * com base na data de emissão do pedido (ou da conta, se sem pedido).
+ * com base na data de emissão do PEDIDO em America/Sao_Paulo.
+ * Só conta como "deste mês" se for pedido não cancelado emitido no mês corrente.
  */
 function classifyCashOriginMonth(meta, currentKey) {
-  const docMonth = monthKeyFromTimestamp(meta?.documentoDataEmissao);
-  if (docMonth) {
+  const tipo = String(meta?.documentoTipo || "").toLowerCase();
+  const status = String(meta?.documentoStatus || "").toLowerCase();
+  const docMonth = businessMonthKeyFromTimestamp(meta?.documentoDataEmissao);
+
+  // Pedido válido do mês corrente → "mes"
+  if (docMonth && (!tipo || tipo === "pedido") && status !== "cancelado") {
     return docMonth === currentKey ? "mes" : "outros";
   }
-  const contaMonth = monthKeyFromTimestamp(meta?.contaEmissao);
-  if (contaMonth) {
-    return contaMonth === currentKey ? "mes" : "outros";
-  }
-  // Sem documento/conta: assume do mês (vencimento/recebimento já filtrados no período).
-  return "mes";
+
+  // Pedido cancelado, orçamento, sem documento, etc. → não misturar com faturamento do mês
+  return "outros";
 }
 
 function emptyCashMonthBreakdown(range) {
@@ -13328,7 +13349,7 @@ async function loadContasOrigemMap(contaIds) {
     if (docIds.length) {
       const { data: docs, error: docsError } = await supabaseClient
         .from("documentos_venda")
-        .select("id, data_emissao, total, tipo_documento")
+        .select("id, data_emissao, total, tipo_documento, status")
         .eq("empresa_id", state.empresaId)
         .in("id", docIds);
       if (docsError) throw docsError;
@@ -13341,7 +13362,11 @@ async function loadContasOrigemMap(contaIds) {
       const doc = conta.documento_id != null ? docById.get(Number(conta.documento_id)) : null;
       byContaId.set(Number(conta.id), {
         contaEmissao: conta.emissao || null,
-        documentoDataEmissao: doc?.data_emissao || null
+        documentoDataEmissao: doc?.data_emissao || null,
+        documentoTipo: doc?.tipo_documento || null,
+        documentoStatus: doc?.status || null,
+        documentoTotal: doc?.total != null ? Number(doc.total) : null,
+        documentoId: doc?.id != null ? Number(doc.id) : null
       });
     }
   }
@@ -13384,10 +13409,11 @@ async function loadDashboardCashMonthBreakdown() {
     return empty;
   }
 
-  // Janela um pouco maior + filtro local por mes (evita perder meia-noite UTC do legado).
+  // Janela um pouco maior + filtro local por mês em America/Sao_Paulo
+  // (alinhado às RPCs; evita perder meia-noite UTC do legado).
   const queryStartIso = new Date(range.start.getTime() - 36 * 60 * 60 * 1000).toISOString();
   const queryEndIso = new Date(range.end.getTime() + 36 * 60 * 60 * 1000).toISOString();
-  const isInRangeMonth = (value) => monthKeyFromTimestamp(value) === range.key;
+  const isInRangeMonth = (value) => businessMonthKeyFromTimestamp(value) === range.key;
 
   try {
     const [recebidosResp, previstosResp] = await Promise.all([
@@ -13497,7 +13523,7 @@ function renderCaixaMesBreakdownBody(breakdown, mode = "recebimentos") {
         <article class="caixa-mes-split-card caixa-mes-split-card--mes">
           <span>Deste mês</span>
           <strong>${moeda.format(fat)}</strong>
-          <small>Pedidos emitidos no período (data de emissão).</small>
+          <small>Soma dos totais dos pedidos emitidos no período.</small>
         </article>
         <article class="caixa-mes-split-card caixa-mes-split-card--outros">
           <span>Outros meses</span>
@@ -13506,9 +13532,9 @@ function renderCaixaMesBreakdownBody(breakdown, mode = "recebimentos") {
         </article>
       </div>
       <p class="caixa-mes-note">
-        Este valor é a soma dos pedidos do mês — a mesma base do gráfico
-        <strong>Faturamento por Dia</strong>. Para ver caixa (recebido + a receber), use a aba
-        <strong>Recebimentos</strong>.
+        Este valor é a <strong>soma dos pedidos</strong> do mês — a mesma base do gráfico
+        <strong>Faturamento por Dia</strong>. Não é o dinheiro que entrou no caixa.
+        Para ver o caixa (recebido + a receber), use a aba <strong>Recebimentos</strong>.
       </p>
     `;
     return;
@@ -13517,26 +13543,39 @@ function renderCaixaMesBreakdownBody(breakdown, mode = "recebimentos") {
   const total = Number(breakdown.total || 0);
   const doMes = Number(breakdown.doMes || 0);
   const deOutros = Number(breakdown.deOutros || 0);
+  const realized = Number(breakdown.realized || 0);
+  const realizedDoMes = Number(breakdown.realizedDoMes || 0);
+  const realizedDeOutros = Number(breakdown.realizedDeOutros || 0);
+  const faturamentoMes = Number(breakdown.faturamentoMes || 0);
   const pctMes = total > 0 ? Math.round((doMes / total) * 100) : 0;
   const pctOutros = total > 0 ? Math.max(0, 100 - pctMes) : 0;
   const monthLabel = breakdown.range?.label || "mês atual";
   const monthName = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+  // Quanto dos pedidos do mês já entrou no caixa (pode ser < faturamento se há parcela aberta).
+  const recebidoSobreFaturadoPct = faturamentoMes > 0
+    ? Math.min(999, Math.round((realizedDoMes / faturamentoMes) * 100))
+    : 0;
+  const incoerente = realizedDoMes > faturamentoMes + 0.009;
 
   els.caixaMesBreakdownBody.innerHTML = `
     <div class="caixa-mes-total">
       <span>Total em caixa · ${escapeHtml(monthName)}</span>
       <strong>${moeda.format(total)}</strong>
     </div>
+    <p class="caixa-mes-note caixa-mes-note--lead">
+      Este total é <strong>dinheiro</strong> (recebido neste mês + títulos com vencimento neste mês).
+      O faturamento é a <strong>soma dos pedidos emitidos</strong> — são contas diferentes.
+    </p>
     <div class="caixa-mes-split">
       <article class="caixa-mes-split-card caixa-mes-split-card--mes">
-        <span>Vendas deste mês</span>
+        <span>Caixa de pedidos deste mês</span>
         <strong>${moeda.format(doMes)}</strong>
-        <small>${pctMes}% do caixa · pedidos emitidos em ${escapeHtml(monthName)}</small>
+        <small>${pctMes}% do caixa · ligado a pedidos emitidos em ${escapeHtml(monthName)}</small>
       </article>
       <article class="caixa-mes-split-card caixa-mes-split-card--outros">
-        <span>De outros meses</span>
+        <span>Caixa de outros períodos</span>
         <strong>${moeda.format(deOutros)}</strong>
-        <small>${pctOutros}% do caixa · vendas anteriores com recebimento ou vencimento agora</small>
+        <small>${pctOutros}% · pedidos antigos pagos ou a vencer agora</small>
       </article>
     </div>
     <div class="caixa-mes-bars" aria-hidden="true">
@@ -13552,51 +13591,75 @@ function renderCaixaMesBreakdownBody(breakdown, mode = "recebimentos") {
       </div>
     </div>
     <div class="caixa-mes-details">
-      <h4>Composição</h4>
+      <h4>De onde veio o dinheiro recebido</h4>
       <div class="caixa-mes-detail-row">
-        <span>Recebido (realizado)</span>
-        <strong>${moeda.format(breakdown.realized)}</strong>
+        <span>Recebido no mês (total)</span>
+        <strong>${moeda.format(realized)}</strong>
       </div>
       <div class="caixa-mes-detail-row">
-        <span>↳ de vendas deste mês</span>
-        <strong>${moeda.format(breakdown.realizedDoMes)}</strong>
+        <span>↳ de pedidos emitidos em ${escapeHtml(monthName)}</span>
+        <strong>${moeda.format(realizedDoMes)}</strong>
       </div>
       <div class="caixa-mes-detail-row">
-        <span>↳ de vendas de outros meses</span>
-        <strong>${moeda.format(breakdown.realizedDeOutros)}</strong>
+        <span>↳ de pedidos de outros meses</span>
+        <strong>${moeda.format(realizedDeOutros)}</strong>
       </div>
       <div class="caixa-mes-detail-row">
-        <span>A receber (previsto no mês)</span>
+        <span>A receber (vencimento em ${escapeHtml(monthName)})</span>
         <strong>${moeda.format(breakdown.forecast)}</strong>
       </div>
       <div class="caixa-mes-detail-row">
-        <span>↳ de vendas deste mês</span>
+        <span>↳ de pedidos emitidos em ${escapeHtml(monthName)}</span>
         <strong>${moeda.format(breakdown.forecastDoMes)}</strong>
       </div>
       <div class="caixa-mes-detail-row">
-        <span>↳ de vendas de outros meses</span>
+        <span>↳ de pedidos de outros meses</span>
         <strong>${moeda.format(breakdown.forecastDeOutros)}</strong>
       </div>
     </div>
     <div class="caixa-mes-details">
-      <h4>Comparativo com faturamento</h4>
+      <h4>Por que não bate com o faturamento?</h4>
       <div class="caixa-mes-detail-row">
-        <span>Faturamento do mês (pedidos)</span>
-        <strong>${moeda.format(breakdown.faturamentoMes)}</strong>
+        <span>Faturamento (soma dos pedidos emitidos)</span>
+        <strong>${moeda.format(faturamentoMes)}</strong>
       </div>
       <div class="caixa-mes-detail-row">
-        <span>Caixa do mês (recebido + previsto)</span>
+        <span>Já recebido desses pedidos do mês</span>
+        <strong>${moeda.format(realizedDoMes)}</strong>
+      </div>
+      <div class="caixa-mes-detail-row">
+        <span>% recebido sobre o faturado</span>
+        <strong>${recebidoSobreFaturadoPct}%</strong>
+      </div>
+      <div class="caixa-mes-detail-row">
+        <span>Caixa total do mês (recebido + previsto)</span>
         <strong>${moeda.format(total)}</strong>
       </div>
       <div class="caixa-mes-detail-row">
-        <span>Diferença</span>
-        <strong>${moeda.format(total - Number(breakdown.faturamentoMes || 0))}</strong>
+        <span>Caixa − faturamento</span>
+        <strong>${moeda.format(total - faturamentoMes)}</strong>
       </div>
     </div>
-    <p class="caixa-mes-note">
-      “De outros meses” são pagamentos ou parcelas que caem neste mês, mas vieram de pedidos
-      emitidos antes. Por isso o caixa pode ser maior (ou menor) que o faturamento do mês.
-    </p>
+    ${incoerente ? `
+      <p class="caixa-mes-note caixa-mes-note--warn">
+        Atenção: o recebido de pedidos de ${escapeHtml(monthName)}
+        (${moeda.format(realizedDoMes)}) está <strong>maior</strong> que o faturamento
+        (${moeda.format(faturamentoMes)}). Isso não deveria acontecer se cada pedido
+        gerou no máximo o próprio total — pode haver recebimento duplicado, acréscimo
+        ou pedido cancelado com pagamento mantido.
+      </p>
+    ` : `
+      <p class="caixa-mes-note">
+        O faturamento (${moeda.format(faturamentoMes)}) é o valor das <strong>vendas abertas</strong>
+        no mês. O caixa (${moeda.format(total)}) é o que <strong>entrou ou vence</strong> no mês —
+        inclusive de vendas antigas. Por isso os totais costumam ser diferentes.
+        ${realizedDoMes + 0.009 < faturamentoMes
+          ? `Dos pedidos de ${escapeHtml(monthName)}, ainda há cerca de
+             <strong>${moeda.format(Math.max(0, faturamentoMes - realizedDoMes))}</strong>
+             que não entrou como recebimento neste mês (parcelas futuras ou em aberto).`
+          : ""}
+      </p>
+    `}
   `;
 }
 

@@ -1055,6 +1055,21 @@ button.dashboard-cash-summary {
   line-height: 1.4;
 }
 
+.caixa-mes-note--lead {
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  background: rgba(124, 58, 237, 0.06);
+  border: 1px solid rgba(124, 58, 237, 0.12);
+}
+
+.caixa-mes-note--warn {
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(220, 38, 38, 0.07);
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  color: #7f1d1d;
+}
+
 .cash-chart-legend {
   margin-top: 0.65rem;
   display: flex;
