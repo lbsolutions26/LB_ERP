@@ -7840,30 +7840,34 @@ async function saveNovoDocumento(event, options = {}) {
       ? draft.parcelasEditadas
       : null;
 
-    if (!isEdit) {
-      try {
-        await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
-      } catch (financeError) {
-        await supabaseClient.from("documento_venda_itens").delete().eq("empresa_id", state.empresaId).eq("documento_id", documentoId);
-        await supabaseClient.from("documentos_venda").delete().eq("empresa_id", state.empresaId).eq("id", documentoId);
-        draft.documentoId = null;
-        throw financeError;
-      }
-    } else if (parcelasEditadas) {
-      const snapshotOriginal = draft.parcelasOriginaisSnapshot || null;
-      const snapshotAtual = JSON.stringify(parcelasEditadas);
-      if (snapshotOriginal && snapshotOriginal === snapshotAtual) {
-        // Parcelas nao foram alteradas nesta edicao, mantem o financeiro atual.
-      } else {
-        const confirmar = window.confirm(
-          "Voce editou as parcelas deste pedido.\n\nAo salvar, as parcelas e recebimentos anteriores deste pedido serao SUBSTITUIDOS pelos novos titulos. Deseja continuar?"
-        );
-        if (!confirmar) {
-          throw new Error("Salvamento cancelado pelo usuario.");
+    // Financeiro (contas/parcelas/recebimentos) só para PEDIDO.
+    // Orçamento não deve gerar caixa — senão o faturamento não bate com o recebido.
+    if (draft.tipo === "pedido") {
+      if (!isEdit) {
+        try {
+          await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
+        } catch (financeError) {
+          await supabaseClient.from("documento_venda_itens").delete().eq("empresa_id", state.empresaId).eq("documento_id", documentoId);
+          await supabaseClient.from("documentos_venda").delete().eq("empresa_id", state.empresaId).eq("id", documentoId);
+          draft.documentoId = null;
+          throw financeError;
         }
-        // Apaga o financeiro anterior e recria com os novos titulos.
-        await deleteDocumentoFinanceiro(documentoId);
-        await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
+      } else if (parcelasEditadas) {
+        const snapshotOriginal = draft.parcelasOriginaisSnapshot || null;
+        const snapshotAtual = JSON.stringify(parcelasEditadas);
+        if (snapshotOriginal && snapshotOriginal === snapshotAtual) {
+          // Parcelas nao foram alteradas nesta edicao, mantem o financeiro atual.
+        } else {
+          const confirmar = window.confirm(
+            "Voce editou as parcelas deste pedido.\n\nAo salvar, as parcelas e recebimentos anteriores deste pedido serao SUBSTITUIDOS pelos novos titulos. Deseja continuar?"
+          );
+          if (!confirmar) {
+            throw new Error("Salvamento cancelado pelo usuario.");
+          }
+          // Apaga o financeiro anterior e recria com os novos titulos.
+          await deleteDocumentoFinanceiro(documentoId);
+          await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
+        }
       }
     }
 
