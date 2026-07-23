@@ -1070,6 +1070,177 @@ button.dashboard-cash-summary {
   color: #7f1d1d;
 }
 
+.caixa-mes-detail-row--clickable,
+.caixa-mes-split-card--clickable,
+.caixa-mes-total--clickable {
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+button.caixa-mes-detail-row,
+button.caixa-mes-split-card,
+button.caixa-mes-total {
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+button.caixa-mes-detail-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0.35rem 0.4rem;
+  margin: 0 -0.4rem;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+button.caixa-mes-total {
+  width: 100%;
+}
+
+button.caixa-mes-split-card {
+  width: 100%;
+}
+
+.caixa-mes-detail-row--clickable:hover,
+.caixa-mes-detail-row--clickable:focus-visible {
+  background: rgba(124, 58, 237, 0.08);
+  outline: none;
+}
+
+.caixa-mes-split-card--clickable:hover,
+.caixa-mes-split-card--clickable:focus-visible,
+.caixa-mes-total--clickable:hover,
+.caixa-mes-total--clickable:focus-visible {
+  border-color: rgba(124, 58, 237, 0.4);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+  outline: none;
+}
+
+.caixa-mes-click-hint {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #7c3aed;
+  letter-spacing: 0.01em;
+}
+
+.modal-caixa-mes-items-card {
+  width: min(720px, 100%);
+}
+
+.caixa-mes-items-body {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.caixa-mes-items-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(124, 58, 237, 0.07);
+  border: 1px solid rgba(124, 58, 237, 0.15);
+}
+
+.caixa-mes-items-summary strong {
+  font-family: "Sora", sans-serif;
+  font-size: 1.15rem;
+}
+
+.caixa-mes-items-table-wrap {
+  overflow: auto;
+  max-height: min(58vh, 520px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.caixa-mes-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.caixa-mes-items-table th,
+.caixa-mes-items-table td {
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  text-align: left;
+  vertical-align: top;
+}
+
+.caixa-mes-items-table th {
+  position: sticky;
+  top: 0;
+  background: rgba(248, 246, 242, 0.96);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  z-index: 1;
+}
+
+.caixa-mes-items-table td.num,
+.caixa-mes-items-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.caixa-mes-items-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.caixa-mes-items-table .item-meta {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.caixa-mes-items-badge {
+  display: inline-block;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.caixa-mes-items-badge--rec {
+  background: rgba(22, 93, 89, 0.12);
+  color: #0f4744;
+}
+
+.caixa-mes-items-badge--prev {
+  background: rgba(196, 131, 26, 0.14);
+  color: #8a5a00;
+}
+
+.caixa-mes-items-badge--ped {
+  background: rgba(124, 58, 237, 0.12);
+  color: #5b21b6;
+}
+
+.caixa-mes-items-empty {
+  margin: 0;
+  padding: 1rem;
+  text-align: center;
+  color: var(--muted);
+}
+
 .cash-chart-legend {
   margin-top: 0.65rem;
   display: flex;
