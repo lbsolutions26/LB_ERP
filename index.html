@@ -207,7 +207,13 @@
             <div class="dashboard-cash-panel dashboard-panel">
               <div class="section-head dashboard-cash-head">
                 <div>
-                  <h3>Faturamento por Dia</h3>
+                  <div class="dashboard-cash-title-row">
+                    <h3 id="dailyCashTitulo">Faturamento por Dia</h3>
+                    <div class="dashboard-cash-toggle" role="tablist" aria-label="Alternar visão do gráfico diário">
+                      <button type="button" class="dashboard-cash-toggle-btn" data-dashboard-daily-cash-mode="recebimentos">Recebimentos</button>
+                      <button type="button" class="dashboard-cash-toggle-btn active" data-dashboard-daily-cash-mode="faturamento">Faturamento</button>
+                    </div>
+                  </div>
                   <p id="dailyFaturamentoSubtitulo" class="section-subtitle">Pedidos do mês corrente, apenas em dias úteis do calendário (sem domingos e feriados).</p>
                 </div>
                 <div class="dashboard-cash-summary-group">

@@ -1,5 +1,5 @@
--- Retorna faturamento e numero de pedidos dia a dia para o mes corrente.
--- Usado nos graficos "Faturamento por Dia" e "Pedidos por Dia" do dashboard.
+-- Retorna faturamento, pedidos, recebimentos e previsto dia a dia para o mes corrente.
+-- Usado nos graficos diarios do dashboard (Faturamento/Recebimentos por Dia e Pedidos por Dia).
 -- Datas de negocio em America/Sao_Paulo (alinhado com dashboard_monthly_cash / snapshot).
 create or replace function public.dashboard_daily_current_month(
   target_empresa_id uuid
@@ -51,13 +51,39 @@ begin
       and timezone('America/Sao_Paulo', d.data_emissao)::date <= ref_end
     group by 1
   ),
+  recebidos as (
+    select
+      timezone('America/Sao_Paulo', r.data_recebimento)::date as dia,
+      sum(r.valor)::numeric as total
+    from public.recebimentos r
+    where r.empresa_id = target_empresa_id
+      and timezone('America/Sao_Paulo', r.data_recebimento)::date >= ref_start
+      and timezone('America/Sao_Paulo', r.data_recebimento)::date <= ref_end
+    group by 1
+  ),
+  previstos as (
+    select
+      timezone('America/Sao_Paulo', p.vencimento)::date as dia,
+      sum(coalesce(p.valor_parcela, 0) - coalesce(p.valor_recebido, 0))::numeric as total
+    from public.contas_receber_parcelas p
+    where p.empresa_id = target_empresa_id
+      and lower(coalesce(p.status, '')) not in ('recebido', 'cancelado')
+      and (coalesce(p.valor_parcela, 0) - coalesce(p.valor_recebido, 0)) > 0.00001
+      and timezone('America/Sao_Paulo', p.vencimento)::date >= ref_start
+      and timezone('America/Sao_Paulo', p.vencimento)::date <= ref_end
+    group by 1
+  ),
   daily as (
     select
       days.dia,
       coalesce(agg.faturamento, 0)::numeric as faturamento,
-      coalesce(agg.pedidos_count, 0)::int as pedidos_count
+      coalesce(agg.pedidos_count, 0)::int as pedidos_count,
+      coalesce(recebidos.total, 0)::numeric as recebimentos,
+      coalesce(previstos.total, 0)::numeric as previsto
     from days
     left join agg on agg.dia = days.dia
+    left join recebidos on recebidos.dia = days.dia
+    left join previstos on previstos.dia = days.dia
     order by days.dia
   )
   select jsonb_agg(to_jsonb(daily) order by daily.dia)

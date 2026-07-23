@@ -180,6 +180,7 @@ const state = {
     monthKey: ""
   },
   dashboardCashChartMode: "recebimentos",
+  dashboardDailyCashChartMode: "faturamento",
   dashboardMonthsBack: 11,
   recebimentoModal: {
     contaId: null,
@@ -584,9 +585,12 @@ const els = {
   caixaMesBreakdownSubtitle: document.getElementById("caixaMesBreakdownSubtitle"),
   caixaMesBreakdownBody: document.getElementById("caixaMesBreakdownBody"),
   closeCaixaMesBreakdownModalBtn: document.getElementById("closeCaixaMesBreakdownModalBtn"),
+  dailyCashTitulo: document.getElementById("dailyCashTitulo"),
+  dailyFaturamentoSubtitulo: document.getElementById("dailyFaturamentoSubtitulo"),
   dailyFaturamentoChart: document.getElementById("dailyFaturamentoChart"),
   dailyFaturamentoResumo: document.getElementById("dailyFaturamentoResumo"),
   dailyFaturamentoHoje: document.getElementById("dailyFaturamentoHoje"),
+  dashboardDailyCashModeButtons: Array.from(document.querySelectorAll("[data-dashboard-daily-cash-mode]")),
   dailyPedidosChart: document.getElementById("dailyPedidosChart"),
   dailyPedidosResumo: document.getElementById("dailyPedidosResumo"),
   dailyPedidosHoje: document.getElementById("dailyPedidosHoje"),
@@ -9265,6 +9269,80 @@ async function loadDashboardSnapshot() {
   state.pedidosFaturamentoTotal = getDashboardFaturamentoAnoCorrente();
 }
 
+function dayKeyFromTimestamp(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return formatDateInput(date);
+}
+
+/**
+ * Agrega recebimentos realizados e previstos (parcelas em aberto) por dia no mês atual.
+ * Mesma base do gráfico mensal de Recebimentos (caixa do dia).
+ */
+async function loadDashboardDailyCashByDay() {
+  const byDay = new Map();
+  if (!state.empresaId || !supabaseClient) return byDay;
+
+  const range = getCurrentMonthRange();
+  const queryStartIso = new Date(range.start.getTime() - 36 * 60 * 60 * 1000).toISOString();
+  const queryEndIso = new Date(range.end.getTime() + 36 * 60 * 60 * 1000).toISOString();
+  const isInRangeMonth = (value) => monthKeyFromTimestamp(value) === range.key;
+
+  const ensure = (dia) => {
+    if (!byDay.has(dia)) byDay.set(dia, { recebimentos: 0, previsto: 0 });
+    return byDay.get(dia);
+  };
+
+  const [recebidosResp, previstosResp] = await Promise.all([
+    fetchAllSupabaseRows(() =>
+      supabaseClient
+        .from("recebimentos")
+        .select("id, valor, data_recebimento")
+        .eq("empresa_id", state.empresaId)
+        .gte("data_recebimento", queryStartIso)
+        .lt("data_recebimento", queryEndIso)
+        .order("data_recebimento", { ascending: true })
+    ),
+    fetchAllSupabaseRows(() =>
+      supabaseClient
+        .from("contas_receber_parcelas")
+        .select("id, valor_parcela, valor_recebido, vencimento, status")
+        .eq("empresa_id", state.empresaId)
+        .gte("vencimento", queryStartIso)
+        .lt("vencimento", queryEndIso)
+        .order("vencimento", { ascending: true })
+    )
+  ]);
+
+  if (recebidosResp.error) throw recebidosResp.error;
+  if (previstosResp.error) throw previstosResp.error;
+
+  for (const row of recebidosResp.data || []) {
+    if (!isInRangeMonth(row.data_recebimento)) continue;
+    const dia = dayKeyFromTimestamp(row.data_recebimento);
+    if (!dia) continue;
+    ensure(dia).recebimentos += Number(row.valor || 0);
+  }
+
+  for (const row of previstosResp.data || []) {
+    if (!isInRangeMonth(row.vencimento)) continue;
+    const status = String(row.status || "").toLowerCase();
+    if (status === "recebido" || status === "cancelado" || status === "quitado") continue;
+    const aberto = Math.max(0, Number(row.valor_parcela || 0) - Number(row.valor_recebido || 0));
+    if (aberto <= 0.00001) continue;
+    const dia = dayKeyFromTimestamp(row.vencimento);
+    if (!dia) continue;
+    ensure(dia).previsto += aberto;
+  }
+
+  return byDay;
+}
+
 async function loadDashboardDaily() {
   const { data, error } = await supabaseClient.rpc("dashboard_daily_current_month", {
     target_empresa_id: state.empresaId
@@ -9276,11 +9354,37 @@ async function loadDashboardDaily() {
     return;
   }
 
-  state.dashboardDaily = (data || []).map((row) => ({
-    dia: row.dia,
-    faturamento: Number(row.faturamento || 0),
-    pedidosCount: Number(row.pedidos_count || 0)
-  }));
+  const baseRows = (data || []).map((row) => {
+    const diaRaw = row.dia;
+    const dia =
+      typeof diaRaw === "string"
+        ? dayKeyFromTimestamp(diaRaw) || String(diaRaw).slice(0, 10)
+        : dayKeyFromTimestamp(diaRaw);
+    return {
+      dia,
+      faturamento: Number(row.faturamento || 0),
+      pedidosCount: Number(row.pedidos_count || 0),
+      recebimentos: Number(row.recebimentos || 0),
+      previsto: Number(row.previsto || 0)
+    };
+  });
+
+  // Completa/atualiza caixa por dia no cliente (funciona mesmo sem a RPC atualizada no banco).
+  try {
+    const cashByDay = await loadDashboardDailyCashByDay();
+    state.dashboardDaily = baseRows.map((row) => {
+      const cash = cashByDay.get(row.dia);
+      if (!cash) return row;
+      return {
+        ...row,
+        recebimentos: Number(cash.recebimentos || 0),
+        previsto: Number(cash.previsto || 0)
+      };
+    });
+  } catch (cashError) {
+    console.warn("Falha ao carregar recebimentos/previsto diários", cashError.message || cashError);
+    state.dashboardDaily = baseRows;
+  }
 }
 
 /**
@@ -13012,24 +13116,54 @@ function getDashboardDailyChartRows() {
   });
 }
 
+function getDashboardDailyCashValue(row, mode = state.dashboardDailyCashChartMode) {
+  if (mode === "recebimentos") {
+    return Number(row?.recebimentos || 0) + Number(row?.previsto || 0);
+  }
+  return Number(row?.faturamento || 0);
+}
+
 function renderDashboardDailyCharts() {
   const allRows = state.dashboardDaily || [];
   // Eixo X: só dias úteis (calendário). Totais do mês seguem a base completa.
   const rows = getDashboardDailyChartRows();
   const hoje = new Date();
   const todayKey = formatDateInput(hoje);
+  const isRecebimentosMode = state.dashboardDailyCashChartMode === "recebimentos";
 
-  const totalFaturamento = allRows.reduce((sum, row) => sum + Number(row.faturamento || 0), 0);
+  const totalCash = allRows.reduce((sum, row) => sum + getDashboardDailyCashValue(row), 0);
   const totalPedidos = allRows.reduce((sum, row) => sum + Number(row.pedidosCount || 0), 0);
   const todayRow = allRows.find((row) => row.dia === todayKey) || null;
-  const faturamentoHoje = Number(todayRow?.faturamento || 0);
+  const cashHoje = getDashboardDailyCashValue(todayRow);
   const pedidosHoje = Number(todayRow?.pedidosCount || 0);
 
+  if (els.dailyCashTitulo) {
+    els.dailyCashTitulo.textContent = isRecebimentosMode ? "Recebimentos por Dia" : "Faturamento por Dia";
+  }
+  if (els.dailyFaturamentoSubtitulo) {
+    els.dailyFaturamentoSubtitulo.textContent = isRecebimentosMode
+      ? "Caixa do dia: valores já recebidos + títulos em aberto com vencimento no dia (dias úteis do calendário)."
+      : "Pedidos do mês corrente, apenas em dias úteis do calendário (sem domingos e feriados).";
+  }
+  if (els.dailyFaturamentoChart) {
+    els.dailyFaturamentoChart.setAttribute(
+      "aria-label",
+      isRecebimentosMode ? "Gráfico de recebimentos por dia" : "Gráfico de faturamento por dia"
+    );
+  }
+
+  for (const button of els.dashboardDailyCashModeButtons || []) {
+    button.classList.toggle(
+      "active",
+      button.getAttribute("data-dashboard-daily-cash-mode") === state.dashboardDailyCashChartMode
+    );
+  }
+
   if (els.dailyFaturamentoResumo) {
-    els.dailyFaturamentoResumo.textContent = moeda.format(totalFaturamento);
+    els.dailyFaturamentoResumo.textContent = moeda.format(totalCash);
   }
   if (els.dailyFaturamentoHoje) {
-    els.dailyFaturamentoHoje.textContent = moeda.format(faturamentoHoje);
+    els.dailyFaturamentoHoje.textContent = moeda.format(cashHoje);
   }
   if (els.dailyPedidosResumo) {
     els.dailyPedidosResumo.textContent = formatCompactNumber(totalPedidos);
@@ -13047,7 +13181,7 @@ function renderDashboardDailyCharts() {
     ? "Nenhum dia util no calendario para exibir neste mes."
     : "Sem dados para o mes atual.";
 
-  const renderChart = (node, valueOf, formatValue, formatInside, colorClass) => {
+  const renderChart = (node, valueOf, formatValue, formatInside, colorClass, titleOf) => {
     if (!node) return;
     if (!rows.length) {
       node.innerHTML = `<div class="documento-empty-state">${emptyMessage}</div>`;
@@ -13063,9 +13197,10 @@ function renderDashboardDailyCharts() {
         const weekday = row.dia
           ? new Date(`${row.dia}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "short" })
           : "";
+        const detail = typeof titleOf === "function" ? titleOf(row, value) : formatValue(value);
         const title = row.dia
-          ? `${new Date(`${row.dia}T12:00:00`).toLocaleDateString("pt-BR")}${weekday ? ` (${weekday})` : ""}: ${formatValue(value)}`
-          : formatValue(value);
+          ? `${new Date(`${row.dia}T12:00:00`).toLocaleDateString("pt-BR")}${weekday ? ` (${weekday})` : ""}: ${detail}`
+          : detail;
         const insideLabel = value > 0
           ? `<span class="daily-bar-inside-label">${escapeHtml(formatInside(value))}</span>`
           : "";
@@ -13084,10 +13219,16 @@ function renderDashboardDailyCharts() {
 
   renderChart(
     els.dailyFaturamentoChart,
-    (row) => row.faturamento,
+    (row) => getDashboardDailyCashValue(row),
     (value) => moeda.format(value),
     (value) => formatCurrencyNoCents(value),
-    "cash-bar-fill-realized"
+    "cash-bar-fill-realized",
+    (row, value) => {
+      if (!isRecebimentosMode) return moeda.format(value);
+      const realized = Number(row.recebimentos || 0);
+      const forecast = Number(row.previsto || 0);
+      return `${moeda.format(value)} | Realizado ${moeda.format(realized)} | Previsto ${moeda.format(forecast)}`;
+    }
   );
   renderChart(
     els.dailyPedidosChart,
@@ -15509,6 +15650,14 @@ function attachEvents() {
     button.addEventListener("click", () => {
       state.dashboardCashChartMode = button.getAttribute("data-dashboard-cash-mode") === "faturamento" ? "faturamento" : "recebimentos";
       renderMetrics();
+    });
+  }
+
+  for (const button of els.dashboardDailyCashModeButtons || []) {
+    button.addEventListener("click", () => {
+      state.dashboardDailyCashChartMode =
+        button.getAttribute("data-dashboard-daily-cash-mode") === "recebimentos" ? "recebimentos" : "faturamento";
+      renderDashboardDailyCharts();
     });
   }
 
