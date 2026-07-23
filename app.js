@@ -13250,26 +13250,7 @@ function unwrapRelation(value) {
   return value || null;
 }
 
-function getCurrentMonthRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
-  return {
-    start,
-    end,
-    startIso: start.toISOString(),
-    endIso: end.toISOString(),
-    key: formatMonthKey(now),
-    label: start.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
-  };
-}
-
-/**
- * Mês civil no fuso de negócio (America/Sao_Paulo), alinhado às RPCs do dashboard.
- * Não usar o prefixo YYYY-MM do ISO em UTC: meia-noite UTC vira dia anterior no Brasil
- * e distorce "deste mês" vs faturamento.
- */
-function businessMonthKeyFromTimestamp(value) {
+function getBusinessDateParts(value) {
   if (value == null || value === "") return null;
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -13282,11 +13263,54 @@ function businessMonthKeyFromTimestamp(value) {
     }).formatToParts(date);
     const year = parts.find((p) => p.type === "year")?.value;
     const month = parts.find((p) => p.type === "month")?.value;
-    if (year && month) return `${year}-${month}`;
+    const day = parts.find((p) => p.type === "day")?.value;
+    if (!year || !month) return null;
+    return {
+      year,
+      month: String(month).padStart(2, "0"),
+      day: day ? String(day).padStart(2, "0") : "01"
+    };
   } catch (_error) {
-    // fallback abaixo
+    return {
+      year: String(date.getFullYear()),
+      month: String(date.getMonth() + 1).padStart(2, "0"),
+      day: String(date.getDate()).padStart(2, "0")
+    };
   }
-  return formatMonthKey(date);
+}
+
+function getCurrentMonthRange() {
+  const now = new Date();
+  // Limites e chave sempre no fuso de negócio (evita divergir da classificação).
+  const nowParts = getBusinessDateParts(now) || {
+    year: String(now.getFullYear()),
+    month: String(now.getMonth() + 1).padStart(2, "0"),
+    day: String(now.getDate()).padStart(2, "0")
+  };
+  const key = `${nowParts.year}-${nowParts.month}`;
+  const y = Number(nowParts.year);
+  const m = Number(nowParts.month) - 1;
+  const start = new Date(y, m, 1, 0, 0, 0, 0);
+  const end = new Date(y, m + 1, 1, 0, 0, 0, 0);
+  return {
+    start,
+    end,
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+    key,
+    label: start.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+  };
+}
+
+/**
+ * Mês civil no fuso de negócio (America/Sao_Paulo), alinhado às RPCs do dashboard.
+ * Não usar o prefixo YYYY-MM do ISO em UTC: meia-noite UTC vira dia anterior no Brasil
+ * e distorce "deste mês" vs faturamento.
+ */
+function businessMonthKeyFromTimestamp(value) {
+  const parts = getBusinessDateParts(value);
+  if (!parts) return null;
+  return `${parts.year}-${parts.month}`;
 }
 
 // Compat: vários pontos usavam monthKeyFromTimestamp; mantém alias com regra de negócio.
@@ -13296,21 +13320,36 @@ function monthKeyFromTimestamp(value) {
 
 /**
  * Classifica um lançamento de caixa como "deste mês" ou "outros"
- * com base na data de emissão do PEDIDO em America/Sao_Paulo.
- * Só conta como "deste mês" se for pedido não cancelado emitido no mês corrente.
+ * EXCLUSIVAMENTE pelo mês de emissão do pedido/conta (America/Sao_Paulo).
+ *
+ * Importante: NÃO usar status/tipo aqui. Se o pedido foi emitido em julho,
+ * o recebimento entra em "deste mês" — mesmo que o status seja atípico.
+ * Antes, cancelado/tipo inesperado ia para "outros meses" e a lista mostrava
+ * emissão de julho, o que confundia (ex.: R$ 1.605 "outros" com emissão 17/07).
  */
 function classifyCashOriginMonth(meta, currentKey) {
-  const tipo = String(meta?.documentoTipo || "").toLowerCase();
-  const status = String(meta?.documentoStatus || "").toLowerCase();
-  const docMonth = businessMonthKeyFromTimestamp(meta?.documentoDataEmissao);
+  const emissionRaw = meta?.documentoDataEmissao || meta?.contaEmissao || null;
+  const emissionMonth = businessMonthKeyFromTimestamp(emissionRaw);
+  if (!emissionMonth || !currentKey) return "outros";
+  return emissionMonth === currentKey ? "mes" : "outros";
+}
 
-  // Pedido válido do mês corrente → "mes"
-  if (docMonth && (!tipo || tipo === "pedido") && status !== "cancelado") {
-    return docMonth === currentKey ? "mes" : "outros";
-  }
-
-  // Pedido cancelado, orçamento, sem documento, etc. → não misturar com faturamento do mês
-  return "outros";
+function resolveCashOriginMeta(meta, currentKey) {
+  const emissionRaw = meta?.documentoDataEmissao || meta?.contaEmissao || null;
+  const emissionSource = meta?.documentoDataEmissao
+    ? "pedido"
+    : meta?.contaEmissao
+      ? "conta"
+      : "nenhuma";
+  const emissionMonth = businessMonthKeyFromTimestamp(emissionRaw);
+  const bucket = emissionMonth && currentKey && emissionMonth === currentKey ? "mes" : "outros";
+  return {
+    bucket,
+    emissionRaw,
+    emissionMonth,
+    emissionSource,
+    emissionLabel: formatBusinessDateLabel(emissionRaw)
+  };
 }
 
 function emptyCashMonthBreakdown(range) {
@@ -13403,6 +13442,7 @@ async function loadContasOrigemMap(contaIds) {
     for (const conta of data || []) {
       const doc = conta.documento_id != null ? docById.get(Number(conta.documento_id)) : null;
       const cliente = unwrapRelation(conta.cliente);
+      const docIdFromConta = conta.documento_id != null ? Number(conta.documento_id) : null;
       byContaId.set(Number(conta.id), {
         contaId: Number(conta.id),
         contaEmissao: conta.emissao || null,
@@ -13412,7 +13452,8 @@ async function loadContasOrigemMap(contaIds) {
         documentoTipo: doc?.tipo_documento || null,
         documentoStatus: doc?.status || null,
         documentoTotal: doc?.total != null ? Number(doc.total) : null,
-        documentoId: doc?.id != null ? Number(doc.id) : null
+        documentoId: doc?.id != null ? Number(doc.id) : docIdFromConta,
+        documentoIdFallback: docIdFromConta
       });
     }
   }
@@ -13461,20 +13502,36 @@ function buildCashItemFromMeta({
   dataRef,
   meta = {},
   bucket,
+  currentKey = null,
   extra = {}
 }) {
-  const docId = meta.documentoId != null ? Number(meta.documentoId) : null;
+  const docId = meta.documentoId != null
+    ? Number(meta.documentoId)
+    : (meta.documentoIdFallback != null ? Number(meta.documentoIdFallback) : null);
   const titulo = meta.numeroTitulo ? String(meta.numeroTitulo) : null;
   const pedidoLabel = docId ? `Pedido #${docId}` : (titulo || "Sem pedido");
+  const origin = resolveCashOriginMeta(meta, currentKey);
+  // Preferir o bucket recalculado pela emissão (fonte da verdade na UI).
+  const finalBucket = currentKey ? origin.bucket : (bucket || origin.bucket || "outros");
+  const emissaoPrefix = origin.emissionSource === "conta"
+    ? "Emissão conta"
+    : origin.emissionSource === "pedido"
+      ? "Emissão pedido"
+      : "Emissão";
   return {
     kind,
-    bucket,
+    bucket: finalBucket,
     valor: Number(valor || 0),
     dataRef: dataRef || null,
     dataLabel: formatBusinessDateLabel(dataRef),
-    emissaoLabel: formatBusinessDateLabel(meta.documentoDataEmissao || meta.contaEmissao),
+    emissaoLabel: origin.emissionLabel,
+    emissaoPrefix,
+    emissionMonth: origin.emissionMonth,
+    emissionSource: origin.emissionSource,
     documentoId: docId,
     documentoTotal: meta.documentoTotal != null ? Number(meta.documentoTotal) : null,
+    documentoStatus: meta.documentoStatus || null,
+    documentoTipo: meta.documentoTipo || null,
     clienteNome: meta.clienteNome || "—",
     numeroTitulo: titulo,
     numeroParcela: meta.numeroParcela != null ? Number(meta.numeroParcela) : null,
@@ -13547,15 +13604,15 @@ async function loadDashboardCashMonthBreakdown() {
       const valor = Math.max(0, Number(row.valor || 0));
       if (valor <= 0) continue;
       const meta = parcelaOrigemMap.get(Number(row.parcela_id)) || {};
-      const bucket = classifyCashOriginMonth(meta, range.key);
       const item = buildCashItemFromMeta({
         kind: "recebimento",
         valor,
         dataRef: row.data_recebimento,
         meta: { ...meta, parcelaId: Number(row.parcela_id) },
-        bucket,
+        currentKey: range.key,
         extra: { recebimentoId: Number(row.id) }
       });
+      const bucket = item.bucket;
       breakdown.realized += valor;
       pushCashBreakdownItem(breakdown, ["total", "realized", bucket === "mes" ? "doMes" : "deOutros"], item);
       if (bucket === "mes") {
@@ -13577,14 +13634,14 @@ async function loadDashboardCashMonthBreakdown() {
         numeroParcela: row.numero_parcela != null ? Number(row.numero_parcela) : null,
         parcelaId: Number(row.id)
       };
-      const bucket = classifyCashOriginMonth(meta, range.key);
       const item = buildCashItemFromMeta({
         kind: "previsto",
         valor: aberto,
         dataRef: row.vencimento,
         meta,
-        bucket
+        currentKey: range.key
       });
+      const bucket = item.bucket;
       breakdown.forecast += aberto;
       pushCashBreakdownItem(breakdown, ["total", "forecast", bucket === "mes" ? "doMes" : "deOutros"], item);
       if (bucket === "mes") {
@@ -13660,6 +13717,7 @@ async function loadFaturamentoMesItems(range) {
           documentoStatus: row.status,
           clienteNome: cliente?.nome || null
         },
+        currentKey: range.key,
         bucket: "mes"
       });
     });
@@ -13885,6 +13943,13 @@ function renderCaixaMesItemsBody(key, items, totalValue) {
     const pedidoTotalTxt = item.documentoTotal != null
       ? ` · pedido ${moeda.format(item.documentoTotal)}`
       : "";
+    const emissaoPrefix = item.emissaoPrefix || "Emissão";
+    const mesEmissaoTxt = item.emissionMonth
+      ? ` · mês ${escapeHtml(item.emissionMonth)}`
+      : " · sem data de emissão";
+    const statusTxt = item.documentoStatus
+      ? ` · status ${escapeHtml(String(item.documentoStatus))}`
+      : "";
     const actions = [];
     if (item.documentoId) {
       actions.push(`<button type="button" class="btn btn-ghost" data-caixa-open-pedido="${item.documentoId}">Pedido</button>`);
@@ -13898,11 +13963,11 @@ function renderCaixaMesItemsBody(key, items, totalValue) {
         <td>
           <span class="caixa-mes-items-badge ${badgeClass}">${badgeLabel}</span>
           <strong style="display:block;margin-top:0.25rem">${escapeHtml(item.pedidoLabel || "—")}</strong>
-          <span class="item-meta">${escapeHtml(item.clienteNome || "—")}${tituloTxt}${parcelaTxt}${pedidoTotalTxt}</span>
+          <span class="item-meta">${escapeHtml(item.clienteNome || "—")}${tituloTxt}${parcelaTxt}${pedidoTotalTxt}${statusTxt}</span>
         </td>
         <td>
           ${escapeHtml(dateColLabel)}
-          <span class="item-meta">Emissão pedido: ${escapeHtml(item.emissaoLabel || "—")}</span>
+          <span class="item-meta">${escapeHtml(emissaoPrefix)}: ${escapeHtml(item.emissaoLabel || "—")}${mesEmissaoTxt}</span>
         </td>
         <td class="num"><strong>${moeda.format(item.valor)}</strong></td>
         <td>${actions.join(" ") || "—"}</td>
