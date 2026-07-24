@@ -14686,11 +14686,12 @@ function buildRelatorioEntradasPdfDefinition({ empresaConfig, empresaNome, perio
     ]);
   }
 
+  // Valor colado à descrição (não espalhado nas laterais da página).
   const formasStack = summary.formas.length
     ? summary.formas.map((f) => ({
-        columns: [
-          { text: f.nome, fontSize: 9, color: muted },
-          { text: moeda.format(f.valor), fontSize: 9, alignment: "right", bold: true }
+        text: [
+          { text: `${f.nome}: `, fontSize: 9, color: muted },
+          { text: moeda.format(f.valor), fontSize: 9, bold: true, color: brandDark }
         ],
         margin: [0, 1, 0, 1]
       }))
@@ -14830,7 +14831,7 @@ function buildRelatorioEntradasPdfDefinition({ empresaConfig, empresaNome, perio
 function buildRelatorioEntradasPreviewHtml({ empresaNome, periodoLabel, rows, summary, geradoEm }) {
   const formasHtml = summary.formas.length
     ? summary.formas
-        .map((f) => `<li><span>${escapeHtml(f.nome)}</span><strong>${moeda.format(f.valor)}</strong></li>`)
+        .map((f) => `<li>${escapeHtml(f.nome)}: <strong>${moeda.format(f.valor)}</strong></li>`)
         .join("")
     : "<li>Sem composição</li>";
   const rowsHtml = rows.length
@@ -14868,7 +14869,8 @@ function buildRelatorioEntradasPreviewHtml({ empresaNome, periodoLabel, rows, su
     .kpis { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 1rem 0; }
     .kpis strong { display: block; font-size: 1.2rem; }
     ul.formas { list-style: none; padding: 0; margin: 0 0 1rem; }
-    ul.formas li { display: flex; justify-content: space-between; max-width: 320px; padding: 0.2rem 0; border-bottom: 1px solid #eee; }
+    ul.formas li { padding: 0.2rem 0; border-bottom: 1px solid #eee; max-width: 280px; }
+    ul.formas li strong { margin-left: 0.25rem; }
     table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
     th, td { padding: 0.4rem 0.35rem; border-bottom: 1px solid #e8e2d6; text-align: left; vertical-align: top; }
     th { background: #165d59; color: #fff; font-size: 0.74rem; text-transform: uppercase; }
