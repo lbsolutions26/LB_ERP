@@ -604,6 +604,7 @@ const els = {
   relatorioEntradasPdfBtn: document.getElementById("relatorioEntradasPdfBtn"),
   relatorioEntradasTotal: document.getElementById("relatorioEntradasTotal"),
   relatorioEntradasCount: document.getElementById("relatorioEntradasCount"),
+  relatorioEntradasOutrosMeses: document.getElementById("relatorioEntradasOutrosMeses"),
   relatorioEntradasPeriodoLabel: document.getElementById("relatorioEntradasPeriodoLabel"),
   relatorioEntradasFormas: document.getElementById("relatorioEntradasFormas"),
   relatorioEntradasTableBody: document.getElementById("relatorioEntradasTableBody"),
@@ -14423,7 +14424,7 @@ async function loadRelatorioEntradas({ force = false } = {}) {
   state.relatorioEntradas.startDate = bounds.startText;
   state.relatorioEntradas.endDate = bounds.endText;
   if (els.relatorioEntradasTableBody) {
-    els.relatorioEntradasTableBody.innerHTML = `<tr><td colspan="5">Carregando entradas…</td></tr>`;
+    els.relatorioEntradasTableBody.innerHTML = `<tr><td colspan="6">Carregando entradas…</td></tr>`;
   }
   if (els.relatorioEntradasPdfBtn) els.relatorioEntradasPdfBtn.disabled = true;
 
@@ -14462,6 +14463,12 @@ async function loadRelatorioEntradas({ force = false } = {}) {
       const formaNome = row.forma_pagamento_id != null
         ? (formaById.get(String(row.forma_pagamento_id)) || getFormaPagamentoNome(row.forma_pagamento_id) || "—")
         : "—";
+      const emissaoRaw = meta.documentoDataEmissao || meta.contaEmissao || null;
+      const emissaoLabel = emissaoRaw ? formatBusinessDateLabel(emissaoRaw) : "—";
+      const recMonth = businessMonthKeyFromTimestamp(row.data_recebimento);
+      const pedMonth = businessMonthKeyFromTimestamp(emissaoRaw);
+      const isOutroMes = Boolean(recMonth && pedMonth && recMonth !== pedMonth);
+      const isMesmoMes = Boolean(recMonth && pedMonth && recMonth === pedMonth);
       return {
         id: Number(row.id),
         valor: Number(row.valor || 0),
@@ -14475,7 +14482,18 @@ async function loadRelatorioEntradas({ force = false } = {}) {
         pedidoLabel: docId ? `Pedido #${docId}` : (meta.numeroTitulo || "Sem pedido"),
         formaPagamentoId: row.forma_pagamento_id != null ? Number(row.forma_pagamento_id) : null,
         formaNome: String(formaNome || "—"),
-        observacoes: row.observacoes || ""
+        observacoes: row.observacoes || "",
+        pedidoEmissaoRaw: emissaoRaw,
+        pedidoEmissaoLabel: emissaoLabel,
+        pedidoMesKey: pedMonth,
+        recebimentoMesKey: recMonth,
+        isOutroMes,
+        isMesmoMes,
+        origemLabel: !emissaoRaw
+          ? "Sem data de pedido"
+          : isOutroMes
+            ? `Pedido de outro mês (${emissaoLabel})`
+            : `Pedido do mesmo mês (${emissaoLabel})`
       };
     });
 
@@ -14497,10 +14515,23 @@ async function loadRelatorioEntradas({ force = false } = {}) {
 
 function summarizeRelatorioEntradas(rows = state.relatorioEntradas.rows || []) {
   const total = rows.reduce((sum, r) => sum + Number(r.valor || 0), 0);
+  let totalMesmoMes = 0;
+  let totalOutroMes = 0;
+  let totalSemPedido = 0;
+  let countOutroMes = 0;
   const byForma = new Map();
   for (const row of rows) {
+    const valor = Number(row.valor || 0);
     const key = row.formaNome || "—";
-    byForma.set(key, (byForma.get(key) || 0) + Number(row.valor || 0));
+    byForma.set(key, (byForma.get(key) || 0) + valor);
+    if (row.isOutroMes) {
+      totalOutroMes += valor;
+      countOutroMes += 1;
+    } else if (row.isMesmoMes) {
+      totalMesmoMes += valor;
+    } else {
+      totalSemPedido += valor;
+    }
   }
   const formas = [...byForma.entries()]
     .map(([nome, valor]) => ({ nome, valor: Number(valor.toFixed(2)) }))
@@ -14508,7 +14539,11 @@ function summarizeRelatorioEntradas(rows = state.relatorioEntradas.rows || []) {
   return {
     total: Number(total.toFixed(2)),
     count: rows.length,
-    formas
+    formas,
+    totalMesmoMes: Number(totalMesmoMes.toFixed(2)),
+    totalOutroMes: Number(totalOutroMes.toFixed(2)),
+    totalSemPedido: Number(totalSemPedido.toFixed(2)),
+    countOutroMes
   };
 }
 
@@ -14523,7 +14558,18 @@ function renderRelatorioEntradas() {
   }
 
   if (els.relatorioEntradasTotal) els.relatorioEntradasTotal.textContent = moeda.format(summary.total);
-  if (els.relatorioEntradasCount) els.relatorioEntradasCount.textContent = String(summary.count);
+  if (els.relatorioEntradasCount) {
+    els.relatorioEntradasCount.textContent = String(summary.count);
+    els.relatorioEntradasCount.title = summary.countOutroMes
+      ? `${summary.countOutroMes} lançamento(s) de pedidos de outros meses`
+      : "";
+  }
+  if (els.relatorioEntradasOutrosMeses) {
+    els.relatorioEntradasOutrosMeses.textContent = moeda.format(summary.totalOutroMes);
+    els.relatorioEntradasOutrosMeses.title = summary.countOutroMes
+      ? `${summary.countOutroMes} recebimento(s) de pedidos emitidos em outro mês`
+      : "Nenhum recebimento de pedido de outro mês";
+  }
   if (els.relatorioEntradasPeriodoLabel) els.relatorioEntradasPeriodoLabel.textContent = periodoLabel;
 
   if (els.relatorioEntradasFormas) {
@@ -14546,15 +14592,21 @@ function renderRelatorioEntradas() {
   if (!els.relatorioEntradasTableBody) return;
   if (!rows.length) {
     els.relatorioEntradasTableBody.innerHTML =
-      '<tr><td colspan="5">Nenhum recebimento no período selecionado.</td></tr>';
+      '<tr><td colspan="6">Nenhum recebimento no período selecionado.</td></tr>';
     return;
   }
 
   els.relatorioEntradasTableBody.innerHTML = rows
     .map((row) => {
       const parc = row.numeroParcela != null ? ` · parc. ${row.numeroParcela}` : "";
+      const badge = row.isOutroMes
+        ? '<span class="relatorio-entradas-badge relatorio-entradas-badge--outro">Outro mês</span>'
+        : row.isMesmoMes
+          ? '<span class="relatorio-entradas-badge relatorio-entradas-badge--mesmo">Mesmo mês</span>'
+          : '<span class="relatorio-entradas-badge">Sem pedido</span>';
+      const rowClass = row.isOutroMes ? " relatorio-entradas-row--outro" : "";
       return `
-        <tr>
+        <tr class="${rowClass}">
           <td>${escapeHtml(row.dataLabel || "—")}</td>
           <td>${escapeHtml(row.clienteNome || "—")}</td>
           <td>
@@ -14562,6 +14614,10 @@ function renderRelatorioEntradas() {
             <span class="item-meta" style="display:block;color:var(--muted);font-size:0.78rem">
               ${escapeHtml(row.numeroTitulo || "—")}${parc}
             </span>
+          </td>
+          <td>
+            <strong>${escapeHtml(row.pedidoEmissaoLabel || "—")}</strong>
+            <span style="display:block;margin-top:0.2rem">${badge}</span>
           </td>
           <td>${escapeHtml(row.formaNome || "—")}</td>
           <td class="num"><strong>${moeda.format(row.valor)}</strong></td>
@@ -14581,9 +14637,11 @@ function buildRelatorioEntradasPdfDefinition({ empresaConfig, empresaNome, perio
 
   const tableBody = [
     [
-      { text: "Data", style: "th", fillColor: brand },
+      { text: "Receb.", style: "th", fillColor: brand },
       { text: "Cliente", style: "th", fillColor: brand },
       { text: "Pedido / Título", style: "th", fillColor: brand },
+      { text: "Emissão pedido", style: "th", fillColor: brand },
+      { text: "Origem", style: "th", fillColor: brand },
       { text: "Forma", style: "th", fillColor: brand },
       { text: "Valor", style: "th", fillColor: brand, alignment: "right" }
     ]
@@ -14593,18 +14651,34 @@ function buildRelatorioEntradasPdfDefinition({ empresaConfig, empresaNome, perio
     const titulo = row.numeroParcela != null
       ? `${row.pedidoLabel} · ${row.numeroTitulo} · parc. ${row.numeroParcela}`
       : `${row.pedidoLabel} · ${row.numeroTitulo}`;
+    const origemTxt = row.isOutroMes
+      ? "Outro mês"
+      : row.isMesmoMes
+        ? "Mesmo mês"
+        : "Sem pedido";
+    const rowFill = row.isOutroMes ? "#fff8e8" : null;
     tableBody.push([
-      { text: row.dataLabel || "—", fontSize: 8 },
-      { text: row.clienteNome || "—", fontSize: 8 },
-      { text: titulo, fontSize: 8 },
-      { text: row.formaNome || "—", fontSize: 8 },
-      { text: moeda.format(row.valor), fontSize: 8, alignment: "right" }
+      { text: row.dataLabel || "—", fontSize: 7.5, fillColor: rowFill },
+      { text: row.clienteNome || "—", fontSize: 7.5, fillColor: rowFill },
+      { text: titulo, fontSize: 7.5, fillColor: rowFill },
+      { text: row.pedidoEmissaoLabel || "—", fontSize: 7.5, fillColor: rowFill },
+      {
+        text: origemTxt,
+        fontSize: 7.5,
+        bold: Boolean(row.isOutroMes),
+        color: row.isOutroMes ? "#8a5a00" : "#1f1e1a",
+        fillColor: rowFill
+      },
+      { text: row.formaNome || "—", fontSize: 7.5, fillColor: rowFill },
+      { text: moeda.format(row.valor), fontSize: 7.5, alignment: "right", fillColor: rowFill }
     ]);
   }
 
   if (rows.length) {
     tableBody.push([
-      { text: "", colSpan: 3, border: [false, false, false, false] },
+      { text: "", colSpan: 5, border: [false, false, false, false] },
+      {},
+      {},
       {},
       {},
       { text: "TOTAL", bold: true, fontSize: 9, alignment: "right", fillColor: "#f3f0e8" },
@@ -14624,7 +14698,8 @@ function buildRelatorioEntradasPdfDefinition({ empresaConfig, empresaNome, perio
 
   return {
     pageSize: "A4",
-    pageMargins: [36, 40, 36, 40],
+    pageOrientation: "landscape",
+    pageMargins: [28, 32, 28, 32],
     defaultStyle: {
       font: "Roboto",
       fontSize: 10,
@@ -14658,7 +14733,7 @@ function buildRelatorioEntradasPdfDefinition({ empresaConfig, empresaNome, perio
         ]
       },
       {
-        canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 1, lineColor: line }],
+        canvas: [{ type: "line", x1: 0, y1: 0, x2: 780, y2: 0, lineWidth: 1, lineColor: line }],
         margin: [0, 12, 0, 12]
       },
       {
@@ -14667,14 +14742,33 @@ function buildRelatorioEntradasPdfDefinition({ empresaConfig, empresaNome, perio
             width: "*",
             stack: [
               { text: "Total recebido", fontSize: 8, color: muted },
-              { text: moeda.format(summary.total), fontSize: 16, bold: true, color: brandDark }
+              { text: moeda.format(summary.total), fontSize: 15, bold: true, color: brandDark }
             ]
           },
           {
             width: "*",
             stack: [
               { text: "Lançamentos", fontSize: 8, color: muted },
-              { text: String(summary.count), fontSize: 16, bold: true, color: brandDark }
+              { text: String(summary.count), fontSize: 15, bold: true, color: brandDark }
+            ]
+          },
+          {
+            width: "*",
+            stack: [
+              { text: "Pedidos do mesmo mês", fontSize: 8, color: muted },
+              { text: moeda.format(summary.totalMesmoMes || 0), fontSize: 15, bold: true, color: brandDark }
+            ]
+          },
+          {
+            width: "*",
+            stack: [
+              { text: "Pedidos de outros meses", fontSize: 8, color: muted },
+              {
+                text: moeda.format(summary.totalOutroMes || 0),
+                fontSize: 15,
+                bold: true,
+                color: summary.totalOutroMes > 0 ? "#8a5a00" : brandDark
+              }
             ]
           }
         ],
@@ -14702,17 +14796,17 @@ function buildRelatorioEntradasPdfDefinition({ empresaConfig, empresaNome, perio
         ? {
             table: {
               headerRows: 1,
-              widths: [58, "*", 130, 70, 62],
+              widths: [52, 90, "*", 58, 52, 70, 58],
               body: tableBody
             },
             layout: {
               hLineWidth: () => 0.5,
               vLineWidth: () => 0,
               hLineColor: () => line,
-              paddingLeft: () => 4,
-              paddingRight: () => 4,
-              paddingTop: () => 4,
-              paddingBottom: () => 4
+              paddingLeft: () => 3,
+              paddingRight: () => 3,
+              paddingTop: () => 3,
+              paddingBottom: () => 3
             }
           }
         : {
@@ -14721,7 +14815,10 @@ function buildRelatorioEntradasPdfDefinition({ empresaConfig, empresaNome, perio
             color: muted
           },
       {
-        text: "Entradas = valores com data de recebimento no período. Não inclui títulos em aberto (previsto).",
+        text:
+          "Entradas = valores com data de recebimento no período. " +
+          "“Outro mês” = pedido emitido em mês diferente do recebimento. " +
+          "Não inclui títulos em aberto (previsto).",
         fontSize: 8,
         color: muted,
         margin: [0, 14, 0, 0]
@@ -14740,16 +14837,24 @@ function buildRelatorioEntradasPreviewHtml({ empresaNome, periodoLabel, rows, su
     ? rows
         .map((row) => {
           const parc = row.numeroParcela != null ? ` · parc. ${row.numeroParcela}` : "";
-          return `<tr>
+          const origem = row.isOutroMes
+            ? "Outro mês"
+            : row.isMesmoMes
+              ? "Mesmo mês"
+              : "Sem pedido";
+          const trStyle = row.isOutroMes ? ' style="background:#fff8e8"' : "";
+          return `<tr${trStyle}>
             <td>${escapeHtml(row.dataLabel)}</td>
             <td>${escapeHtml(row.clienteNome)}</td>
             <td>${escapeHtml(row.pedidoLabel)} · ${escapeHtml(row.numeroTitulo || "—")}${escapeHtml(parc)}</td>
+            <td>${escapeHtml(row.pedidoEmissaoLabel || "—")}</td>
+            <td>${escapeHtml(origem)}</td>
             <td>${escapeHtml(row.formaNome)}</td>
             <td style="text-align:right">${moeda.format(row.valor)}</td>
           </tr>`;
         })
         .join("")
-    : `<tr><td colspan="5">Nenhum recebimento no período.</td></tr>`;
+    : `<tr><td colspan="7">Nenhum recebimento no período.</td></tr>`;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -14760,13 +14865,13 @@ function buildRelatorioEntradasPreviewHtml({ empresaNome, periodoLabel, rows, su
     body { font-family: Barlow, Arial, sans-serif; color: #21201c; margin: 24px; }
     h1 { margin: 0 0 4px; font-size: 1.35rem; color: #0f4744; }
     .muted { color: #6f6a5f; font-size: 0.9rem; }
-    .kpis { display: flex; gap: 1.5rem; margin: 1rem 0; }
+    .kpis { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 1rem 0; }
     .kpis strong { display: block; font-size: 1.2rem; }
     ul.formas { list-style: none; padding: 0; margin: 0 0 1rem; }
     ul.formas li { display: flex; justify-content: space-between; max-width: 320px; padding: 0.2rem 0; border-bottom: 1px solid #eee; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-    th, td { padding: 0.45rem 0.4rem; border-bottom: 1px solid #e8e2d6; text-align: left; vertical-align: top; }
-    th { background: #165d59; color: #fff; font-size: 0.78rem; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { padding: 0.4rem 0.35rem; border-bottom: 1px solid #e8e2d6; text-align: left; vertical-align: top; }
+    th { background: #165d59; color: #fff; font-size: 0.74rem; text-transform: uppercase; }
   </style>
 </head>
 <body>
@@ -14775,15 +14880,31 @@ function buildRelatorioEntradasPreviewHtml({ empresaNome, periodoLabel, rows, su
   <div class="kpis">
     <div><span class="muted">Total recebido</span><strong>${moeda.format(summary.total)}</strong></div>
     <div><span class="muted">Lançamentos</span><strong>${summary.count}</strong></div>
+    <div><span class="muted">Pedidos do mesmo mês</span><strong>${moeda.format(summary.totalMesmoMes || 0)}</strong></div>
+    <div><span class="muted">Pedidos de outros meses</span><strong>${moeda.format(summary.totalOutroMes || 0)}</strong></div>
   </div>
   <h3>Por forma de pagamento</h3>
   <ul class="formas">${formasHtml}</ul>
   <h3>Detalhamento</h3>
   <table>
-    <thead><tr><th>Data</th><th>Cliente</th><th>Pedido / Título</th><th>Forma</th><th>Valor</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Recebimento</th>
+        <th>Cliente</th>
+        <th>Pedido / Título</th>
+        <th>Emissão pedido</th>
+        <th>Origem</th>
+        <th>Forma</th>
+        <th>Valor</th>
+      </tr>
+    </thead>
     <tbody>${rowsHtml}</tbody>
   </table>
-  <p class="muted" style="margin-top:1rem">Entradas = valores com data de recebimento no período. Não inclui títulos em aberto.</p>
+  <p class="muted" style="margin-top:1rem">
+    Entradas = valores com data de recebimento no período.
+    “Outro mês” = pedido emitido em mês diferente do recebimento.
+    Não inclui títulos em aberto.
+  </p>
 </body>
 </html>`;
 }
