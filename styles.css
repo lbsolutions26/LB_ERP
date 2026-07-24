@@ -3999,6 +3999,92 @@ textarea:focus {
   border-color: var(--brand);
 }
 
+.relatorios-hub-kpis {
+  margin-top: 0.25rem;
+}
+
+.relatorios-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.85rem;
+  margin-top: 1.15rem;
+}
+
+.relatorio-menu-card {
+  appearance: none;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.85rem;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: 1rem 1.1rem;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.92) 0%, rgba(251, 248, 241, 0.88) 100%);
+  box-shadow: 0 8px 22px rgba(33, 32, 28, 0.05);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+
+.relatorio-menu-card:hover,
+.relatorio-menu-card:focus-visible {
+  border-color: rgba(22, 93, 89, 0.4);
+  box-shadow: 0 10px 28px rgba(22, 93, 89, 0.12);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.relatorio-menu-card:active {
+  transform: translateY(0);
+}
+
+.relatorio-menu-card-icon {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 12px;
+  background: rgba(22, 93, 89, 0.1);
+  color: var(--brand-strong);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.relatorio-menu-card-body {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.relatorio-menu-card-body strong {
+  font-family: "Sora", sans-serif;
+  font-size: 1.02rem;
+  letter-spacing: -0.01em;
+}
+
+.relatorio-menu-card-body span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.relatorio-menu-card-cta {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-strong);
+  white-space: nowrap;
+}
+
+.relatorio-view .relatorio-back-btn {
+  padding-left: 0.35rem;
+  margin-left: -0.35rem;
+}
+
 .relatorio-entradas-panel {
   padding: 1rem 1.1rem 1.15rem;
   border-radius: 14px;

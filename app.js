@@ -197,6 +197,7 @@ const state = {
     loaded: false,
     loading: false
   },
+  relatoriosActiveView: "hub",
   recebimentoModal: {
     contaId: null,
     conta: null,
@@ -626,6 +627,11 @@ const els = {
   relatorioPecasPeriodoLabel: document.getElementById("relatorioPecasPeriodoLabel"),
   relatorioPecasTableBody: document.getElementById("relatorioPecasTableBody"),
   relatorioPecasRangeButtons: Array.from(document.querySelectorAll("[data-relatorio-pecas-range]")),
+  relatoriosHub: document.getElementById("relatoriosHub"),
+  relatorioViewEntradas: document.getElementById("relatorioViewEntradas"),
+  relatorioViewPecas: document.getElementById("relatorioViewPecas"),
+  relatorioOpenButtons: Array.from(document.querySelectorAll("[data-relatorio-open]")),
+  relatorioBackButtons: Array.from(document.querySelectorAll("[data-relatorio-back]")),
   dailyCashTitulo: document.getElementById("dailyCashTitulo"),
   dailyFaturamentoSubtitulo: document.getElementById("dailyFaturamentoSubtitulo"),
   dailyFaturamentoChart: document.getElementById("dailyFaturamentoChart"),
@@ -14358,6 +14364,43 @@ async function openCaixaMesBreakdownModal() {
 }
 
 /* =========================
+ * Hub de Relatórios (menu)
+ * ========================= */
+
+function showRelatoriosView(view = "hub") {
+  const next = view === "entradas" || view === "pecas" ? view : "hub";
+  state.relatoriosActiveView = next;
+
+  if (els.relatoriosHub) {
+    els.relatoriosHub.classList.toggle("hidden", next !== "hub");
+  }
+  if (els.relatorioViewEntradas) {
+    els.relatorioViewEntradas.classList.toggle("hidden", next !== "entradas");
+  }
+  if (els.relatorioViewPecas) {
+    els.relatorioViewPecas.classList.toggle("hidden", next !== "pecas");
+  }
+
+  // Atualiza métricas do hub (estoque / orçamento) sem carregar relatórios.
+  if (next === "hub") {
+    try {
+      renderMetrics({ charts: false });
+    } catch (_e) {
+      /* ignore */
+    }
+  }
+}
+
+async function openRelatorioView(view) {
+  showRelatoriosView(view);
+  if (view === "entradas") {
+    await ensureRelatorioEntradasReady();
+  } else if (view === "pecas") {
+    await ensureRelatorioPecasReady();
+  }
+}
+
+/* =========================
  * Relatório de Entradas (PDF)
  * ========================= */
 
@@ -16393,10 +16436,8 @@ function attachEvents() {
           await ensureContasReceberLoaded();
           renderContasReceberTable();
         } else if (sectionName === "relatorios") {
-          await Promise.all([
-            ensureRelatorioEntradasReady(),
-            ensureRelatorioPecasReady()
-          ]);
+          // Hub primeiro; o relatório só carrega ao clicar no atalho.
+          showRelatoriosView("hub");
         } else if (sectionName === "configuracoes") {
           fillEmpresaConfigForm(getEmpresaConfig());
         } else if (sectionName === "usuarios") {
@@ -17615,6 +17656,20 @@ function attachEvents() {
     els.caixaMesItemsModal.addEventListener("click", (event) => {
       if (event.target === els.caixaMesItemsModal) closeCaixaMesItemsModal();
     });
+  }
+
+  for (const button of els.relatorioOpenButtons || []) {
+    button.addEventListener("click", async () => {
+      const view = button.getAttribute("data-relatorio-open") || "hub";
+      try {
+        await openRelatorioView(view);
+      } catch (error) {
+        showToast(`Erro ao abrir relatório: ${error.message || error}`, "error");
+      }
+    });
+  }
+  for (const button of els.relatorioBackButtons || []) {
+    button.addEventListener("click", () => showRelatoriosView("hub"));
   }
 
   for (const button of els.relatorioEntradasRangeButtons || []) {

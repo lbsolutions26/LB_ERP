@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260724relPecas1" />
+    <link rel="stylesheet" href="styles.css?v=20260724relHub1" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -1052,38 +1052,62 @@
         </section>
 
         <section id="section-relatorios" class="card app-section hidden">
-          <div class="section-head">
-            <div>
-              <h2>Relatórios</h2>
-              <p class="section-subtitle">Entradas de caixa e venda de peças, com filtro de período e PDF.</p>
+          <!-- Hub: menu de atalhos -->
+          <div id="relatoriosHub" class="relatorios-hub">
+            <div class="section-head">
+              <div>
+                <h2>Relatórios</h2>
+                <p class="section-subtitle">Escolha um relatório para abrir. Cada um tem filtro de período e PDF.</p>
+              </div>
+            </div>
+
+            <div class="metric-grid relatorio-grid relatorios-hub-kpis">
+              <article>
+                <span>Estoque (Todos)</span>
+                <strong id="estoqueTotalCount">0 itens</strong>
+              </article>
+              <article>
+                <span>Estoque (Com saldo)</span>
+                <strong id="estoqueComSaldoCount">0 itens</strong>
+              </article>
+              <article>
+                <span>Estoque (Ponto de pedido)</span>
+                <strong id="estoquePontoPedidoCount">0 itens</strong>
+              </article>
+              <article>
+                <span>Orçamento em aberto</span>
+                <strong id="orcamentoAbertoValue">R$ 0,00</strong>
+              </article>
+            </div>
+
+            <div class="relatorios-menu-grid" role="list">
+              <button type="button" class="relatorio-menu-card" data-relatorio-open="entradas" role="listitem">
+                <span class="relatorio-menu-card-icon" aria-hidden="true">↓</span>
+                <span class="relatorio-menu-card-body">
+                  <strong>Entradas de caixa</strong>
+                  <span>Recebimentos no período, origem do pedido (mesmo/outro mês) e PDF.</span>
+                </span>
+                <span class="relatorio-menu-card-cta">Abrir</span>
+              </button>
+              <button type="button" class="relatorio-menu-card" data-relatorio-open="pecas" role="listitem">
+                <span class="relatorio-menu-card-icon" aria-hidden="true">▦</span>
+                <span class="relatorio-menu-card-body">
+                  <strong>Venda de peças</strong>
+                  <span>Ranking de produtos/peças vendidos (maior → menor) com PDF.</span>
+                </span>
+                <span class="relatorio-menu-card-cta">Abrir</span>
+              </button>
             </div>
           </div>
 
-          <div class="metric-grid relatorio-grid">
-            <article>
-              <span>Estoque (Todos)</span>
-              <strong id="estoqueTotalCount">0 itens</strong>
-            </article>
-            <article>
-              <span>Estoque (Com saldo)</span>
-              <strong id="estoqueComSaldoCount">0 itens</strong>
-            </article>
-            <article>
-              <span>Estoque (Ponto de pedido)</span>
-              <strong id="estoquePontoPedidoCount">0 itens</strong>
-            </article>
-            <article>
-              <span>Orçamento em aberto</span>
-              <strong id="orcamentoAbertoValue">R$ 0,00</strong>
-            </article>
-          </div>
-
-          <article class="relatorio-entradas-panel form-block" style="margin-top: 1.25rem">
+          <!-- Tela: Entradas -->
+          <div id="relatorioViewEntradas" class="relatorio-view hidden">
             <div class="section-head" style="margin-bottom: 0.75rem">
               <div>
-                <h3>Relatório de Entradas</h3>
+                <button type="button" class="btn btn-ghost relatorio-back-btn" data-relatorio-back>← Voltar aos relatórios</button>
+                <h2 style="margin-top: 0.5rem">Relatório de Entradas</h2>
                 <p class="section-subtitle">
-                  Lista os recebimentos no período (dinheiro que entrou no caixa), com total e PDF.
+                  Recebimentos no período (dinheiro que entrou no caixa), com total e PDF.
                 </p>
               </div>
               <div class="section-head-actions" style="display:flex;flex-wrap:wrap;gap:0.5rem">
@@ -1091,67 +1115,71 @@
               </div>
             </div>
 
-            <div class="financeiro-filters relatorio-entradas-filters">
-              <label>
-                De
-                <input id="relatorioEntradasStart" type="date" />
-              </label>
-              <label>
-                Até
-                <input id="relatorioEntradasEnd" type="date" />
-              </label>
-              <div class="relatorio-entradas-quick">
-                <button type="button" class="btn btn-ghost" data-relatorio-entradas-range="mes">Este mês</button>
-                <button type="button" class="btn btn-ghost" data-relatorio-entradas-range="mes-passado">Mês passado</button>
-                <button type="button" class="btn btn-ghost" data-relatorio-entradas-range="30d">Últimos 30 dias</button>
-                <button id="relatorioEntradasAtualizarBtn" type="button" class="btn btn-ghost">Atualizar</button>
+            <article class="relatorio-entradas-panel form-block">
+              <div class="financeiro-filters relatorio-entradas-filters">
+                <label>
+                  De
+                  <input id="relatorioEntradasStart" type="date" />
+                </label>
+                <label>
+                  Até
+                  <input id="relatorioEntradasEnd" type="date" />
+                </label>
+                <div class="relatorio-entradas-quick">
+                  <button type="button" class="btn btn-ghost" data-relatorio-entradas-range="mes">Este mês</button>
+                  <button type="button" class="btn btn-ghost" data-relatorio-entradas-range="mes-passado">Mês passado</button>
+                  <button type="button" class="btn btn-ghost" data-relatorio-entradas-range="30d">Últimos 30 dias</button>
+                  <button id="relatorioEntradasAtualizarBtn" type="button" class="btn btn-ghost">Atualizar</button>
+                </div>
               </div>
-            </div>
 
-            <div class="metric-grid relatorio-grid relatorio-entradas-kpis">
-              <article>
-                <span>Total recebido</span>
-                <strong id="relatorioEntradasTotal">R$ 0,00</strong>
-              </article>
-              <article>
-                <span>Lançamentos</span>
-                <strong id="relatorioEntradasCount">0</strong>
-              </article>
-              <article>
-                <span>De pedidos de outros meses</span>
-                <strong id="relatorioEntradasOutrosMeses">R$ 0,00</strong>
-              </article>
-              <article>
-                <span>Período</span>
-                <strong id="relatorioEntradasPeriodoLabel">—</strong>
-              </article>
-            </div>
+              <div class="metric-grid relatorio-grid relatorio-entradas-kpis">
+                <article>
+                  <span>Total recebido</span>
+                  <strong id="relatorioEntradasTotal">R$ 0,00</strong>
+                </article>
+                <article>
+                  <span>Lançamentos</span>
+                  <strong id="relatorioEntradasCount">0</strong>
+                </article>
+                <article>
+                  <span>De pedidos de outros meses</span>
+                  <strong id="relatorioEntradasOutrosMeses">R$ 0,00</strong>
+                </article>
+                <article>
+                  <span>Período</span>
+                  <strong id="relatorioEntradasPeriodoLabel">—</strong>
+                </article>
+              </div>
 
-            <div id="relatorioEntradasFormas" class="relatorio-entradas-formas" aria-live="polite"></div>
+              <div id="relatorioEntradasFormas" class="relatorio-entradas-formas" aria-live="polite"></div>
 
-            <div class="table-wrap" style="margin-top: 0.85rem">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Recebimento</th>
-                    <th>Cliente</th>
-                    <th>Pedido / Título</th>
-                    <th>Emissão do pedido</th>
-                    <th>Forma</th>
-                    <th class="num">Valor</th>
-                  </tr>
-                </thead>
-                <tbody id="relatorioEntradasTableBody">
-                  <tr><td colspan="6">Selecione o período e clique em Atualizar.</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </article>
+              <div class="table-wrap" style="margin-top: 0.85rem">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Recebimento</th>
+                      <th>Cliente</th>
+                      <th>Pedido / Título</th>
+                      <th>Emissão do pedido</th>
+                      <th>Forma</th>
+                      <th class="num">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody id="relatorioEntradasTableBody">
+                    <tr><td colspan="6">Selecione o período e clique em Atualizar.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
 
-          <article class="relatorio-entradas-panel form-block" style="margin-top: 1.25rem">
+          <!-- Tela: Peças -->
+          <div id="relatorioViewPecas" class="relatorio-view hidden">
             <div class="section-head" style="margin-bottom: 0.75rem">
               <div>
-                <h3>Relatório de Venda de Peças</h3>
+                <button type="button" class="btn btn-ghost relatorio-back-btn" data-relatorio-back>← Voltar aos relatórios</button>
+                <h2 style="margin-top: 0.5rem">Relatório de Venda de Peças</h2>
                 <p class="section-subtitle">
                   Produtos/peças vendidos nos pedidos do período, do maior valor para o menor, com PDF.
                 </p>
@@ -1161,60 +1189,62 @@
               </div>
             </div>
 
-            <div class="financeiro-filters relatorio-entradas-filters">
-              <label>
-                De
-                <input id="relatorioPecasStart" type="date" />
-              </label>
-              <label>
-                Até
-                <input id="relatorioPecasEnd" type="date" />
-              </label>
-              <div class="relatorio-entradas-quick">
-                <button type="button" class="btn btn-ghost" data-relatorio-pecas-range="mes">Este mês</button>
-                <button type="button" class="btn btn-ghost" data-relatorio-pecas-range="mes-passado">Mês passado</button>
-                <button type="button" class="btn btn-ghost" data-relatorio-pecas-range="30d">Últimos 30 dias</button>
-                <button id="relatorioPecasAtualizarBtn" type="button" class="btn btn-ghost">Atualizar</button>
+            <article class="relatorio-entradas-panel form-block">
+              <div class="financeiro-filters relatorio-entradas-filters">
+                <label>
+                  De
+                  <input id="relatorioPecasStart" type="date" />
+                </label>
+                <label>
+                  Até
+                  <input id="relatorioPecasEnd" type="date" />
+                </label>
+                <div class="relatorio-entradas-quick">
+                  <button type="button" class="btn btn-ghost" data-relatorio-pecas-range="mes">Este mês</button>
+                  <button type="button" class="btn btn-ghost" data-relatorio-pecas-range="mes-passado">Mês passado</button>
+                  <button type="button" class="btn btn-ghost" data-relatorio-pecas-range="30d">Últimos 30 dias</button>
+                  <button id="relatorioPecasAtualizarBtn" type="button" class="btn btn-ghost">Atualizar</button>
+                </div>
               </div>
-            </div>
 
-            <div class="metric-grid relatorio-grid relatorio-entradas-kpis">
-              <article>
-                <span>Total vendido</span>
-                <strong id="relatorioPecasTotal">R$ 0,00</strong>
-              </article>
-              <article>
-                <span>Peças / produtos</span>
-                <strong id="relatorioPecasCount">0</strong>
-              </article>
-              <article>
-                <span>Qtd. total</span>
-                <strong id="relatorioPecasQtd">0</strong>
-              </article>
-              <article>
-                <span>Período</span>
-                <strong id="relatorioPecasPeriodoLabel">—</strong>
-              </article>
-            </div>
+              <div class="metric-grid relatorio-grid relatorio-entradas-kpis">
+                <article>
+                  <span>Total vendido</span>
+                  <strong id="relatorioPecasTotal">R$ 0,00</strong>
+                </article>
+                <article>
+                  <span>Peças / produtos</span>
+                  <strong id="relatorioPecasCount">0</strong>
+                </article>
+                <article>
+                  <span>Qtd. total</span>
+                  <strong id="relatorioPecasQtd">0</strong>
+                </article>
+                <article>
+                  <span>Período</span>
+                  <strong id="relatorioPecasPeriodoLabel">—</strong>
+                </article>
+              </div>
 
-            <div class="table-wrap" style="margin-top: 0.85rem">
-              <table>
-                <thead>
-                  <tr>
-                    <th class="num">#</th>
-                    <th>Produto / peça</th>
-                    <th class="num">Qtd.</th>
-                    <th class="num">Pedidos</th>
-                    <th class="num">Valor vendido</th>
-                    <th>Última venda</th>
-                  </tr>
-                </thead>
-                <tbody id="relatorioPecasTableBody">
-                  <tr><td colspan="6">Selecione o período e clique em Atualizar.</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </article>
+              <div class="table-wrap" style="margin-top: 0.85rem">
+                <table>
+                  <thead>
+                    <tr>
+                      <th class="num">#</th>
+                      <th>Produto / peça</th>
+                      <th class="num">Qtd.</th>
+                      <th class="num">Pedidos</th>
+                      <th class="num">Valor vendido</th>
+                      <th>Última venda</th>
+                    </tr>
+                  </thead>
+                  <tbody id="relatorioPecasTableBody">
+                    <tr><td colspan="6">Selecione o período e clique em Atualizar.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
         </section>
 
         <section id="section-configuracoes" class="card app-section hidden">
@@ -2701,6 +2731,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260724relPecas1"></script>
+    <script type="module" src="app.js?v=20260724relHub1"></script>
   </body>
 </html>
