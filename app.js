@@ -121,6 +121,10 @@ const state = {
       sort: { field: "total", direction: "desc" },
       filters: { produto: "", quantidade: "", pedidos: "", total: "", ultimaVenda: "" }
     },
+    relatorioPecas: {
+      sort: { field: "total", direction: "desc" },
+      filters: {}
+    },
     financeiro: {
       sort: { field: "emissao", direction: "desc" },
       filters: { emissao: "", vencimento: "", cliente: "", titulo: "", status: "", original: "", aberto: "" }
@@ -12379,6 +12383,48 @@ function setTableSort(tableKey, field) {
   rerenderTableView(tableKey);
 }
 
+function sortRelatorioPecasRows(rows) {
+  const view = getTableViewConfig("relatorioPecas");
+  const field = view?.sort?.field || "total";
+  const dir = view?.sort?.direction === "asc" ? 1 : -1;
+
+  const getVal = (row) => {
+    switch (field) {
+      case "nome":
+        return String(row.nome || "").toLowerCase();
+      case "quantidade":
+        return Number(row.quantidade || 0);
+      case "pedidos":
+        return Number(row.pedidos || 0);
+      case "total":
+        return Number(row.total || 0);
+      case "estoque":
+        // Sem estoque / não controla: vai para o fim em ordem crescente, início em decrescente
+        if (row.estoqueAtual == null || Number.isNaN(Number(row.estoqueAtual))) {
+          return dir === 1 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+        }
+        return Number(row.estoqueAtual);
+      case "ultimaVenda":
+        return row.ultimaVenda ? new Date(row.ultimaVenda).getTime() : 0;
+      default:
+        return Number(row.total || 0);
+    }
+  };
+
+  return [...(rows || [])].sort((a, b) => {
+    const va = getVal(a);
+    const vb = getVal(b);
+    if (typeof va === "string" && typeof vb === "string") {
+      const cmp = va.localeCompare(vb, "pt-BR");
+      if (cmp !== 0) return cmp * dir;
+    } else {
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+    }
+    return String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR");
+  });
+}
+
 function rerenderTableView(tableKey) {
   if (tableKey === "clientes") {
     renderClientesTable();
@@ -12402,6 +12448,12 @@ function rerenderTableView(tableKey) {
   }
   if (tableKey === "usuarios") {
     renderOwnerUsersTable();
+    return;
+  }
+  if (tableKey === "relatorioPecas") {
+    // Reordena as linhas já carregadas e redesenha (PDF usa a mesma ordem).
+    state.relatorioPecas.rows = sortRelatorioPecasRows(state.relatorioPecas.rows || []);
+    renderRelatorioPecas();
     return;
   }
   if (tableKey === "adminVinculos") {
@@ -15236,6 +15288,7 @@ async function loadRelatorioPecas({ force = false } = {}) {
         quantidade: Number(item.quantidade || 0),
         total: Number(Number(item.total || 0).toFixed(2)),
         pedidos: Number(item.pedidos || 0),
+        ultimaVenda: item.ultimaVenda || null,
         ultimaVendaLabel: item.ultimaVenda
           ? formatBusinessDateLabel(item.ultimaVenda)
           : "—",
@@ -15243,13 +15296,7 @@ async function loadRelatorioPecas({ force = false } = {}) {
         estoqueLabel: "—",
         estoqueControla: false,
         estoqueBaixo: false
-      }))
-      // Maior valor vendido → menor
-      .sort((a, b) => {
-        const diff = Number(b.total || 0) - Number(a.total || 0);
-        if (diff !== 0) return diff;
-        return String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR");
-      });
+      }));
 
     // Garante catálogo em memória para ler estoque_atual.
     if (!state.produtosLoaded) {
@@ -15261,7 +15308,8 @@ async function loadRelatorioPecas({ force = false } = {}) {
     }
     enrichRelatorioPecasComEstoque(grouped);
 
-    state.relatorioPecas.rows = grouped;
+    // Ordenação atual (clique nas colunas); PDF usa a mesma ordem.
+    state.relatorioPecas.rows = sortRelatorioPecasRows(grouped);
     state.relatorioPecas.loaded = true;
     renderRelatorioPecas();
   } finally {
@@ -15301,12 +15349,19 @@ function renderRelatorioPecas() {
   if (els.relatorioPecasQtd) els.relatorioPecasQtd.textContent = formatRelatorioPecasQtd(summary.qtd);
   if (els.relatorioPecasPeriodoLabel) els.relatorioPecasPeriodoLabel.textContent = periodoLabel;
 
+  updateTableSortHeaders("relatorioPecas");
+
   if (!els.relatorioPecasTableBody) return;
   if (!rows.length) {
     els.relatorioPecasTableBody.innerHTML =
       '<tr><td colspan="7">Nenhuma venda de peça/produto no período selecionado.</td></tr>';
     return;
   }
+
+  const sortView = getTableViewConfig("relatorioPecas");
+  const sortHint = sortView?.sort
+    ? `Ordenado por ${sortView.sort.field} (${sortView.sort.direction === "asc" ? "crescente" : "decrescente"})`
+    : "";
 
   els.relatorioPecasTableBody.innerHTML = rows
     .map((row, index) => {
@@ -15326,6 +15381,10 @@ function renderRelatorioPecas() {
     `;
     })
     .join("");
+
+  if (els.relatorioPecasPeriodoLabel && sortHint) {
+    els.relatorioPecasPeriodoLabel.title = sortHint;
+  }
 }
 
 function buildRelatorioPecasPdfDefinition({ empresaConfig, empresaNome, periodoLabel, rows, summary, geradoEm }) {
@@ -15474,7 +15533,20 @@ function buildRelatorioPecasPdfDefinition({ empresaConfig, empresaNome, periodoL
         margin: [0, 0, 0, 12]
       },
       {
-        text: "Ranking por valor vendido (maior → menor)",
+        text: (() => {
+          const view = getTableViewConfig("relatorioPecas");
+          const field = view?.sort?.field || "total";
+          const dir = view?.sort?.direction === "asc" ? "crescente" : "decrescente";
+          const labels = {
+            nome: "produto",
+            quantidade: "quantidade",
+            pedidos: "pedidos",
+            total: "valor vendido",
+            estoque: "estoque",
+            ultimaVenda: "última venda"
+          };
+          return `Ordenado por ${labels[field] || field} (${dir})`;
+        })(),
         fontSize: 10,
         bold: true,
         color: brandDark,
@@ -15556,7 +15628,20 @@ function buildRelatorioPecasPreviewHtml({ empresaNome, periodoLabel, rows, summa
     <div><span class="muted">Peças / produtos</span><strong>${summary.count}</strong></div>
     <div><span class="muted">Qtd. total</span><strong>${escapeHtml(formatRelatorioPecasQtd(summary.qtd))}</strong></div>
   </div>
-  <h3>Ranking por valor (maior → menor)</h3>
+  <h3>${escapeHtml((() => {
+    const view = getTableViewConfig("relatorioPecas");
+    const field = view?.sort?.field || "total";
+    const dir = view?.sort?.direction === "asc" ? "crescente" : "decrescente";
+    const labels = {
+      nome: "produto",
+      quantidade: "quantidade",
+      pedidos: "pedidos",
+      total: "valor vendido",
+      estoque: "estoque",
+      ultimaVenda: "última venda"
+    };
+    return `Ordenado por ${labels[field] || field} (${dir})`;
+  })())}</h3>
   <table>
     <thead>
       <tr>
