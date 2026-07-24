@@ -12425,6 +12425,47 @@ function sortRelatorioPecasRows(rows) {
   });
 }
 
+/** Atualiza indicadores ▲/▼/⇅ em TODAS as colunas clicáveis do relatório de peças. */
+function updateRelatorioPecasSortHeaders() {
+  const view = getTableViewConfig("relatorioPecas");
+  const activeField = view?.sort?.field || "total";
+  const activeDir = view?.sort?.direction === "asc" ? "asc" : "desc";
+  const headers = Array.from(
+    document.querySelectorAll('#relatorioViewPecas th.sortable[data-table="relatorioPecas"][data-sort]')
+  );
+
+  for (const th of headers) {
+    const field = th.getAttribute("data-sort") || "";
+    const label = th.getAttribute("data-label") || th.textContent?.replace(/[▲▼⇅\s]+$/g, "").trim() || "";
+    if (!th.getAttribute("data-label")) th.setAttribute("data-label", label);
+
+    const isActive = field === activeField;
+    const marker = isActive ? (activeDir === "asc" ? " ▲" : " ▼") : " ⇅";
+    th.textContent = `${th.getAttribute("data-label")}${marker}`;
+    th.classList.toggle("sorted", isActive);
+    th.setAttribute("aria-sort", isActive ? (activeDir === "asc" ? "ascending" : "descending") : "none");
+    th.setAttribute("title", `Clique para ordenar por ${th.getAttribute("data-label")}`);
+  }
+}
+
+function bindRelatorioPecasSortHeaders() {
+  const headers = Array.from(
+    document.querySelectorAll('#relatorioViewPecas th.sortable[data-table="relatorioPecas"][data-sort]')
+  );
+  for (const th of headers) {
+    if (th.dataset.sortBound === "1") continue;
+    th.dataset.sortBound = "1";
+    th.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const field = th.getAttribute("data-sort");
+      if (!field) return;
+      setTableSort("relatorioPecas", field);
+    });
+  }
+  updateRelatorioPecasSortHeaders();
+}
+
 function rerenderTableView(tableKey) {
   if (tableKey === "clientes") {
     renderClientesTable();

@@ -1972,14 +1972,26 @@ th {
 th.sortable {
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
 }
 
 th.sortable:hover {
   color: var(--brand-strong);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 th.sortable.sorted {
   color: var(--brand-strong);
+  font-weight: 700;
+}
+
+#relatorioViewPecas th.sortable {
+  position: relative;
+}
+
+#relatorioViewPecas th.sortable:hover {
+  background: rgba(22, 93, 89, 0.08);
 }
 
 table thead input {
