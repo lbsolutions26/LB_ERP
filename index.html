@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260723caixaExcesso1" />
+    <link rel="stylesheet" href="styles.css?v=20260724relEntradas1" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -1052,7 +1052,13 @@
         </section>
 
         <section id="section-relatorios" class="card app-section hidden">
-          <h2>Relatorios</h2>
+          <div class="section-head">
+            <div>
+              <h2>Relatórios</h2>
+              <p class="section-subtitle">Entradas de caixa (recebimentos) com exportação em PDF.</p>
+            </div>
+          </div>
+
           <div class="metric-grid relatorio-grid">
             <article>
               <span>Estoque (Todos)</span>
@@ -1067,13 +1073,75 @@
               <strong id="estoquePontoPedidoCount">0 itens</strong>
             </article>
             <article>
-              <span>Orcamento em aberto</span>
+              <span>Orçamento em aberto</span>
               <strong id="orcamentoAbertoValue">R$ 0,00</strong>
             </article>
           </div>
-          <p class="section-subtitle" style="margin-top: 0.75rem">
-            Para gestão completa de estoque, use a aba <strong>Estoque</strong>.
-          </p>
+
+          <article class="relatorio-entradas-panel form-block" style="margin-top: 1.25rem">
+            <div class="section-head" style="margin-bottom: 0.75rem">
+              <div>
+                <h3>Relatório de Entradas</h3>
+                <p class="section-subtitle">
+                  Lista os recebimentos no período (dinheiro que entrou no caixa), com total e PDF.
+                </p>
+              </div>
+              <div class="section-head-actions" style="display:flex;flex-wrap:wrap;gap:0.5rem">
+                <button id="relatorioEntradasPdfBtn" type="button" class="btn">Gerar PDF</button>
+              </div>
+            </div>
+
+            <div class="financeiro-filters relatorio-entradas-filters">
+              <label>
+                De
+                <input id="relatorioEntradasStart" type="date" />
+              </label>
+              <label>
+                Até
+                <input id="relatorioEntradasEnd" type="date" />
+              </label>
+              <div class="relatorio-entradas-quick">
+                <button type="button" class="btn btn-ghost" data-relatorio-entradas-range="mes">Este mês</button>
+                <button type="button" class="btn btn-ghost" data-relatorio-entradas-range="mes-passado">Mês passado</button>
+                <button type="button" class="btn btn-ghost" data-relatorio-entradas-range="30d">Últimos 30 dias</button>
+                <button id="relatorioEntradasAtualizarBtn" type="button" class="btn btn-ghost">Atualizar</button>
+              </div>
+            </div>
+
+            <div class="metric-grid relatorio-grid relatorio-entradas-kpis">
+              <article>
+                <span>Total recebido</span>
+                <strong id="relatorioEntradasTotal">R$ 0,00</strong>
+              </article>
+              <article>
+                <span>Lançamentos</span>
+                <strong id="relatorioEntradasCount">0</strong>
+              </article>
+              <article>
+                <span>Período</span>
+                <strong id="relatorioEntradasPeriodoLabel">—</strong>
+              </article>
+            </div>
+
+            <div id="relatorioEntradasFormas" class="relatorio-entradas-formas" aria-live="polite"></div>
+
+            <div class="table-wrap" style="margin-top: 0.85rem">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Cliente</th>
+                    <th>Pedido / Título</th>
+                    <th>Forma</th>
+                    <th class="num">Valor</th>
+                  </tr>
+                </thead>
+                <tbody id="relatorioEntradasTableBody">
+                  <tr><td colspan="5">Selecione o período e clique em Atualizar.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
         </section>
 
         <section id="section-configuracoes" class="card app-section hidden">
@@ -2560,6 +2628,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260724convTitulos1"></script>
+    <script type="module" src="app.js?v=20260724relEntradas1"></script>
   </body>
 </html>

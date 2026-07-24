@@ -183,6 +183,13 @@ const state = {
   dashboardDailyCashChartMode: "faturamento",
   dashboardMonthsBack: 11,
   dashboardCashBreakdown: null,
+  relatorioEntradas: {
+    startDate: "",
+    endDate: "",
+    rows: [],
+    loaded: false,
+    loading: false
+  },
   recebimentoModal: {
     contaId: null,
     conta: null,
@@ -591,6 +598,16 @@ const els = {
   caixaMesItemsSubtitle: document.getElementById("caixaMesItemsSubtitle"),
   caixaMesItemsBody: document.getElementById("caixaMesItemsBody"),
   closeCaixaMesItemsModalBtn: document.getElementById("closeCaixaMesItemsModalBtn"),
+  relatorioEntradasStart: document.getElementById("relatorioEntradasStart"),
+  relatorioEntradasEnd: document.getElementById("relatorioEntradasEnd"),
+  relatorioEntradasAtualizarBtn: document.getElementById("relatorioEntradasAtualizarBtn"),
+  relatorioEntradasPdfBtn: document.getElementById("relatorioEntradasPdfBtn"),
+  relatorioEntradasTotal: document.getElementById("relatorioEntradasTotal"),
+  relatorioEntradasCount: document.getElementById("relatorioEntradasCount"),
+  relatorioEntradasPeriodoLabel: document.getElementById("relatorioEntradasPeriodoLabel"),
+  relatorioEntradasFormas: document.getElementById("relatorioEntradasFormas"),
+  relatorioEntradasTableBody: document.getElementById("relatorioEntradasTableBody"),
+  relatorioEntradasRangeButtons: Array.from(document.querySelectorAll("[data-relatorio-entradas-range]")),
   dailyCashTitulo: document.getElementById("dailyCashTitulo"),
   dailyFaturamentoSubtitulo: document.getElementById("dailyFaturamentoSubtitulo"),
   dailyFaturamentoChart: document.getElementById("dailyFaturamentoChart"),
@@ -14322,6 +14339,504 @@ async function openCaixaMesBreakdownModal() {
   }
 }
 
+/* =========================
+ * Relatório de Entradas (PDF)
+ * ========================= */
+
+function initRelatorioEntradasDatesIfEmpty() {
+  if (state.relatorioEntradas.startDate && state.relatorioEntradas.endDate) return;
+  setRelatorioEntradasRangePreset("mes");
+}
+
+function setRelatorioEntradasRangePreset(kind = "mes") {
+  const now = new Date();
+  let start;
+  let end;
+  if (kind === "mes-passado") {
+    start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 12, 0, 0);
+    end = new Date(now.getFullYear(), now.getMonth(), 0, 12, 0, 0);
+  } else if (kind === "30d") {
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+    start = new Date(end.getTime());
+    start.setDate(start.getDate() - 29);
+  } else {
+    // este mês
+    start = new Date(now.getFullYear(), now.getMonth(), 1, 12, 0, 0);
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+  }
+  state.relatorioEntradas.startDate = formatDateInput(start);
+  state.relatorioEntradas.endDate = formatDateInput(end);
+  state.relatorioEntradas.loaded = false;
+  if (els.relatorioEntradasStart) els.relatorioEntradasStart.value = state.relatorioEntradas.startDate;
+  if (els.relatorioEntradasEnd) els.relatorioEntradasEnd.value = state.relatorioEntradas.endDate;
+}
+
+function getRelatorioEntradasPeriodoBounds() {
+  const startText = state.relatorioEntradas.startDate || els.relatorioEntradasStart?.value || "";
+  const endText = state.relatorioEntradas.endDate || els.relatorioEntradasEnd?.value || "";
+  const start = parseDateInput(startText);
+  const end = parseDateInput(endText);
+  if (!start || !end) {
+    throw new Error("Informe as datas De e Até.");
+  }
+  if (start.getTime() > end.getTime()) {
+    throw new Error("A data inicial não pode ser maior que a final.");
+  }
+  // Janela inclusiva no fuso local (meio-dia no parse evita deslocamento).
+  const startIso = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0, 0).toISOString();
+  const endExclusive = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1, 0, 0, 0, 0);
+  return {
+    startText,
+    endText,
+    startIso,
+    endIso: endExclusive.toISOString(),
+    label: `${start.toLocaleDateString("pt-BR")} a ${end.toLocaleDateString("pt-BR")}`
+  };
+}
+
+async function ensureRelatorioEntradasReady() {
+  initRelatorioEntradasDatesIfEmpty();
+  if (!state.formasPagamento?.length) {
+    try {
+      await loadFormasPagamento();
+    } catch (error) {
+      console.warn("Formas de pagamento para relatório", error.message || error);
+    }
+  }
+  if (!state.relatorioEntradas.loaded) {
+    await loadRelatorioEntradas({ force: true });
+  } else {
+    renderRelatorioEntradas();
+  }
+}
+
+async function loadRelatorioEntradas({ force = false } = {}) {
+  if (!state.empresaId || !supabaseClient) return;
+  if (state.relatorioEntradas.loading) return;
+  if (state.relatorioEntradas.loaded && !force) {
+    renderRelatorioEntradas();
+    return;
+  }
+
+  const bounds = getRelatorioEntradasPeriodoBounds();
+  state.relatorioEntradas.loading = true;
+  state.relatorioEntradas.startDate = bounds.startText;
+  state.relatorioEntradas.endDate = bounds.endText;
+  if (els.relatorioEntradasTableBody) {
+    els.relatorioEntradasTableBody.innerHTML = `<tr><td colspan="5">Carregando entradas…</td></tr>`;
+  }
+  if (els.relatorioEntradasPdfBtn) els.relatorioEntradasPdfBtn.disabled = true;
+
+  try {
+    // Buffer de 36h nas bordas + filtro local (meia-noite UTC / legado).
+    const queryStart = new Date(new Date(bounds.startIso).getTime() - 36 * 60 * 60 * 1000).toISOString();
+    const queryEnd = new Date(new Date(bounds.endIso).getTime() + 36 * 60 * 60 * 1000).toISOString();
+
+    const resp = await fetchAllSupabaseRows(() =>
+      supabaseClient
+        .from("recebimentos")
+        .select("id, valor, data_recebimento, observacoes, forma_pagamento_id, parcela_id")
+        .eq("empresa_id", state.empresaId)
+        .gte("data_recebimento", queryStart)
+        .lt("data_recebimento", queryEnd)
+        .order("data_recebimento", { ascending: true })
+    );
+    if (resp.error) throw resp.error;
+
+    const raw = (resp.data || []).filter((row) => {
+      const key = formatDateInput(new Date(row.data_recebimento));
+      return key >= bounds.startText && key <= bounds.endText;
+    });
+
+    const parcelaIds = [...new Set(raw.map((r) => Number(r.parcela_id)).filter(Number.isFinite))];
+    const parcelaMeta = await loadParcelasMetaMap(parcelaIds);
+
+    // Formas de pagamento nome
+    const formaById = new Map(
+      (state.formasPagamento || []).map((f) => [String(f.id), f.nome || f.descricao || `Forma #${f.id}`])
+    );
+
+    const rows = raw.map((row) => {
+      const meta = parcelaMeta.get(Number(row.parcela_id)) || {};
+      const docId = meta.documentoId != null ? Number(meta.documentoId) : null;
+      const formaNome = row.forma_pagamento_id != null
+        ? (formaById.get(String(row.forma_pagamento_id)) || getFormaPagamentoNome(row.forma_pagamento_id) || "—")
+        : "—";
+      return {
+        id: Number(row.id),
+        valor: Number(row.valor || 0),
+        dataRecebimento: row.data_recebimento,
+        dataLabel: formatBusinessDateLabel(row.data_recebimento),
+        dataKey: formatDateInput(new Date(row.data_recebimento)),
+        clienteNome: meta.clienteNome || "—",
+        documentoId: docId,
+        numeroTitulo: meta.numeroTitulo || (docId ? `DOC-${docId}` : "—"),
+        numeroParcela: meta.numeroParcela != null ? Number(meta.numeroParcela) : null,
+        pedidoLabel: docId ? `Pedido #${docId}` : (meta.numeroTitulo || "Sem pedido"),
+        formaPagamentoId: row.forma_pagamento_id != null ? Number(row.forma_pagamento_id) : null,
+        formaNome: String(formaNome || "—"),
+        observacoes: row.observacoes || ""
+      };
+    });
+
+    rows.sort((a, b) => {
+      const ta = new Date(a.dataRecebimento || 0).getTime();
+      const tb = new Date(b.dataRecebimento || 0).getTime();
+      if (ta !== tb) return ta - tb;
+      return Number(a.id) - Number(b.id);
+    });
+
+    state.relatorioEntradas.rows = rows;
+    state.relatorioEntradas.loaded = true;
+    renderRelatorioEntradas();
+  } finally {
+    state.relatorioEntradas.loading = false;
+    if (els.relatorioEntradasPdfBtn) els.relatorioEntradasPdfBtn.disabled = false;
+  }
+}
+
+function summarizeRelatorioEntradas(rows = state.relatorioEntradas.rows || []) {
+  const total = rows.reduce((sum, r) => sum + Number(r.valor || 0), 0);
+  const byForma = new Map();
+  for (const row of rows) {
+    const key = row.formaNome || "—";
+    byForma.set(key, (byForma.get(key) || 0) + Number(row.valor || 0));
+  }
+  const formas = [...byForma.entries()]
+    .map(([nome, valor]) => ({ nome, valor: Number(valor.toFixed(2)) }))
+    .sort((a, b) => b.valor - a.valor);
+  return {
+    total: Number(total.toFixed(2)),
+    count: rows.length,
+    formas
+  };
+}
+
+function renderRelatorioEntradas() {
+  const rows = state.relatorioEntradas.rows || [];
+  const summary = summarizeRelatorioEntradas(rows);
+  let periodoLabel = "—";
+  try {
+    periodoLabel = getRelatorioEntradasPeriodoBounds().label;
+  } catch (_e) {
+    /* ignore */
+  }
+
+  if (els.relatorioEntradasTotal) els.relatorioEntradasTotal.textContent = moeda.format(summary.total);
+  if (els.relatorioEntradasCount) els.relatorioEntradasCount.textContent = String(summary.count);
+  if (els.relatorioEntradasPeriodoLabel) els.relatorioEntradasPeriodoLabel.textContent = periodoLabel;
+
+  if (els.relatorioEntradasFormas) {
+    if (!summary.formas.length) {
+      els.relatorioEntradasFormas.innerHTML = "";
+    } else {
+      els.relatorioEntradasFormas.innerHTML = summary.formas
+        .map(
+          (f) => `
+          <span class="relatorio-entradas-forma-chip">
+            <span>${escapeHtml(f.nome)}</span>
+            <strong>${moeda.format(f.valor)}</strong>
+          </span>
+        `
+        )
+        .join("");
+    }
+  }
+
+  if (!els.relatorioEntradasTableBody) return;
+  if (!rows.length) {
+    els.relatorioEntradasTableBody.innerHTML =
+      '<tr><td colspan="5">Nenhum recebimento no período selecionado.</td></tr>';
+    return;
+  }
+
+  els.relatorioEntradasTableBody.innerHTML = rows
+    .map((row) => {
+      const parc = row.numeroParcela != null ? ` · parc. ${row.numeroParcela}` : "";
+      return `
+        <tr>
+          <td>${escapeHtml(row.dataLabel || "—")}</td>
+          <td>${escapeHtml(row.clienteNome || "—")}</td>
+          <td>
+            <strong>${escapeHtml(row.pedidoLabel || "—")}</strong>
+            <span class="item-meta" style="display:block;color:var(--muted);font-size:0.78rem">
+              ${escapeHtml(row.numeroTitulo || "—")}${parc}
+            </span>
+          </td>
+          <td>${escapeHtml(row.formaNome || "—")}</td>
+          <td class="num"><strong>${moeda.format(row.valor)}</strong></td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function buildRelatorioEntradasPdfDefinition({ empresaConfig, empresaNome, periodoLabel, rows, summary, geradoEm }) {
+  const cfg = normalizeEmpresaConfig(empresaConfig || {}, empresaNome);
+  const brand = cfg.cor_primaria || "#165d59";
+  const brandDark = darkenHexColor(brand, 0.28);
+  const nomeEmpresa = cfg.nome || empresaNome || "Empresa";
+  const muted = "#5f5a50";
+  const line = "#ddd2c0";
+
+  const tableBody = [
+    [
+      { text: "Data", style: "th", fillColor: brand },
+      { text: "Cliente", style: "th", fillColor: brand },
+      { text: "Pedido / Título", style: "th", fillColor: brand },
+      { text: "Forma", style: "th", fillColor: brand },
+      { text: "Valor", style: "th", fillColor: brand, alignment: "right" }
+    ]
+  ];
+
+  for (const row of rows) {
+    const titulo = row.numeroParcela != null
+      ? `${row.pedidoLabel} · ${row.numeroTitulo} · parc. ${row.numeroParcela}`
+      : `${row.pedidoLabel} · ${row.numeroTitulo}`;
+    tableBody.push([
+      { text: row.dataLabel || "—", fontSize: 8 },
+      { text: row.clienteNome || "—", fontSize: 8 },
+      { text: titulo, fontSize: 8 },
+      { text: row.formaNome || "—", fontSize: 8 },
+      { text: moeda.format(row.valor), fontSize: 8, alignment: "right" }
+    ]);
+  }
+
+  if (rows.length) {
+    tableBody.push([
+      { text: "", colSpan: 3, border: [false, false, false, false] },
+      {},
+      {},
+      { text: "TOTAL", bold: true, fontSize: 9, alignment: "right", fillColor: "#f3f0e8" },
+      { text: moeda.format(summary.total), bold: true, fontSize: 9, alignment: "right", fillColor: "#f3f0e8" }
+    ]);
+  }
+
+  const formasStack = summary.formas.length
+    ? summary.formas.map((f) => ({
+        columns: [
+          { text: f.nome, fontSize: 9, color: muted },
+          { text: moeda.format(f.valor), fontSize: 9, alignment: "right", bold: true }
+        ],
+        margin: [0, 1, 0, 1]
+      }))
+    : [{ text: "Sem composição por forma de pagamento.", fontSize: 9, color: muted, italics: true }];
+
+  return {
+    pageSize: "A4",
+    pageMargins: [36, 40, 36, 40],
+    defaultStyle: {
+      font: "Roboto",
+      fontSize: 10,
+      color: "#1f1e1a"
+    },
+    styles: {
+      th: {
+        bold: true,
+        fontSize: 8,
+        color: "#ffffff"
+      }
+    },
+    content: [
+      {
+        columns: [
+          {
+            width: "*",
+            stack: [
+              { text: String(nomeEmpresa), fontSize: 16, bold: true, color: brandDark },
+              { text: "Relatório de Entradas (Recebimentos)", fontSize: 11, color: muted, margin: [0, 4, 0, 0] }
+            ]
+          },
+          {
+            width: "auto",
+            stack: [
+              { text: "Período", fontSize: 8, color: muted, alignment: "right" },
+              { text: periodoLabel, fontSize: 11, bold: true, alignment: "right", color: brandDark },
+              { text: `Gerado em ${geradoEm}`, fontSize: 8, color: muted, alignment: "right", margin: [0, 4, 0, 0] }
+            ]
+          }
+        ]
+      },
+      {
+        canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 1, lineColor: line }],
+        margin: [0, 12, 0, 12]
+      },
+      {
+        columns: [
+          {
+            width: "*",
+            stack: [
+              { text: "Total recebido", fontSize: 8, color: muted },
+              { text: moeda.format(summary.total), fontSize: 16, bold: true, color: brandDark }
+            ]
+          },
+          {
+            width: "*",
+            stack: [
+              { text: "Lançamentos", fontSize: 8, color: muted },
+              { text: String(summary.count), fontSize: 16, bold: true, color: brandDark }
+            ]
+          }
+        ],
+        margin: [0, 0, 0, 10]
+      },
+      {
+        text: "Por forma de pagamento",
+        fontSize: 10,
+        bold: true,
+        color: brandDark,
+        margin: [0, 0, 0, 4]
+      },
+      {
+        stack: formasStack,
+        margin: [0, 0, 0, 12]
+      },
+      {
+        text: "Detalhamento",
+        fontSize: 10,
+        bold: true,
+        color: brandDark,
+        margin: [0, 0, 0, 6]
+      },
+      rows.length
+        ? {
+            table: {
+              headerRows: 1,
+              widths: [58, "*", 130, 70, 62],
+              body: tableBody
+            },
+            layout: {
+              hLineWidth: () => 0.5,
+              vLineWidth: () => 0,
+              hLineColor: () => line,
+              paddingLeft: () => 4,
+              paddingRight: () => 4,
+              paddingTop: () => 4,
+              paddingBottom: () => 4
+            }
+          }
+        : {
+            text: "Nenhum recebimento no período.",
+            italics: true,
+            color: muted
+          },
+      {
+        text: "Entradas = valores com data de recebimento no período. Não inclui títulos em aberto (previsto).",
+        fontSize: 8,
+        color: muted,
+        margin: [0, 14, 0, 0]
+      }
+    ]
+  };
+}
+
+function buildRelatorioEntradasPreviewHtml({ empresaNome, periodoLabel, rows, summary, geradoEm }) {
+  const formasHtml = summary.formas.length
+    ? summary.formas
+        .map((f) => `<li><span>${escapeHtml(f.nome)}</span><strong>${moeda.format(f.valor)}</strong></li>`)
+        .join("")
+    : "<li>Sem composição</li>";
+  const rowsHtml = rows.length
+    ? rows
+        .map((row) => {
+          const parc = row.numeroParcela != null ? ` · parc. ${row.numeroParcela}` : "";
+          return `<tr>
+            <td>${escapeHtml(row.dataLabel)}</td>
+            <td>${escapeHtml(row.clienteNome)}</td>
+            <td>${escapeHtml(row.pedidoLabel)} · ${escapeHtml(row.numeroTitulo || "—")}${escapeHtml(parc)}</td>
+            <td>${escapeHtml(row.formaNome)}</td>
+            <td style="text-align:right">${moeda.format(row.valor)}</td>
+          </tr>`;
+        })
+        .join("")
+    : `<tr><td colspan="5">Nenhum recebimento no período.</td></tr>`;
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Relatório de Entradas</title>
+  <style>
+    body { font-family: Barlow, Arial, sans-serif; color: #21201c; margin: 24px; }
+    h1 { margin: 0 0 4px; font-size: 1.35rem; color: #0f4744; }
+    .muted { color: #6f6a5f; font-size: 0.9rem; }
+    .kpis { display: flex; gap: 1.5rem; margin: 1rem 0; }
+    .kpis strong { display: block; font-size: 1.2rem; }
+    ul.formas { list-style: none; padding: 0; margin: 0 0 1rem; }
+    ul.formas li { display: flex; justify-content: space-between; max-width: 320px; padding: 0.2rem 0; border-bottom: 1px solid #eee; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { padding: 0.45rem 0.4rem; border-bottom: 1px solid #e8e2d6; text-align: left; vertical-align: top; }
+    th { background: #165d59; color: #fff; font-size: 0.78rem; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(empresaNome || "Empresa")}</h1>
+  <p class="muted">Relatório de Entradas (Recebimentos)<br>Período: <strong>${escapeHtml(periodoLabel)}</strong><br>Gerado em ${escapeHtml(geradoEm)}</p>
+  <div class="kpis">
+    <div><span class="muted">Total recebido</span><strong>${moeda.format(summary.total)}</strong></div>
+    <div><span class="muted">Lançamentos</span><strong>${summary.count}</strong></div>
+  </div>
+  <h3>Por forma de pagamento</h3>
+  <ul class="formas">${formasHtml}</ul>
+  <h3>Detalhamento</h3>
+  <table>
+    <thead><tr><th>Data</th><th>Cliente</th><th>Pedido / Título</th><th>Forma</th><th>Valor</th></tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <p class="muted" style="margin-top:1rem">Entradas = valores com data de recebimento no período. Não inclui títulos em aberto.</p>
+</body>
+</html>`;
+}
+
+async function generateRelatorioEntradasPdf() {
+  if (!state.relatorioEntradas.loaded) {
+    await loadRelatorioEntradas({ force: true });
+  }
+  const bounds = getRelatorioEntradasPeriodoBounds();
+  const rows = state.relatorioEntradas.rows || [];
+  const summary = summarizeRelatorioEntradas(rows);
+  const empresaConfig = getEmpresaConfig();
+  const empresaNome = empresaConfig?.nome || state.empresaNome || "Empresa";
+  const geradoEm = new Date().toLocaleString("pt-BR");
+  const fileName = `entradas_${bounds.startText}_${bounds.endText}.pdf`.replace(/[^\w.\-]+/g, "_");
+
+  if (els.relatorioEntradasPdfBtn) {
+    els.relatorioEntradasPdfBtn.disabled = true;
+    els.relatorioEntradasPdfBtn.textContent = "Gerando PDF…";
+  }
+  try {
+    await ensurePdfMakeLoaded();
+    const definition = buildRelatorioEntradasPdfDefinition({
+      empresaConfig,
+      empresaNome,
+      periodoLabel: bounds.label,
+      rows,
+      summary,
+      geradoEm
+    });
+    const blob = await createPdfBlobFromDefinition(definition);
+    const previewHtml = buildRelatorioEntradasPreviewHtml({
+      empresaNome,
+      periodoLabel: bounds.label,
+      rows,
+      summary,
+      geradoEm
+    });
+    openPdfViewerModal({
+      blob,
+      fileName,
+      title: `Entradas · ${bounds.label}`,
+      shareText: `Relatório de entradas ${bounds.label} — ${empresaNome}: ${moeda.format(summary.total)}`,
+      previewHtml
+    });
+  } finally {
+    if (els.relatorioEntradasPdfBtn) {
+      els.relatorioEntradasPdfBtn.disabled = false;
+      els.relatorioEntradasPdfBtn.textContent = "Gerar PDF";
+    }
+  }
+}
+
 function getMonthlyCashEntries(mode = "recebimentos") {
   const rows = state.dashboardMonthlyCash || [];
   if (!rows.length) return [];
@@ -15217,6 +15732,8 @@ function attachEvents() {
         } else if (sectionName === "financeiro") {
           await ensureContasReceberLoaded();
           renderContasReceberTable();
+        } else if (sectionName === "relatorios") {
+          await ensureRelatorioEntradasReady();
         } else if (sectionName === "configuracoes") {
           fillEmpresaConfigForm(getEmpresaConfig());
         } else if (sectionName === "usuarios") {
@@ -16434,6 +16951,48 @@ function attachEvents() {
   if (els.caixaMesItemsModal) {
     els.caixaMesItemsModal.addEventListener("click", (event) => {
       if (event.target === els.caixaMesItemsModal) closeCaixaMesItemsModal();
+    });
+  }
+
+  for (const button of els.relatorioEntradasRangeButtons || []) {
+    button.addEventListener("click", async () => {
+      const kind = button.getAttribute("data-relatorio-entradas-range") || "mes";
+      setRelatorioEntradasRangePreset(kind);
+      try {
+        await loadRelatorioEntradas({ force: true });
+      } catch (error) {
+        showToast(`Erro no relatório de entradas: ${error.message || error}`, "error");
+      }
+    });
+  }
+  if (els.relatorioEntradasAtualizarBtn) {
+    els.relatorioEntradasAtualizarBtn.addEventListener("click", async () => {
+      try {
+        await loadRelatorioEntradas({ force: true });
+      } catch (error) {
+        showToast(`Erro no relatório de entradas: ${error.message || error}`, "error");
+      }
+    });
+  }
+  if (els.relatorioEntradasPdfBtn) {
+    els.relatorioEntradasPdfBtn.addEventListener("click", async () => {
+      try {
+        await generateRelatorioEntradasPdf();
+      } catch (error) {
+        showToast(`Erro ao gerar PDF: ${error.message || error}`, "error");
+      }
+    });
+  }
+  if (els.relatorioEntradasStart) {
+    els.relatorioEntradasStart.addEventListener("change", () => {
+      state.relatorioEntradas.startDate = els.relatorioEntradasStart.value || "";
+      state.relatorioEntradas.loaded = false;
+    });
+  }
+  if (els.relatorioEntradasEnd) {
+    els.relatorioEntradasEnd.addEventListener("change", () => {
+      state.relatorioEntradas.endDate = els.relatorioEntradasEnd.value || "";
+      state.relatorioEntradas.loaded = false;
     });
   }
 

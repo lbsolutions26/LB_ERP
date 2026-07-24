@@ -3999,6 +3999,51 @@ textarea:focus {
   border-color: var(--brand);
 }
 
+.relatorio-entradas-panel {
+  padding: 1rem 1.1rem 1.15rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.relatorio-entradas-filters {
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+}
+
+.relatorio-entradas-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.relatorio-entradas-kpis {
+  margin-top: 0.85rem;
+}
+
+.relatorio-entradas-formas {
+  margin-top: 0.65rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.relatorio-entradas-forma-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(22, 93, 89, 0.18);
+  background: rgba(22, 93, 89, 0.06);
+  font-size: 0.82rem;
+}
+
+.relatorio-entradas-forma-chip strong {
+  font-variant-numeric: tabular-nums;
+}
+
 .relatorio-grid article strong {
   font-size: 1rem;
 }
