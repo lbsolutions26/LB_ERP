@@ -5866,7 +5866,8 @@ async function convertOrcamentoToPedido(orcamentoId) {
       "Converter este orçamento em pedido?\n\n" +
         "• Será aberto um novo pedido com os mesmos dados (cliente, itens, foto, bike…)\n" +
         "• Confira o pagamento e salve o pedido\n" +
-        "• Ao salvar, o orçamento será marcado como Aprovado e vinculado ao pedido"
+        "• Ao salvar, o orçamento será marcado como Aprovado e vinculado ao pedido\n" +
+        "• Títulos/recebimentos do orçamento (se houver) passam para o pedido — sem duplicar"
     );
     if (!confirmar) return;
   }
@@ -7845,7 +7846,31 @@ async function saveNovoDocumento(event, options = {}) {
     if (draft.tipo === "pedido") {
       if (!isEdit) {
         try {
-          await createDocumentoFinanceiro(documentoId, clienteId, pagamentoState, subtotal, parcelasEditadas);
+          const orcamentoOrigemId = draft.convertidoDeOrcamentoId
+            ? Number(draft.convertidoDeOrcamentoId)
+            : null;
+
+          // Conversão orçamento → pedido:
+          // 1) Move títulos do orçamento para o pedido (se existirem)
+          // 2) remove qualquer residual no orçamento
+          // 3) se o pedido ainda não tiver título, cria a partir do pagamento do modal
+          //    (createDocumentoFinanceiro é no-op se já existir conta no documento)
+          if (Number.isFinite(orcamentoOrigemId) && orcamentoOrigemId > 0) {
+            await transferDocumentoFinanceiro(orcamentoOrigemId, documentoId, clienteId);
+            await deleteDocumentoFinanceiro(orcamentoOrigemId);
+          }
+
+          // Se o usuário redefiniu as parcelas na conversão, substitui o financeiro movido.
+          if (parcelasEditadas) {
+            await deleteDocumentoFinanceiro(documentoId);
+          }
+          await createDocumentoFinanceiro(
+            documentoId,
+            clienteId,
+            pagamentoState,
+            subtotal,
+            parcelasEditadas
+          );
         } catch (financeError) {
           await supabaseClient.from("documento_venda_itens").delete().eq("empresa_id", state.empresaId).eq("documento_id", documentoId);
           await supabaseClient.from("documentos_venda").delete().eq("empresa_id", state.empresaId).eq("id", documentoId);
@@ -7885,8 +7910,10 @@ async function saveNovoDocumento(event, options = {}) {
     let conversaoMsg = "";
     if (!isEdit && draft.tipo === "pedido" && draft.convertidoDeOrcamentoId) {
       try {
+        // Segurança: orçamento nunca fica com título após virar pedido.
+        await deleteDocumentoFinanceiro(Number(draft.convertidoDeOrcamentoId));
         await markOrcamentoAsConverted(draft.convertidoDeOrcamentoId, documentoId);
-        conversaoMsg = ` Orçamento #${draft.convertidoDeOrcamentoId} marcado como aprovado.`;
+        conversaoMsg = ` Orçamento #${draft.convertidoDeOrcamentoId} marcado como aprovado (sem títulos duplicados).`;
       } catch (convError) {
         console.error("Falha ao atualizar orçamento convertido", convError);
         showToast(
@@ -14914,6 +14941,78 @@ async function deleteDocumentoFinanceiro(documentoId) {
 
   const contaIds = (contasResponse.data || []).map((item) => Number(item.id)).filter(Number.isFinite);
   await deleteContasFinanceirasByContaIds(contaIds);
+}
+
+/**
+ * Na conversão orçamento → pedido, reaproveita títulos já gerados no orçamento
+ * (quando existirem) em vez de criar um segundo conjunto no pedido.
+ * Retorna true se moveu ao menos um título; false se não havia financeiro no orçamento.
+ */
+async function transferDocumentoFinanceiro(fromDocumentoId, toDocumentoId, clienteId = null) {
+  const fromId = Number(fromDocumentoId);
+  const toId = Number(toDocumentoId);
+  if (!Number.isFinite(fromId) || !Number.isFinite(toId) || fromId <= 0 || toId <= 0) {
+    return false;
+  }
+  if (fromId === toId) return false;
+
+  const { data: contasOrigem, error: loadError } = await supabaseClient
+    .from("contas_receber")
+    .select("id, numero_titulo, cliente_id")
+    .eq("empresa_id", state.empresaId)
+    .eq("documento_id", fromId);
+
+  if (loadError) {
+    if (isMissingRelationError(loadError)) return false;
+    throw loadError;
+  }
+  if (!contasOrigem?.length) return false;
+
+  // Se o pedido já tem título próprio, não duplica: remove o do orçamento.
+  const { data: contasDestino, error: destError } = await supabaseClient
+    .from("contas_receber")
+    .select("id")
+    .eq("empresa_id", state.empresaId)
+    .eq("documento_id", toId)
+    .limit(1);
+
+  if (destError) throw destError;
+  if (contasDestino?.length) {
+    await deleteDocumentoFinanceiro(fromId);
+    return true;
+  }
+
+  const clienteDestino = clienteId ? Number(clienteId) : null;
+
+  for (const conta of contasOrigem) {
+    const oldTitulo = String(conta.numero_titulo || "");
+    let novoTitulo = oldTitulo;
+    // DOC-123 / DOC-123-E → DOC-{pedidoId} / DOC-{pedidoId}-E
+    if (/^DOC-\d+/i.test(oldTitulo)) {
+      novoTitulo = oldTitulo.replace(/^DOC-\d+/i, `DOC-${toId}`);
+    } else if (!oldTitulo.trim()) {
+      novoTitulo = `DOC-${toId}`;
+    }
+
+    const payload = {
+      documento_id: toId,
+      numero_titulo: novoTitulo,
+      updated_at: new Date().toISOString()
+    };
+    if (Number.isFinite(clienteDestino) && clienteDestino > 0) {
+      payload.cliente_id = clienteDestino;
+    }
+
+    const { error: updError } = await supabaseClient
+      .from("contas_receber")
+      .update(payload)
+      .eq("empresa_id", state.empresaId)
+      .eq("id", conta.id);
+
+    if (updError) throw updError;
+  }
+
+  return true;
 }
 
 async function deleteDocumentoVenda(id, tipoDocumento) {
