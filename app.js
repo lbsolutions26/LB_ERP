@@ -190,6 +190,13 @@ const state = {
     loaded: false,
     loading: false
   },
+  relatorioPecas: {
+    startDate: "",
+    endDate: "",
+    rows: [],
+    loaded: false,
+    loading: false
+  },
   recebimentoModal: {
     contaId: null,
     conta: null,
@@ -609,6 +616,16 @@ const els = {
   relatorioEntradasFormas: document.getElementById("relatorioEntradasFormas"),
   relatorioEntradasTableBody: document.getElementById("relatorioEntradasTableBody"),
   relatorioEntradasRangeButtons: Array.from(document.querySelectorAll("[data-relatorio-entradas-range]")),
+  relatorioPecasStart: document.getElementById("relatorioPecasStart"),
+  relatorioPecasEnd: document.getElementById("relatorioPecasEnd"),
+  relatorioPecasAtualizarBtn: document.getElementById("relatorioPecasAtualizarBtn"),
+  relatorioPecasPdfBtn: document.getElementById("relatorioPecasPdfBtn"),
+  relatorioPecasTotal: document.getElementById("relatorioPecasTotal"),
+  relatorioPecasCount: document.getElementById("relatorioPecasCount"),
+  relatorioPecasQtd: document.getElementById("relatorioPecasQtd"),
+  relatorioPecasPeriodoLabel: document.getElementById("relatorioPecasPeriodoLabel"),
+  relatorioPecasTableBody: document.getElementById("relatorioPecasTableBody"),
+  relatorioPecasRangeButtons: Array.from(document.querySelectorAll("[data-relatorio-pecas-range]")),
   dailyCashTitulo: document.getElementById("dailyCashTitulo"),
   dailyFaturamentoSubtitulo: document.getElementById("dailyFaturamentoSubtitulo"),
   dailyFaturamentoChart: document.getElementById("dailyFaturamentoChart"),
@@ -14960,6 +14977,526 @@ async function generateRelatorioEntradasPdf() {
   }
 }
 
+/* =========================
+ * Relatório de Venda de Peças (PDF)
+ * ========================= */
+
+function initRelatorioPecasDatesIfEmpty() {
+  if (state.relatorioPecas.startDate && state.relatorioPecas.endDate) return;
+  setRelatorioPecasRangePreset("mes");
+}
+
+function setRelatorioPecasRangePreset(kind = "mes") {
+  const now = new Date();
+  let start;
+  let end;
+  if (kind === "mes-passado") {
+    start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 12, 0, 0);
+    end = new Date(now.getFullYear(), now.getMonth(), 0, 12, 0, 0);
+  } else if (kind === "30d") {
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+    start = new Date(end.getTime());
+    start.setDate(start.getDate() - 29);
+  } else {
+    start = new Date(now.getFullYear(), now.getMonth(), 1, 12, 0, 0);
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+  }
+  state.relatorioPecas.startDate = formatDateInput(start);
+  state.relatorioPecas.endDate = formatDateInput(end);
+  state.relatorioPecas.loaded = false;
+  if (els.relatorioPecasStart) els.relatorioPecasStart.value = state.relatorioPecas.startDate;
+  if (els.relatorioPecasEnd) els.relatorioPecasEnd.value = state.relatorioPecas.endDate;
+}
+
+function getRelatorioPecasPeriodoBounds() {
+  const startText = state.relatorioPecas.startDate || els.relatorioPecasStart?.value || "";
+  const endText = state.relatorioPecas.endDate || els.relatorioPecasEnd?.value || "";
+  const start = parseDateInput(startText);
+  const end = parseDateInput(endText);
+  if (!start || !end) throw new Error("Informe as datas De e Até.");
+  if (start.getTime() > end.getTime()) {
+    throw new Error("A data inicial não pode ser maior que a final.");
+  }
+  const startIso = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0, 0).toISOString();
+  const endExclusive = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1, 0, 0, 0, 0);
+  return {
+    startText,
+    endText,
+    startIso,
+    endIso: endExclusive.toISOString(),
+    label: `${start.toLocaleDateString("pt-BR")} a ${end.toLocaleDateString("pt-BR")}`
+  };
+}
+
+async function ensureRelatorioPecasReady() {
+  initRelatorioPecasDatesIfEmpty();
+  if (!state.relatorioPecas.loaded) {
+    await loadRelatorioPecas({ force: true });
+  } else {
+    renderRelatorioPecas();
+  }
+}
+
+async function loadRelatorioPecas({ force = false } = {}) {
+  if (!state.empresaId || !supabaseClient) return;
+  if (state.relatorioPecas.loading) return;
+  if (state.relatorioPecas.loaded && !force) {
+    renderRelatorioPecas();
+    return;
+  }
+
+  const bounds = getRelatorioPecasPeriodoBounds();
+  state.relatorioPecas.loading = true;
+  state.relatorioPecas.startDate = bounds.startText;
+  state.relatorioPecas.endDate = bounds.endText;
+  if (els.relatorioPecasTableBody) {
+    els.relatorioPecasTableBody.innerHTML = `<tr><td colspan="6">Carregando vendas de peças…</td></tr>`;
+  }
+  if (els.relatorioPecasPdfBtn) els.relatorioPecasPdfBtn.disabled = true;
+
+  try {
+    const queryStart = new Date(new Date(bounds.startIso).getTime() - 36 * 60 * 60 * 1000).toISOString();
+    const queryEnd = new Date(new Date(bounds.endIso).getTime() + 36 * 60 * 60 * 1000).toISOString();
+
+    const docsResp = await fetchAllSupabaseRows(() =>
+      supabaseClient
+        .from("documentos_venda")
+        .select("id, data_emissao, total, status, tipo_documento, cliente_id, cliente:clientes(id,nome), cliente_legacy_id, observacoes, raw_payload")
+        .eq("empresa_id", state.empresaId)
+        .eq("tipo_documento", "pedido")
+        .neq("status", "cancelado")
+        .gte("data_emissao", queryStart)
+        .lt("data_emissao", queryEnd)
+        .order("data_emissao", { ascending: true })
+    );
+    if (docsResp.error) throw docsResp.error;
+
+    const pedidos = (docsResp.data || []).filter((doc) => {
+      const key = formatDateInput(new Date(doc.data_emissao));
+      return key >= bounds.startText && key <= bounds.endText;
+    });
+
+    const pedidoMetaById = new Map(
+      pedidos.map((pedido) => {
+        const cliente = unwrapRelation(pedido.cliente);
+        return [
+          Number(pedido.id),
+          {
+            id: Number(pedido.id),
+            dataPedido: pedido.data_emissao || null,
+            clienteNome: cliente?.nome || (pedido.cliente_legacy_id ? `Legacy #${pedido.cliente_legacy_id}` : "-"),
+            status: pedido.status || "-",
+            valorTotal: Number(pedido.total || 0),
+            observacoes: pedido.observacoes || "",
+            raw_payload: pedido.raw_payload || null
+          }
+        ];
+      })
+    );
+
+    const pedidoIds = [...pedidoMetaById.keys()];
+    let itemRows = [];
+
+    // Busca itens em lotes (evita URL/query muito grande no .in())
+    const chunkSize = 80;
+    for (let i = 0; i < pedidoIds.length; i += chunkSize) {
+      const chunk = pedidoIds.slice(i, i + chunkSize);
+      if (!chunk.length) continue;
+      const { data, error } = await supabaseClient
+        .from("documento_venda_itens")
+        .select("documento_id, produto_id, descricao_item, quantidade, valor_unitario, valor_total")
+        .eq("empresa_id", state.empresaId)
+        .in("documento_id", chunk);
+      if (error) throw error;
+      itemRows.push(...(data || []));
+    }
+
+    const normalizedItems = normalizePedidoProdutoRows(itemRows, {
+      idField: "documento_id",
+      totalField: "valor_total",
+      metaById: pedidoMetaById
+    });
+
+    const pedidosComItens = new Set(normalizedItems.map((item) => Number(item.pedidoId)).filter(Number.isFinite));
+    const fallbackRows = pedidos
+      .filter((pedido) => !pedidosComItens.has(Number(pedido.id)))
+      .map((pedido) => {
+        const meta = pedidoMetaById.get(Number(pedido.id));
+        if (!meta) return null;
+        return buildFallbackItemFromPedidoMeta({
+          id: meta.id,
+          valor_total: meta.valorTotal,
+          observacoes: meta.observacoes,
+          raw_payload: meta.raw_payload,
+          data_emissao: meta.dataPedido,
+          data_pedido: meta.dataPedido,
+          cliente: { nome: meta.clienteNome },
+          status: meta.status
+        });
+      })
+      .filter(Boolean);
+
+    const allItems = [...normalizedItems, ...fallbackRows];
+    const grouped = aggregatePedidoItemsByProduto(allItems)
+      .map((item) => ({
+        ...item,
+        nome: resolvePedidoProdutoNome(item),
+        quantidade: Number(item.quantidade || 0),
+        total: Number(Number(item.total || 0).toFixed(2)),
+        pedidos: Number(item.pedidos || 0),
+        ultimaVendaLabel: item.ultimaVenda
+          ? formatBusinessDateLabel(item.ultimaVenda)
+          : "—"
+      }))
+      // Maior valor vendido → menor
+      .sort((a, b) => {
+        const diff = Number(b.total || 0) - Number(a.total || 0);
+        if (diff !== 0) return diff;
+        return String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR");
+      });
+
+    state.relatorioPecas.rows = grouped;
+    state.relatorioPecas.loaded = true;
+    renderRelatorioPecas();
+  } finally {
+    state.relatorioPecas.loading = false;
+    if (els.relatorioPecasPdfBtn) els.relatorioPecasPdfBtn.disabled = false;
+  }
+}
+
+function summarizeRelatorioPecas(rows = state.relatorioPecas.rows || []) {
+  const total = rows.reduce((sum, r) => sum + Number(r.total || 0), 0);
+  const qtd = rows.reduce((sum, r) => sum + Number(r.quantidade || 0), 0);
+  return {
+    total: Number(total.toFixed(2)),
+    count: rows.length,
+    qtd: Number(qtd.toFixed(3))
+  };
+}
+
+function formatRelatorioPecasQtd(value) {
+  const num = Number(value || 0);
+  if (Number.isInteger(num)) return String(num);
+  return num.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+}
+
+function renderRelatorioPecas() {
+  const rows = state.relatorioPecas.rows || [];
+  const summary = summarizeRelatorioPecas(rows);
+  let periodoLabel = "—";
+  try {
+    periodoLabel = getRelatorioPecasPeriodoBounds().label;
+  } catch (_e) {
+    /* ignore */
+  }
+
+  if (els.relatorioPecasTotal) els.relatorioPecasTotal.textContent = moeda.format(summary.total);
+  if (els.relatorioPecasCount) els.relatorioPecasCount.textContent = String(summary.count);
+  if (els.relatorioPecasQtd) els.relatorioPecasQtd.textContent = formatRelatorioPecasQtd(summary.qtd);
+  if (els.relatorioPecasPeriodoLabel) els.relatorioPecasPeriodoLabel.textContent = periodoLabel;
+
+  if (!els.relatorioPecasTableBody) return;
+  if (!rows.length) {
+    els.relatorioPecasTableBody.innerHTML =
+      '<tr><td colspan="6">Nenhuma venda de peça/produto no período selecionado.</td></tr>';
+    return;
+  }
+
+  els.relatorioPecasTableBody.innerHTML = rows
+    .map((row, index) => `
+      <tr>
+        <td class="num">${index + 1}</td>
+        <td><strong>${escapeHtml(row.nome || "Produto sem nome")}</strong></td>
+        <td class="num">${escapeHtml(formatRelatorioPecasQtd(row.quantidade))}</td>
+        <td class="num">${escapeHtml(String(row.pedidos || 0))}</td>
+        <td class="num"><strong>${moeda.format(row.total)}</strong></td>
+        <td>${escapeHtml(row.ultimaVendaLabel || "—")}</td>
+      </tr>
+    `)
+    .join("");
+}
+
+function buildRelatorioPecasPdfDefinition({ empresaConfig, empresaNome, periodoLabel, rows, summary, geradoEm }) {
+  const cfg = normalizeEmpresaConfig(empresaConfig || {}, empresaNome);
+  const brand = cfg.cor_primaria || "#165d59";
+  const brandDark = darkenHexColor(brand, 0.28);
+  const nomeEmpresa = cfg.nome || empresaNome || "Empresa";
+  const muted = "#5f5a50";
+  const line = "#ddd2c0";
+
+  const tableBody = [
+    [
+      { text: "#", style: "th", fillColor: brand, alignment: "right" },
+      { text: "Produto / peça", style: "th", fillColor: brand },
+      { text: "Qtd.", style: "th", fillColor: brand, alignment: "right" },
+      { text: "Pedidos", style: "th", fillColor: brand, alignment: "right" },
+      { text: "Valor vendido", style: "th", fillColor: brand, alignment: "right" },
+      { text: "Última venda", style: "th", fillColor: brand }
+    ]
+  ];
+
+  rows.forEach((row, index) => {
+    tableBody.push([
+      { text: String(index + 1), fontSize: 8, alignment: "right" },
+      { text: row.nome || "Produto sem nome", fontSize: 8 },
+      { text: formatRelatorioPecasQtd(row.quantidade), fontSize: 8, alignment: "right" },
+      { text: String(row.pedidos || 0), fontSize: 8, alignment: "right" },
+      { text: moeda.format(row.total), fontSize: 8, alignment: "right", bold: true },
+      { text: row.ultimaVendaLabel || "—", fontSize: 8 }
+    ]);
+  });
+
+  if (rows.length) {
+    tableBody.push([
+      { text: "", border: [false, false, false, false] },
+      { text: "TOTAL", bold: true, fontSize: 9, fillColor: "#f3f0e8" },
+      {
+        text: formatRelatorioPecasQtd(summary.qtd),
+        bold: true,
+        fontSize: 9,
+        alignment: "right",
+        fillColor: "#f3f0e8"
+      },
+      { text: "", fillColor: "#f3f0e8" },
+      {
+        text: moeda.format(summary.total),
+        bold: true,
+        fontSize: 9,
+        alignment: "right",
+        fillColor: "#f3f0e8"
+      },
+      { text: "", fillColor: "#f3f0e8" }
+    ]);
+  }
+
+  return {
+    pageSize: "A4",
+    pageMargins: [36, 40, 36, 40],
+    defaultStyle: {
+      font: "Roboto",
+      fontSize: 10,
+      color: "#1f1e1a"
+    },
+    styles: {
+      th: {
+        bold: true,
+        fontSize: 8,
+        color: "#ffffff"
+      }
+    },
+    content: [
+      {
+        columns: [
+          {
+            width: "*",
+            stack: [
+              { text: String(nomeEmpresa), fontSize: 16, bold: true, color: brandDark },
+              {
+                text: "Relatório de Venda de Peças",
+                fontSize: 11,
+                color: muted,
+                margin: [0, 4, 0, 0]
+              }
+            ]
+          },
+          {
+            width: "auto",
+            stack: [
+              { text: "Período", fontSize: 8, color: muted, alignment: "right" },
+              { text: periodoLabel, fontSize: 11, bold: true, alignment: "right", color: brandDark },
+              {
+                text: `Gerado em ${geradoEm}`,
+                fontSize: 8,
+                color: muted,
+                alignment: "right",
+                margin: [0, 4, 0, 0]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        canvas: [{ type: "line", x1: 0, y1: 0, x2: 523, y2: 0, lineWidth: 1, lineColor: line }],
+        margin: [0, 12, 0, 12]
+      },
+      {
+        columns: [
+          {
+            width: "*",
+            stack: [
+              { text: "Total vendido", fontSize: 8, color: muted },
+              { text: moeda.format(summary.total), fontSize: 15, bold: true, color: brandDark }
+            ]
+          },
+          {
+            width: "*",
+            stack: [
+              { text: "Peças / produtos", fontSize: 8, color: muted },
+              { text: String(summary.count), fontSize: 15, bold: true, color: brandDark }
+            ]
+          },
+          {
+            width: "*",
+            stack: [
+              { text: "Quantidade total", fontSize: 8, color: muted },
+              {
+                text: formatRelatorioPecasQtd(summary.qtd),
+                fontSize: 15,
+                bold: true,
+                color: brandDark
+              }
+            ]
+          }
+        ],
+        margin: [0, 0, 0, 12]
+      },
+      {
+        text: "Ranking por valor vendido (maior → menor)",
+        fontSize: 10,
+        bold: true,
+        color: brandDark,
+        margin: [0, 0, 0, 6]
+      },
+      rows.length
+        ? {
+            table: {
+              headerRows: 1,
+              widths: [28, "*", 48, 48, 72, 62],
+              body: tableBody
+            },
+            layout: {
+              hLineWidth: () => 0.5,
+              vLineWidth: () => 0,
+              hLineColor: () => line,
+              paddingLeft: () => 4,
+              paddingRight: () => 4,
+              paddingTop: () => 4,
+              paddingBottom: () => 4
+            }
+          }
+        : {
+            text: "Nenhuma venda de peça/produto no período.",
+            italics: true,
+            color: muted
+          },
+      {
+        text: "Base: itens de pedidos (não cancelados) com data de emissão no período.",
+        fontSize: 8,
+        color: muted,
+        margin: [0, 14, 0, 0]
+      }
+    ]
+  };
+}
+
+function buildRelatorioPecasPreviewHtml({ empresaNome, periodoLabel, rows, summary, geradoEm }) {
+  const rowsHtml = rows.length
+    ? rows
+        .map(
+          (row, index) => `<tr>
+            <td style="text-align:right">${index + 1}</td>
+            <td>${escapeHtml(row.nome || "Produto sem nome")}</td>
+            <td style="text-align:right">${escapeHtml(formatRelatorioPecasQtd(row.quantidade))}</td>
+            <td style="text-align:right">${escapeHtml(String(row.pedidos || 0))}</td>
+            <td style="text-align:right"><strong>${moeda.format(row.total)}</strong></td>
+            <td>${escapeHtml(row.ultimaVendaLabel || "—")}</td>
+          </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="6">Nenhuma venda no período.</td></tr>`;
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Relatório de Venda de Peças</title>
+  <style>
+    body { font-family: Barlow, Arial, sans-serif; color: #21201c; margin: 24px; }
+    h1 { margin: 0 0 4px; font-size: 1.35rem; color: #0f4744; }
+    .muted { color: #6f6a5f; font-size: 0.9rem; }
+    .kpis { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 1rem 0; }
+    .kpis strong { display: block; font-size: 1.2rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { padding: 0.45rem 0.4rem; border-bottom: 1px solid #e8e2d6; text-align: left; vertical-align: top; }
+    th { background: #165d59; color: #fff; font-size: 0.78rem; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(empresaNome || "Empresa")}</h1>
+  <p class="muted">Relatório de Venda de Peças<br>Período: <strong>${escapeHtml(periodoLabel)}</strong><br>Gerado em ${escapeHtml(geradoEm)}</p>
+  <div class="kpis">
+    <div><span class="muted">Total vendido</span><strong>${moeda.format(summary.total)}</strong></div>
+    <div><span class="muted">Peças / produtos</span><strong>${summary.count}</strong></div>
+    <div><span class="muted">Qtd. total</span><strong>${escapeHtml(formatRelatorioPecasQtd(summary.qtd))}</strong></div>
+  </div>
+  <h3>Ranking por valor (maior → menor)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Produto / peça</th>
+        <th>Qtd.</th>
+        <th>Pedidos</th>
+        <th>Valor vendido</th>
+        <th>Última venda</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <p class="muted" style="margin-top:1rem">Base: itens de pedidos não cancelados com emissão no período.</p>
+</body>
+</html>`;
+}
+
+async function generateRelatorioPecasPdf() {
+  if (!state.relatorioPecas.loaded) {
+    await loadRelatorioPecas({ force: true });
+  }
+  const bounds = getRelatorioPecasPeriodoBounds();
+  const rows = state.relatorioPecas.rows || [];
+  const summary = summarizeRelatorioPecas(rows);
+  const empresaConfig = getEmpresaConfig();
+  const empresaNome = empresaConfig?.nome || state.empresaNome || "Empresa";
+  const geradoEm = new Date().toLocaleString("pt-BR");
+  const fileName = `venda_pecas_${bounds.startText}_${bounds.endText}.pdf`.replace(/[^\w.\-]+/g, "_");
+
+  if (els.relatorioPecasPdfBtn) {
+    els.relatorioPecasPdfBtn.disabled = true;
+    els.relatorioPecasPdfBtn.textContent = "Gerando PDF…";
+  }
+  try {
+    await ensurePdfMakeLoaded();
+    const definition = buildRelatorioPecasPdfDefinition({
+      empresaConfig,
+      empresaNome,
+      periodoLabel: bounds.label,
+      rows,
+      summary,
+      geradoEm
+    });
+    const blob = await createPdfBlobFromDefinition(definition);
+    const previewHtml = buildRelatorioPecasPreviewHtml({
+      empresaNome,
+      periodoLabel: bounds.label,
+      rows,
+      summary,
+      geradoEm
+    });
+    openPdfViewerModal({
+      blob,
+      fileName,
+      title: `Venda de peças · ${bounds.label}`,
+      shareText: `Relatório de venda de peças ${bounds.label} — ${empresaNome}: ${moeda.format(summary.total)}`,
+      previewHtml
+    });
+  } finally {
+    if (els.relatorioPecasPdfBtn) {
+      els.relatorioPecasPdfBtn.disabled = false;
+      els.relatorioPecasPdfBtn.textContent = "Gerar PDF";
+    }
+  }
+}
+
 function getMonthlyCashEntries(mode = "recebimentos") {
   const rows = state.dashboardMonthlyCash || [];
   if (!rows.length) return [];
@@ -15856,7 +16393,10 @@ function attachEvents() {
           await ensureContasReceberLoaded();
           renderContasReceberTable();
         } else if (sectionName === "relatorios") {
-          await ensureRelatorioEntradasReady();
+          await Promise.all([
+            ensureRelatorioEntradasReady(),
+            ensureRelatorioPecasReady()
+          ]);
         } else if (sectionName === "configuracoes") {
           fillEmpresaConfigForm(getEmpresaConfig());
         } else if (sectionName === "usuarios") {
@@ -17116,6 +17656,48 @@ function attachEvents() {
     els.relatorioEntradasEnd.addEventListener("change", () => {
       state.relatorioEntradas.endDate = els.relatorioEntradasEnd.value || "";
       state.relatorioEntradas.loaded = false;
+    });
+  }
+
+  for (const button of els.relatorioPecasRangeButtons || []) {
+    button.addEventListener("click", async () => {
+      const kind = button.getAttribute("data-relatorio-pecas-range") || "mes";
+      setRelatorioPecasRangePreset(kind);
+      try {
+        await loadRelatorioPecas({ force: true });
+      } catch (error) {
+        showToast(`Erro no relatório de peças: ${error.message || error}`, "error");
+      }
+    });
+  }
+  if (els.relatorioPecasAtualizarBtn) {
+    els.relatorioPecasAtualizarBtn.addEventListener("click", async () => {
+      try {
+        await loadRelatorioPecas({ force: true });
+      } catch (error) {
+        showToast(`Erro no relatório de peças: ${error.message || error}`, "error");
+      }
+    });
+  }
+  if (els.relatorioPecasPdfBtn) {
+    els.relatorioPecasPdfBtn.addEventListener("click", async () => {
+      try {
+        await generateRelatorioPecasPdf();
+      } catch (error) {
+        showToast(`Erro ao gerar PDF: ${error.message || error}`, "error");
+      }
+    });
+  }
+  if (els.relatorioPecasStart) {
+    els.relatorioPecasStart.addEventListener("change", () => {
+      state.relatorioPecas.startDate = els.relatorioPecasStart.value || "";
+      state.relatorioPecas.loaded = false;
+    });
+  }
+  if (els.relatorioPecasEnd) {
+    els.relatorioPecasEnd.addEventListener("change", () => {
+      state.relatorioPecas.endDate = els.relatorioPecasEnd.value || "";
+      state.relatorioPecas.loaded = false;
     });
   }
 
