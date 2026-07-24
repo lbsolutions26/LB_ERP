@@ -15073,11 +15073,60 @@ function getRelatorioPecasPeriodoBounds() {
 
 async function ensureRelatorioPecasReady() {
   initRelatorioPecasDatesIfEmpty();
+  // Estoque atual vem do catálogo de produtos.
+  try {
+    await ensureProdutosLoaded();
+  } catch (error) {
+    console.warn("Produtos/estoque para relatório de peças", error.message || error);
+  }
   if (!state.relatorioPecas.loaded) {
     await loadRelatorioPecas({ force: true });
   } else {
+    // Atualiza estoque nas linhas já carregadas (saldo pode ter mudado).
+    enrichRelatorioPecasComEstoque(state.relatorioPecas.rows || []);
     renderRelatorioPecas();
   }
+}
+
+function getProdutoEstoqueMap() {
+  const map = new Map();
+  for (const produto of state.produtos || []) {
+    map.set(String(produto.id), {
+      estoque: Number(produto.estoque || 0),
+      pontoPedido: Number(produto.ponto_pedido || 0),
+      controla: produto.controla_estoque !== false,
+      nome: produto.nome || ""
+    });
+  }
+  return map;
+}
+
+function enrichRelatorioPecasComEstoque(rows) {
+  const estoqueMap = getProdutoEstoqueMap();
+  for (const row of rows || []) {
+    const pid = row.produto_id == null || row.produto_id === "" ? null : String(row.produto_id);
+    if (!pid || !estoqueMap.has(pid)) {
+      row.estoqueAtual = null;
+      row.estoqueLabel = "—";
+      row.estoqueControla = false;
+      row.estoqueBaixo = false;
+      continue;
+    }
+    const info = estoqueMap.get(pid);
+    if (!info.controla) {
+      row.estoqueAtual = null;
+      row.estoqueLabel = "Não controla";
+      row.estoqueControla = false;
+      row.estoqueBaixo = false;
+      continue;
+    }
+    row.estoqueAtual = Number(info.estoque || 0);
+    row.estoqueLabel = formatRelatorioPecasQtd(row.estoqueAtual);
+    row.estoqueControla = true;
+    row.estoqueBaixo = Number(info.pontoPedido || 0) > 0
+      && row.estoqueAtual <= Number(info.pontoPedido || 0);
+  }
+  return rows;
 }
 
 async function loadRelatorioPecas({ force = false } = {}) {
@@ -15093,7 +15142,7 @@ async function loadRelatorioPecas({ force = false } = {}) {
   state.relatorioPecas.startDate = bounds.startText;
   state.relatorioPecas.endDate = bounds.endText;
   if (els.relatorioPecasTableBody) {
-    els.relatorioPecasTableBody.innerHTML = `<tr><td colspan="6">Carregando vendas de peças…</td></tr>`;
+    els.relatorioPecasTableBody.innerHTML = `<tr><td colspan="7">Carregando vendas de peças…</td></tr>`;
   }
   if (els.relatorioPecasPdfBtn) els.relatorioPecasPdfBtn.disabled = true;
 
@@ -15189,7 +15238,11 @@ async function loadRelatorioPecas({ force = false } = {}) {
         pedidos: Number(item.pedidos || 0),
         ultimaVendaLabel: item.ultimaVenda
           ? formatBusinessDateLabel(item.ultimaVenda)
-          : "—"
+          : "—",
+        estoqueAtual: null,
+        estoqueLabel: "—",
+        estoqueControla: false,
+        estoqueBaixo: false
       }))
       // Maior valor vendido → menor
       .sort((a, b) => {
@@ -15197,6 +15250,16 @@ async function loadRelatorioPecas({ force = false } = {}) {
         if (diff !== 0) return diff;
         return String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR");
       });
+
+    // Garante catálogo em memória para ler estoque_atual.
+    if (!state.produtosLoaded) {
+      try {
+        await ensureProdutosLoaded();
+      } catch (error) {
+        console.warn("Falha ao carregar estoque dos produtos", error.message || error);
+      }
+    }
+    enrichRelatorioPecasComEstoque(grouped);
 
     state.relatorioPecas.rows = grouped;
     state.relatorioPecas.loaded = true;
@@ -15241,21 +15304,27 @@ function renderRelatorioPecas() {
   if (!els.relatorioPecasTableBody) return;
   if (!rows.length) {
     els.relatorioPecasTableBody.innerHTML =
-      '<tr><td colspan="6">Nenhuma venda de peça/produto no período selecionado.</td></tr>';
+      '<tr><td colspan="7">Nenhuma venda de peça/produto no período selecionado.</td></tr>';
     return;
   }
 
   els.relatorioPecasTableBody.innerHTML = rows
-    .map((row, index) => `
+    .map((row, index) => {
+      const estoqueCls = row.estoqueBaixo ? " relatorio-pecas-estoque--baixo" : "";
+      return `
       <tr>
         <td class="num">${index + 1}</td>
         <td><strong>${escapeHtml(row.nome || "Produto sem nome")}</strong></td>
         <td class="num">${escapeHtml(formatRelatorioPecasQtd(row.quantidade))}</td>
         <td class="num">${escapeHtml(String(row.pedidos || 0))}</td>
         <td class="num"><strong>${moeda.format(row.total)}</strong></td>
+        <td class="num${estoqueCls}" title="${row.estoqueBaixo ? "Estoque no ponto de pedido ou abaixo" : "Estoque atual"}">
+          ${escapeHtml(row.estoqueLabel || "—")}
+        </td>
         <td>${escapeHtml(row.ultimaVendaLabel || "—")}</td>
       </tr>
-    `)
+    `;
+    })
     .join("");
 }
 
@@ -15274,17 +15343,27 @@ function buildRelatorioPecasPdfDefinition({ empresaConfig, empresaNome, periodoL
       { text: "Qtd.", style: "th", fillColor: brand, alignment: "right" },
       { text: "Pedidos", style: "th", fillColor: brand, alignment: "right" },
       { text: "Valor vendido", style: "th", fillColor: brand, alignment: "right" },
+      { text: "Estoque", style: "th", fillColor: brand, alignment: "right" },
       { text: "Última venda", style: "th", fillColor: brand }
     ]
   ];
 
   rows.forEach((row, index) => {
+    const estoqueTxt = row.estoqueLabel || "—";
+    const estoqueColor = row.estoqueBaixo ? "#8a2f2f" : "#1f1e1a";
     tableBody.push([
       { text: String(index + 1), fontSize: 8, alignment: "right" },
       { text: row.nome || "Produto sem nome", fontSize: 8 },
       { text: formatRelatorioPecasQtd(row.quantidade), fontSize: 8, alignment: "right" },
       { text: String(row.pedidos || 0), fontSize: 8, alignment: "right" },
       { text: moeda.format(row.total), fontSize: 8, alignment: "right", bold: true },
+      {
+        text: estoqueTxt,
+        fontSize: 8,
+        alignment: "right",
+        bold: Boolean(row.estoqueBaixo),
+        color: estoqueColor
+      },
       { text: row.ultimaVendaLabel || "—", fontSize: 8 }
     ]);
   });
@@ -15308,6 +15387,7 @@ function buildRelatorioPecasPdfDefinition({ empresaConfig, empresaNome, periodoL
         alignment: "right",
         fillColor: "#f3f0e8"
       },
+      { text: "", fillColor: "#f3f0e8" },
       { text: "", fillColor: "#f3f0e8" }
     ]);
   }
@@ -15404,7 +15484,7 @@ function buildRelatorioPecasPdfDefinition({ empresaConfig, empresaNome, periodoL
         ? {
             table: {
               headerRows: 1,
-              widths: [28, "*", 48, 48, 72, 62],
+              widths: [24, "*", 42, 42, 68, 48, 58],
               body: tableBody
             },
             layout: {
@@ -15423,7 +15503,7 @@ function buildRelatorioPecasPdfDefinition({ empresaConfig, empresaNome, periodoL
             color: muted
           },
       {
-        text: "Base: itens de pedidos (não cancelados) com data de emissão no período.",
+        text: "Base: itens de pedidos (não cancelados) com data de emissão no período. Estoque = saldo atual do catálogo.",
         fontSize: 8,
         color: muted,
         margin: [0, 14, 0, 0]
@@ -15435,18 +15515,22 @@ function buildRelatorioPecasPdfDefinition({ empresaConfig, empresaNome, periodoL
 function buildRelatorioPecasPreviewHtml({ empresaNome, periodoLabel, rows, summary, geradoEm }) {
   const rowsHtml = rows.length
     ? rows
-        .map(
-          (row, index) => `<tr>
+        .map((row, index) => {
+          const estoqueStyle = row.estoqueBaixo
+            ? ' style="text-align:right;color:#8a2f2f;font-weight:700"'
+            : ' style="text-align:right"';
+          return `<tr>
             <td style="text-align:right">${index + 1}</td>
             <td>${escapeHtml(row.nome || "Produto sem nome")}</td>
             <td style="text-align:right">${escapeHtml(formatRelatorioPecasQtd(row.quantidade))}</td>
             <td style="text-align:right">${escapeHtml(String(row.pedidos || 0))}</td>
             <td style="text-align:right"><strong>${moeda.format(row.total)}</strong></td>
+            <td${estoqueStyle}>${escapeHtml(row.estoqueLabel || "—")}</td>
             <td>${escapeHtml(row.ultimaVendaLabel || "—")}</td>
-          </tr>`
-        )
+          </tr>`;
+        })
         .join("")
-    : `<tr><td colspan="6">Nenhuma venda no período.</td></tr>`;
+    : `<tr><td colspan="7">Nenhuma venda no período.</td></tr>`;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -15481,12 +15565,13 @@ function buildRelatorioPecasPreviewHtml({ empresaNome, periodoLabel, rows, summa
         <th>Qtd.</th>
         <th>Pedidos</th>
         <th>Valor vendido</th>
+        <th>Estoque</th>
         <th>Última venda</th>
       </tr>
     </thead>
     <tbody>${rowsHtml}</tbody>
   </table>
-  <p class="muted" style="margin-top:1rem">Base: itens de pedidos não cancelados com emissão no período.</p>
+  <p class="muted" style="margin-top:1rem">Base: itens de pedidos não cancelados com emissão no período. Estoque = saldo atual do catálogo.</p>
 </body>
 </html>`;
 }

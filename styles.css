@@ -4157,6 +4157,11 @@ textarea:focus {
   background: rgba(255, 248, 232, 0.75);
 }
 
+.relatorio-pecas-estoque--baixo {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .relatorio-grid article strong {
   font-size: 1rem;
 }
