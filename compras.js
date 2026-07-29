@@ -2482,7 +2482,7 @@ export function installComprasModule(ctx) {
           </label>
           <label>
             Total
-            <input type="text" readonly value="${moeda.format(total)}" />
+            <input type="text" readonly data-nota-item-total value="${moeda.format(total)}" />
           </label>
           <label class="checkbox-inline">
             <input type="checkbox" data-nota-field="atualizaEstoque" data-row="${escapeHtml(item.rowId)}" ${item.atualizaEstoque ? "checked" : ""} ${readonly ? "disabled" : ""} />
@@ -3251,7 +3251,7 @@ export function installComprasModule(ctx) {
           updateNotaResumo();
           // atualiza só total da linha sem full re-render
           const row = t.closest(".nota-item-row");
-          const totalInput = row?.querySelectorAll("input")?.[4];
+          const totalInput = row?.querySelector("[data-nota-item-total]");
           if (totalInput) totalInput.value = moeda.format(getNotaItemTotal(item));
         }
       });
