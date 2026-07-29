@@ -2474,7 +2474,7 @@ export function installComprasModule(ctx) {
           </label>
           <label>
             Qtd
-            <input type="number" min="0" step="0.001" data-nota-field="quantidade" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.quantidade)}" ${readonly ? "readonly" : ""} />
+            <input type="number" min="0" step="1" data-nota-field="quantidade" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.quantidade)}" ${readonly ? "readonly" : ""} />
           </label>
           <label>
             Custo unit.
