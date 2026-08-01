@@ -143,9 +143,22 @@ const state = {
     },
     adminVinculos: {
       sort: { field: "empresa", direction: "asc" },
-      filters: { empresa: "", empresa_id: "", user_id: "", role: "", ativo: "" }
+      filters: { empresa: "", empresa_id: "", user_id: "", role: "", ativo: "", email: "", created_at: "" }
+    },
+    adminEmpresas: {
+      sort: { field: "nome", direction: "asc" },
+      filters: { nome: "", contato: "", local: "", usuarios: "", created_at: "" }
     }
   },
+  adminView: "empresas",
+  adminEmpresaSearch: "",
+  adminUsuarioSearch: "",
+  adminUsuarioEmpresaFilter: "",
+  adminUsuarioRoleFilter: "",
+  adminUsuarioAtivoFilter: "",
+  adminSelectedEmpresaId: null,
+  adminUserModalMode: "criar",
+  adminVenderEmpresaMode: "nova",
   pedidos: [],
   pedidosLoaded: false,
   pedidosLimit: 50,
@@ -231,6 +244,7 @@ const state = {
   ownerUsers: [],
   adminEmpresas: [],
   adminVinculos: [],
+  adminEmailByUserId: {},
   produtoPrecoVendaCalc: null,
   produtoPrecoFormacaoPending: null,
   estoqueView: "painel",
@@ -548,6 +562,55 @@ const els = {
 
   adminEmpresaSelect: document.getElementById("adminEmpresaSelect"),
   adminInviteEmpresaSelect: document.getElementById("adminInviteEmpresaSelect"),
+  adminEmpresasTable: document.getElementById("adminEmpresasTable"),
+  adminEmpresasCount: document.getElementById("adminEmpresasCount"),
+  adminUsuariosCount: document.getElementById("adminUsuariosCount"),
+  adminEmpresaSearch: document.getElementById("adminEmpresaSearch"),
+  adminUsuarioSearch: document.getElementById("adminUsuarioSearch"),
+  adminUsuarioEmpresaFilter: document.getElementById("adminUsuarioEmpresaFilter"),
+  adminUsuarioRoleFilter: document.getElementById("adminUsuarioRoleFilter"),
+  adminUsuarioAtivoFilter: document.getElementById("adminUsuarioAtivoFilter"),
+  adminKpiEmpresas: document.getElementById("adminKpiEmpresas"),
+  adminKpiUsuariosAtivos: document.getElementById("adminKpiUsuariosAtivos"),
+  adminKpiOwners: document.getElementById("adminKpiOwners"),
+  adminKpiInativos: document.getElementById("adminKpiInativos"),
+  adminViewEmpresas: document.getElementById("adminViewEmpresas"),
+  adminViewUsuarios: document.getElementById("adminViewUsuarios"),
+  adminViewVender: document.getElementById("adminViewVender"),
+  adminRefreshBtn: document.getElementById("adminRefreshBtn"),
+  adminOpenEmpresaBtn: document.getElementById("adminOpenEmpresaBtn"),
+  adminOpenUserBtn: document.getElementById("adminOpenUserBtn"),
+  adminOpenVenderBtn: document.getElementById("adminOpenVenderBtn"),
+  adminEmpresaModal: document.getElementById("adminEmpresaModal"),
+  adminEmpresaModalTitle: document.getElementById("adminEmpresaModalTitle"),
+  adminEmpresaModalClose: document.getElementById("adminEmpresaModalClose"),
+  adminEmpresaModalCancel: document.getElementById("adminEmpresaModalCancel"),
+  adminEmpresaIdInput: document.getElementById("adminEmpresaIdInput"),
+  adminEmpresaNomeInput: document.getElementById("adminEmpresaNomeInput"),
+  adminEmpresaEmailInput: document.getElementById("adminEmpresaEmailInput"),
+  adminEmpresaTelefoneInput: document.getElementById("adminEmpresaTelefoneInput"),
+  adminEmpresaCidadeInput: document.getElementById("adminEmpresaCidadeInput"),
+  adminEmpresaUfInput: document.getElementById("adminEmpresaUfInput"),
+  adminEmpresaSubmitBtn: document.getElementById("adminEmpresaSubmitBtn"),
+  adminUserModal: document.getElementById("adminUserModal"),
+  adminUserModalTitle: document.getElementById("adminUserModalTitle"),
+  adminUserModalClose: document.getElementById("adminUserModalClose"),
+  adminUserModalCancel: document.getElementById("adminUserModalCancel"),
+  adminInvitePasswordField: document.getElementById("adminInvitePasswordField"),
+  adminInviteSubmitBtn: document.getElementById("adminInviteSubmitBtn"),
+  adminEmpresaUsersModal: document.getElementById("adminEmpresaUsersModal"),
+  adminEmpresaUsersTitle: document.getElementById("adminEmpresaUsersTitle"),
+  adminEmpresaUsersSubtitle: document.getElementById("adminEmpresaUsersSubtitle"),
+  adminEmpresaUsersClose: document.getElementById("adminEmpresaUsersClose"),
+  adminEmpresaUsersAddBtn: document.getElementById("adminEmpresaUsersAddBtn"),
+  adminEmpresaUsersTable: document.getElementById("adminEmpresaUsersTable"),
+  adminVenderEmpresaForm: document.getElementById("adminVenderEmpresaForm"),
+  adminVenderOwnerForm: document.getElementById("adminVenderOwnerForm"),
+  adminVenderEmpresaSelect: document.getElementById("adminVenderEmpresaSelect"),
+  adminVenderNovaEmpresaFields: document.getElementById("adminVenderNovaEmpresaFields"),
+  adminVenderEmpresaExistenteFields: document.getElementById("adminVenderEmpresaExistenteFields"),
+  adminVenderSubmitBtn: document.getElementById("adminVenderSubmitBtn"),
+  adminVenderResult: document.getElementById("adminVenderResult"),
   clientesTable: document.getElementById("clientesTable"),
   produtosTable: document.getElementById("produtosTable"),
   filtroProdutoNome: document.getElementById("filtroProdutoNome"),
@@ -9237,16 +9300,42 @@ async function loadPlatformAdminStatus() {
   updateAdminVisibility();
 }
 
+function getAdminUserEmail(userId) {
+  const id = String(userId || "");
+  if (!id) return "";
+  return state.adminEmailByUserId[id] || "";
+}
+
+function formatAdminDate(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("pt-BR");
+}
+
+function countAdminUsersByEmpresa(empresaId) {
+  const id = String(empresaId || "");
+  return (state.adminVinculos || []).filter((v) => String(v.empresa_id) === id).length;
+}
+
+function countAdminActiveUsersByEmpresa(empresaId) {
+  const id = String(empresaId || "");
+  return (state.adminVinculos || []).filter(
+    (v) => String(v.empresa_id) === id && v.ativo !== false
+  ).length;
+}
+
 async function loadAdminEmpresas() {
   if (!state.isPlatformAdmin) {
     state.adminEmpresas = [];
     state.adminVinculos = [];
+    state.adminEmailByUserId = {};
     return;
   }
 
   const { data, error } = await supabaseClient
     .from("empresas")
-    .select("id, nome, created_at")
+    .select("id, nome, telefone, email, cidade, uf, tipo_empresa, created_at")
     .order("nome");
 
   if (error) throw error;
@@ -9256,17 +9345,220 @@ async function loadAdminEmpresas() {
 async function loadAdminVinculos() {
   if (!state.isPlatformAdmin) {
     state.adminVinculos = [];
+    state.adminEmailByUserId = {};
     return;
   }
 
+  const accessToken = state.session?.access_token;
+  if (accessToken) {
+    try {
+      const response = await fetch("/api/admin-list-vinculos", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && Array.isArray(payload.vinculos)) {
+        state.adminVinculos = payload.vinculos.map((row) => ({
+          user_id: row.user_id,
+          empresa_id: row.empresa_id,
+          role: row.role || "user",
+          ativo: row.ativo !== false,
+          created_at: row.created_at || null,
+          email: row.email || "",
+          empresas: row.empresas || null
+        }));
+        const emailMap = {};
+        for (const row of state.adminVinculos) {
+          if (row.user_id && row.email) emailMap[row.user_id] = row.email;
+        }
+        state.adminEmailByUserId = emailMap;
+        return;
+      }
+    } catch (apiError) {
+      console.warn("admin-list-vinculos fallback:", apiError);
+    }
+  }
+
+  // Fallback: consulta direta (sem e-mail do Auth)
   const { data, error } = await supabaseClient
     .from("usuarios_empresas")
-    .select("user_id, empresa_id, role, ativo, empresas(nome)")
+    .select("user_id, empresa_id, role, ativo, created_at, empresas(id, nome)")
     .order("created_at", { ascending: false })
-    .limit(150);
+    .limit(1000);
 
   if (error) throw error;
-  state.adminVinculos = data || [];
+  state.adminVinculos = (data || []).map((row) => ({
+    ...row,
+    email: getAdminUserEmail(row.user_id) || "",
+    role: row.role || "user",
+    ativo: row.ativo !== false
+  }));
+}
+
+function setAdminView(viewName) {
+  const allowed = new Set(["empresas", "usuarios", "vender"]);
+  const view = allowed.has(viewName) ? viewName : "empresas";
+  state.adminView = view;
+
+  document.querySelectorAll("[data-admin-view]").forEach((btn) => {
+    btn.classList.toggle("is-active", btn.getAttribute("data-admin-view") === view);
+  });
+
+  els.adminViewEmpresas?.classList.toggle("hidden", view !== "empresas");
+  els.adminViewUsuarios?.classList.toggle("hidden", view !== "usuarios");
+  els.adminViewVender?.classList.toggle("hidden", view !== "vender");
+}
+
+function openAdminEmpresaModal(empresa = null) {
+  if (!els.adminEmpresaForm) return;
+  const isEdit = Boolean(empresa?.id);
+  if (els.adminEmpresaModalTitle) {
+    els.adminEmpresaModalTitle.textContent = isEdit ? "Editar empresa" : "Nova empresa";
+  }
+  if (els.adminEmpresaSubmitBtn) {
+    els.adminEmpresaSubmitBtn.textContent = isEdit ? "Salvar alterações" : "Criar empresa";
+  }
+  if (els.adminEmpresaIdInput) els.adminEmpresaIdInput.value = empresa?.id || "";
+  if (els.adminEmpresaNomeInput) els.adminEmpresaNomeInput.value = empresa?.nome || "";
+  if (els.adminEmpresaEmailInput) els.adminEmpresaEmailInput.value = empresa?.email || "";
+  if (els.adminEmpresaTelefoneInput) els.adminEmpresaTelefoneInput.value = empresa?.telefone || "";
+  if (els.adminEmpresaCidadeInput) els.adminEmpresaCidadeInput.value = empresa?.cidade || "";
+  if (els.adminEmpresaUfInput) els.adminEmpresaUfInput.value = empresa?.uf || "";
+  els.adminEmpresaModal?.classList.remove("hidden");
+  els.adminEmpresaNomeInput?.focus();
+}
+
+function closeAdminEmpresaModal() {
+  els.adminEmpresaModal?.classList.add("hidden");
+  els.adminEmpresaForm?.reset();
+  if (els.adminEmpresaIdInput) els.adminEmpresaIdInput.value = "";
+}
+
+function syncAdminUserModalMode() {
+  const mode = state.adminUserModalMode === "vincular" ? "vincular" : "criar";
+  const passwordInput = els.adminInviteForm?.querySelector('input[name="password"]');
+  if (els.adminInvitePasswordField) {
+    els.adminInvitePasswordField.classList.toggle("hidden", mode === "vincular");
+  }
+  if (passwordInput) {
+    passwordInput.required = mode === "criar";
+    if (mode === "vincular") passwordInput.value = "";
+  }
+  if (els.adminInviteSubmitBtn) {
+    els.adminInviteSubmitBtn.textContent =
+      mode === "vincular" ? "Vincular usuário" : "Criar e vincular";
+  }
+  if (els.adminUserModalTitle) {
+    els.adminUserModalTitle.textContent =
+      mode === "vincular" ? "Vincular usuário existente" : "Novo usuário";
+  }
+  document.querySelectorAll('input[name="adminUserMode"]').forEach((input) => {
+    input.checked = input.value === mode;
+  });
+}
+
+function openAdminUserModal(options = {}) {
+  if (!els.adminInviteForm) return;
+  state.adminUserModalMode = options.mode === "vincular" ? "vincular" : "criar";
+  els.adminInviteForm.reset();
+  renderAdminEmpresasSelect();
+  const empresaSelect = els.adminInviteEmpresaSelect;
+  if (empresaSelect && options.empresaId) {
+    empresaSelect.value = String(options.empresaId);
+  }
+  const roleSelect = els.adminInviteForm.querySelector('select[name="role"]');
+  if (roleSelect && options.role) {
+    roleSelect.value = options.role;
+  }
+  syncAdminUserModalMode();
+  els.adminUserModal?.classList.remove("hidden");
+  els.adminInviteForm.querySelector('input[name="email"]')?.focus();
+}
+
+function closeAdminUserModal() {
+  els.adminUserModal?.classList.add("hidden");
+  els.adminInviteForm?.reset();
+  state.adminUserModalMode = "criar";
+  syncAdminUserModalMode();
+}
+
+function openAdminEmpresaUsersModal(empresaId) {
+  const empresa = state.adminEmpresas.find((item) => String(item.id) === String(empresaId));
+  if (!empresa) {
+    showToast("Empresa não encontrada", "error");
+    return;
+  }
+  state.adminSelectedEmpresaId = empresa.id;
+  if (els.adminEmpresaUsersTitle) {
+    els.adminEmpresaUsersTitle.textContent = empresa.nome || "Empresa";
+  }
+  if (els.adminEmpresaUsersSubtitle) {
+    const ativos = countAdminActiveUsersByEmpresa(empresa.id);
+    const total = countAdminUsersByEmpresa(empresa.id);
+    els.adminEmpresaUsersSubtitle.textContent = `${ativos} ativo(s) · ${total} vínculo(s)`;
+  }
+  renderAdminEmpresaUsersTable();
+  els.adminEmpresaUsersModal?.classList.remove("hidden");
+}
+
+function closeAdminEmpresaUsersModal() {
+  els.adminEmpresaUsersModal?.classList.add("hidden");
+  state.adminSelectedEmpresaId = null;
+}
+
+function syncAdminVenderEmpresaMode() {
+  const mode = state.adminVenderEmpresaMode === "existente" ? "existente" : "nova";
+  els.adminVenderNovaEmpresaFields?.classList.toggle("hidden", mode !== "nova");
+  els.adminVenderEmpresaExistenteFields?.classList.toggle("hidden", mode !== "existente");
+
+  const nomeInput = els.adminVenderEmpresaForm?.querySelector('input[name="nome"]');
+  const empresaSelect = els.adminVenderEmpresaSelect;
+  if (nomeInput) nomeInput.required = mode === "nova";
+  if (empresaSelect) empresaSelect.required = mode === "existente";
+
+  document.querySelectorAll('input[name="adminVenderEmpresaMode"]').forEach((input) => {
+    input.checked = input.value === mode;
+  });
+}
+
+function setAdminVenderResult(message, isError = false) {
+  if (!els.adminVenderResult) return;
+  if (!message) {
+    els.adminVenderResult.classList.add("hidden");
+    els.adminVenderResult.textContent = "";
+    return;
+  }
+  els.adminVenderResult.textContent = message;
+  els.adminVenderResult.classList.toggle("admin-result--error", Boolean(isError));
+  els.adminVenderResult.classList.remove("hidden");
+}
+
+function renderAdminKpis() {
+  const empresas = state.adminEmpresas || [];
+  const vinculos = state.adminVinculos || [];
+  const ativos = vinculos.filter((v) => v.ativo !== false).length;
+  const owners = vinculos.filter((v) => v.role === "owner" && v.ativo !== false).length;
+  const inativos = vinculos.filter((v) => v.ativo === false).length;
+
+  if (els.adminKpiEmpresas) els.adminKpiEmpresas.textContent = String(empresas.length);
+  if (els.adminKpiUsuariosAtivos) els.adminKpiUsuariosAtivos.textContent = String(ativos);
+  if (els.adminKpiOwners) els.adminKpiOwners.textContent = String(owners);
+  if (els.adminKpiInativos) els.adminKpiInativos.textContent = String(inativos);
+}
+
+function renderAdminSection() {
+  if (!state.isPlatformAdmin) return;
+  renderAdminKpis();
+  renderAdminEmpresasSelect();
+  renderAdminEmpresasTable();
+  renderAdminVinculosTable();
+  setAdminView(state.adminView || "empresas");
+  syncAdminVenderEmpresaMode();
+  if (state.adminSelectedEmpresaId) {
+    renderAdminEmpresaUsersTable();
+  }
 }
 
 async function loadClientes() {
@@ -11864,58 +12156,334 @@ function renderSelects() {
   }
 }
 
+function fillAdminEmpresaOptions(selectEl, placeholder = "Selecione a empresa") {
+  if (!selectEl) return;
+  const current = selectEl.value;
+  selectEl.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
+  for (const empresa of state.adminEmpresas) {
+    selectEl.insertAdjacentHTML(
+      "beforeend",
+      `<option value="${empresa.id}">${escapeHtml(empresa.nome)}</option>`
+    );
+  }
+  if (current && [...selectEl.options].some((opt) => opt.value === current)) {
+    selectEl.value = current;
+  }
+}
+
 function renderAdminEmpresasSelect() {
-  if (!els.adminEmpresaSelect) return;
-  els.adminEmpresaSelect.innerHTML = '<option value="">Selecione a empresa</option>';
-  if (els.adminInviteEmpresaSelect) {
-    els.adminInviteEmpresaSelect.innerHTML = '<option value="">Selecione a empresa</option>';
+  fillAdminEmpresaOptions(els.adminEmpresaSelect);
+  fillAdminEmpresaOptions(els.adminInviteEmpresaSelect);
+  fillAdminEmpresaOptions(els.adminVenderEmpresaSelect);
+
+  if (els.adminUsuarioEmpresaFilter) {
+    const current = els.adminUsuarioEmpresaFilter.value || state.adminUsuarioEmpresaFilter || "";
+    els.adminUsuarioEmpresaFilter.innerHTML = '<option value="">Todas as empresas</option>';
+    for (const empresa of state.adminEmpresas) {
+      els.adminUsuarioEmpresaFilter.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${empresa.id}">${escapeHtml(empresa.nome)}</option>`
+      );
+    }
+    if (current) els.adminUsuarioEmpresaFilter.value = current;
+  }
+}
+
+function roleBadgeHtml(role) {
+  const value = String(role || "user").toLowerCase();
+  const cls =
+    value === "owner"
+      ? "admin-badge--owner"
+      : value === "manager"
+        ? "admin-badge--manager"
+        : "admin-badge--user";
+  return `<span class="admin-badge ${cls}">${escapeHtml(value)}</span>`;
+}
+
+function statusBadgeHtml(ativo) {
+  return ativo !== false
+    ? '<span class="admin-badge admin-badge--ativo">Ativo</span>'
+    : '<span class="admin-badge admin-badge--inativo">Inativo</span>';
+}
+
+function adminVinculoActionsHtml(item) {
+  const userId = escapeHtml(item.user_id);
+  const empresaId = escapeHtml(item.empresa_id);
+  const ativo = item.ativo !== false;
+  return `
+    <div class="admin-inline-actions">
+      <button
+        type="button"
+        class="btn btn-ghost"
+        data-admin-toggle-vinculo
+        data-user-id="${userId}"
+        data-empresa-id="${empresaId}"
+        data-ativo="${ativo ? "1" : "0"}"
+      >${ativo ? "Desativar" : "Reativar"}</button>
+      <select
+        class="admin-role-select"
+        data-admin-role-vinculo
+        data-user-id="${userId}"
+        data-empresa-id="${empresaId}"
+        aria-label="Alterar perfil"
+      >
+        <option value="owner" ${item.role === "owner" ? "selected" : ""}>owner</option>
+        <option value="manager" ${item.role === "manager" ? "selected" : ""}>manager</option>
+        <option value="user" ${item.role === "user" || !item.role ? "selected" : ""}>user</option>
+      </select>
+    </div>
+  `;
+}
+
+function getAdminEmpresasRows() {
+  const search = String(state.adminEmpresaSearch || "").trim().toLowerCase();
+  const enriched = (state.adminEmpresas || []).map((empresa) => {
+    const totalUsers = countAdminUsersByEmpresa(empresa.id);
+    const activeUsers = countAdminActiveUsersByEmpresa(empresa.id);
+    return {
+      ...empresa,
+      totalUsers,
+      activeUsers,
+      contato: [empresa.email, empresa.telefone].filter(Boolean).join(" · ") || "—",
+      local: [empresa.cidade, empresa.uf].filter(Boolean).join(" / ") || "—"
+    };
+  });
+
+  let rows = getFilteredAndSortedTableRows(enriched, "adminEmpresas", {
+    nome: (item) => item.nome || "",
+    contato: (item) => item.contato || "",
+    local: (item) => item.local || "",
+    usuarios: {
+      filter: (item) => String(item.totalUsers),
+      sort: (item) => item.totalUsers
+    },
+    created_at: {
+      filter: (item) => formatAdminDate(item.created_at),
+      sort: (item) => (item.created_at ? new Date(item.created_at).getTime() : 0)
+    }
+  });
+
+  if (search) {
+    rows = rows.filter((item) => {
+      const hay = [
+        item.nome,
+        item.email,
+        item.telefone,
+        item.cidade,
+        item.uf,
+        item.id,
+        item.contato,
+        item.local
+      ]
+        .map((v) => String(v || "").toLowerCase())
+        .join(" ");
+      return hay.includes(search);
+    });
   }
 
-  for (const empresa of state.adminEmpresas) {
-    const option = `<option value="${empresa.id}">${escapeHtml(empresa.nome)}</option>`;
-    els.adminEmpresaSelect.insertAdjacentHTML(
-      "beforeend",
-      option
-    );
-    if (els.adminInviteEmpresaSelect) {
-      els.adminInviteEmpresaSelect.insertAdjacentHTML("beforeend", option);
-    }
+  return rows;
+}
+
+function renderAdminEmpresasTable() {
+  if (!els.adminEmpresasTable) return;
+  const rows = getAdminEmpresasRows();
+
+  if (els.adminEmpresasCount) {
+    const total = state.adminEmpresas.length;
+    els.adminEmpresasCount.textContent =
+      rows.length === total
+        ? `${total} empresa${total === 1 ? "" : "s"}`
+        : `${rows.length} de ${total} empresas`;
   }
+
+  if (!rows.length) {
+    els.adminEmpresasTable.innerHTML = `
+      <tr>
+        <td colspan="6" class="admin-empty">
+          Nenhuma empresa encontrada.${state.adminEmpresas.length ? " Ajuste a busca." : " Clique em “Nova empresa” ou use “Vender acesso”."}
+        </td>
+      </tr>`;
+    updateTableSortHeaders("adminEmpresas");
+    return;
+  }
+
+  els.adminEmpresasTable.innerHTML = rows
+    .map((item) => {
+      const id = escapeHtml(item.id);
+      return `
+      <tr>
+        <td>
+          <div class="admin-entity">
+            <strong>${escapeHtml(item.nome || "—")}</strong>
+            <small title="${id}">${id.slice(0, 8)}…</small>
+          </div>
+        </td>
+        <td>
+          <div class="admin-entity">
+            <span>${escapeHtml(item.email || "—")}</span>
+            <small>${escapeHtml(item.telefone || "")}</small>
+          </div>
+        </td>
+        <td>${escapeHtml(item.local)}</td>
+        <td>
+          <span class="admin-users-pill" title="${item.activeUsers} ativos de ${item.totalUsers}">
+            ${item.activeUsers}/${item.totalUsers}
+          </span>
+        </td>
+        <td>${escapeHtml(formatAdminDate(item.created_at))}</td>
+        <td>
+          <div class="admin-inline-actions">
+            <button type="button" class="btn btn-ghost" data-admin-view-users="${id}">Usuários</button>
+            <button type="button" class="btn btn-ghost" data-admin-edit-empresa="${id}">Editar</button>
+            <button type="button" class="btn btn-ghost" data-admin-copy-empresa="${id}">Copiar ID</button>
+          </div>
+        </td>
+      </tr>`;
+    })
+    .join("");
+  updateTableSortHeaders("adminEmpresas");
+}
+
+function getAdminVinculosRows(options = {}) {
+  const search = String(state.adminUsuarioSearch || "").trim().toLowerCase();
+  const empresaFilter = String(state.adminUsuarioEmpresaFilter || "");
+  const roleFilter = String(state.adminUsuarioRoleFilter || "");
+  const ativoFilter = String(state.adminUsuarioAtivoFilter || "");
+  const onlyEmpresaId = options.empresaId ? String(options.empresaId) : "";
+
+  let source = (state.adminVinculos || []).map((item) => ({
+    ...item,
+    email: item.email || getAdminUserEmail(item.user_id) || "",
+    empresaNome: item.empresas?.nome || "—"
+  }));
+
+  if (onlyEmpresaId) {
+    source = source.filter((item) => String(item.empresa_id) === onlyEmpresaId);
+  }
+  if (empresaFilter && !onlyEmpresaId) {
+    source = source.filter((item) => String(item.empresa_id) === empresaFilter);
+  }
+  if (roleFilter) {
+    source = source.filter((item) => String(item.role || "user") === roleFilter);
+  }
+  if (ativoFilter === "sim") {
+    source = source.filter((item) => item.ativo !== false);
+  } else if (ativoFilter === "nao") {
+    source = source.filter((item) => item.ativo === false);
+  }
+
+  let rows = getFilteredAndSortedTableRows(source, "adminVinculos", {
+    email: (item) => item.email || item.user_id || "",
+    empresa: (item) => item.empresaNome || item.empresas?.nome || "",
+    empresa_id: (item) => item.empresa_id || "",
+    user_id: (item) => item.user_id || "",
+    role: (item) => item.role || "user",
+    ativo: {
+      filter: (item) => (item.ativo !== false ? "sim" : "nao"),
+      sort: (item) => (item.ativo !== false ? 1 : 0)
+    },
+    created_at: {
+      filter: (item) => formatAdminDate(item.created_at),
+      sort: (item) => (item.created_at ? new Date(item.created_at).getTime() : 0)
+    }
+  });
+
+  if (search && !onlyEmpresaId) {
+    rows = rows.filter((item) => {
+      const hay = [
+        item.email,
+        item.user_id,
+        item.empresa_id,
+        item.empresaNome,
+        item.role
+      ]
+        .map((v) => String(v || "").toLowerCase())
+        .join(" ");
+      return hay.includes(search);
+    });
+  }
+
+  return rows;
 }
 
 function renderAdminVinculosTable() {
   if (!els.adminVinculosTable) return;
-  const rows = getFilteredAndSortedTableRows(state.adminVinculos, "adminVinculos", {
-    empresa: (item) => item.empresas?.nome || "-",
-    empresa_id: (item) => item.empresa_id || "-",
-    user_id: (item) => item.user_id || "-",
-    role: (item) => item.role || "user",
-    ativo: {
-      filter: (item) => item.ativo ? "sim" : "nao",
-      sort: (item) => item.ativo ? 1 : 0
-    }
-  });
+  const rows = getAdminVinculosRows();
+
+  if (els.adminUsuariosCount) {
+    const total = state.adminVinculos.length;
+    els.adminUsuariosCount.textContent =
+      rows.length === total
+        ? `${total} usuário${total === 1 ? "" : "s"}`
+        : `${rows.length} de ${total} usuários`;
+  }
 
   if (!rows.length) {
-    els.adminVinculosTable.innerHTML = '<tr><td colspan="5">Nenhum vinculo encontrado para os filtros selecionados.</td></tr>';
+    els.adminVinculosTable.innerHTML = `
+      <tr>
+        <td colspan="6" class="admin-empty">
+          Nenhum usuário encontrado para os filtros selecionados.
+        </td>
+      </tr>`;
     updateTableSortHeaders("adminVinculos");
     return;
   }
 
   els.adminVinculosTable.innerHTML = rows
-    .map(
-      (item) => `
+    .map((item) => {
+      const email = item.email || "";
+      const userLabel = email || item.user_id || "—";
+      return `
       <tr>
-        <td>${escapeHtml(item.empresas?.nome || "-")}</td>
-        <td>${escapeHtml(item.empresa_id)}</td>
-        <td>${escapeHtml(item.user_id)}</td>
-        <td>${escapeHtml(item.role || "user")}</td>
-        <td>${item.ativo ? "Sim" : "Nao"}</td>
-      </tr>
-    `
-    )
+        <td>
+          <div class="admin-entity">
+            <strong>${escapeHtml(userLabel)}</strong>
+            ${email ? `<small title="${escapeHtml(item.user_id)}">${escapeHtml(String(item.user_id || "").slice(0, 8))}…</small>` : ""}
+          </div>
+        </td>
+        <td>${escapeHtml(item.empresaNome || "—")}</td>
+        <td>${roleBadgeHtml(item.role)}</td>
+        <td>${statusBadgeHtml(item.ativo)}</td>
+        <td>${escapeHtml(formatAdminDate(item.created_at))}</td>
+        <td>${adminVinculoActionsHtml(item)}</td>
+      </tr>`;
+    })
     .join("");
   updateTableSortHeaders("adminVinculos");
+}
+
+function renderAdminEmpresaUsersTable() {
+  if (!els.adminEmpresaUsersTable || !state.adminSelectedEmpresaId) return;
+  const rows = getAdminVinculosRows({ empresaId: state.adminSelectedEmpresaId });
+
+  if (!rows.length) {
+    els.adminEmpresaUsersTable.innerHTML = `
+      <tr>
+        <td colspan="4" class="admin-empty">
+          Nenhum usuário vinculado a esta empresa ainda.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  els.adminEmpresaUsersTable.innerHTML = rows
+    .map((item) => {
+      const email = item.email || "";
+      const userLabel = email || item.user_id || "—";
+      return `
+      <tr>
+        <td>
+          <div class="admin-entity">
+            <strong>${escapeHtml(userLabel)}</strong>
+            <small>${escapeHtml(item.user_id || "")}</small>
+          </div>
+        </td>
+        <td>${roleBadgeHtml(item.role)}</td>
+        <td>${statusBadgeHtml(item.ativo)}</td>
+        <td>${adminVinculoActionsHtml(item)}</td>
+      </tr>`;
+    })
+    .join("");
 }
 
 function renderOwnerUsersTable() {
@@ -12499,6 +13067,10 @@ function rerenderTableView(tableKey) {
   }
   if (tableKey === "adminVinculos") {
     renderAdminVinculosTable();
+    return;
+  }
+  if (tableKey === "adminEmpresas") {
+    renderAdminEmpresasTable();
   }
 }
 
@@ -15390,7 +15962,7 @@ function renderRelatorioPecas() {
   if (els.relatorioPecasQtd) els.relatorioPecasQtd.textContent = formatRelatorioPecasQtd(summary.qtd);
   if (els.relatorioPecasPeriodoLabel) els.relatorioPecasPeriodoLabel.textContent = periodoLabel;
 
-  updateTableSortHeaders("relatorioPecas");
+  bindRelatorioPecasSortHeaders();
 
   if (!els.relatorioPecasTableBody) return;
   if (!rows.length) {
@@ -15400,9 +15972,17 @@ function renderRelatorioPecas() {
   }
 
   const sortView = getTableViewConfig("relatorioPecas");
+  const sortLabels = {
+    nome: "produto",
+    quantidade: "quantidade",
+    pedidos: "pedidos",
+    total: "valor vendido",
+    estoque: "estoque",
+    ultimaVenda: "última venda"
+  };
   const sortHint = sortView?.sort
-    ? `Ordenado por ${sortView.sort.field} (${sortView.sort.direction === "asc" ? "crescente" : "decrescente"})`
-    : "";
+    ? `Ordenado por ${sortLabels[sortView.sort.field] || sortView.sort.field} (${sortView.sort.direction === "asc" ? "crescente" : "decrescente"}) — clique nos cabeçalhos para mudar`
+    : "Clique em qualquer coluna para ordenar";
 
   els.relatorioPecasTableBody.innerHTML = rows
     .map((row, index) => {
@@ -15423,7 +16003,7 @@ function renderRelatorioPecas() {
     })
     .join("");
 
-  if (els.relatorioPecasPeriodoLabel && sortHint) {
+  if (els.relatorioPecasPeriodoLabel) {
     els.relatorioPecasPeriodoLabel.title = sortHint;
   }
 }
@@ -15846,8 +16426,7 @@ async function refreshAll() {
         renderEstoqueSection();
       }
       if (state.adminLoaded) {
-        renderAdminEmpresasSelect();
-        renderAdminVinculosTable();
+        renderAdminSection();
       }
       // Atualiza totais de outras seções sem remontar os gráficos do dashboard.
       renderMetrics({ charts: false });
@@ -16146,20 +16725,47 @@ async function createDespesa(event) {
   await refreshAll();
 }
 
+async function refreshAdminData() {
+  if (!state.isPlatformAdmin) return;
+  await Promise.all([loadAdminEmpresas(), loadAdminVinculos()]);
+  state.adminLoaded = true;
+  renderAdminSection();
+}
+
 async function createAdminEmpresa(event) {
   event.preventDefault();
   if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
 
   const formData = new FormData(els.adminEmpresaForm);
+  const id = String(formData.get("id") || "").trim();
   const nome = String(formData.get("nome") || "").trim();
+  const email = String(formData.get("email") || "").trim();
+  const telefone = String(formData.get("telefone") || "").trim();
+  const cidade = String(formData.get("cidade") || "").trim();
+  const uf = String(formData.get("uf") || "").trim().toUpperCase();
+
   if (!nome) return;
 
-  const { error } = await supabaseClient.from("empresas").insert({ nome });
-  if (error) throw error;
+  const payload = {
+    nome,
+    email: email || null,
+    telefone: telefone || null,
+    cidade: cidade || null,
+    uf: uf || null
+  };
 
-  els.adminEmpresaForm.reset();
-  showToast("Empresa criada");
-  await refreshAll();
+  if (id) {
+    const { error } = await supabaseClient.from("empresas").update(payload).eq("id", id);
+    if (error) throw error;
+    showToast("Empresa atualizada");
+  } else {
+    const { error } = await supabaseClient.from("empresas").insert(payload);
+    if (error) throw error;
+    showToast("Empresa criada");
+  }
+
+  closeAdminEmpresaModal();
+  await refreshAdminData();
 }
 
 async function findUserByEmail(email) {
@@ -16175,55 +16781,27 @@ async function findUserByEmail(email) {
   return data[0].user_id;
 }
 
-async function createAdminVinculo(event) {
-  event.preventDefault();
-  if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
-
-  const formData = new FormData(els.adminVinculoForm);
-  const email = String(formData.get("email") || "").trim();
-  const empresaId = String(formData.get("empresa_id") || "").trim();
-  const role = String(formData.get("role") || "user").trim();
-
-  if (!email || !empresaId) {
-    return;
-  }
-
+async function linkAdminUserByEmail({ email, empresaId, role }) {
   const userId = await findUserByEmail(email);
-
   const { error } = await supabaseClient
     .from("usuarios_empresas")
     .upsert(
       {
         user_id: userId,
         empresa_id: empresaId,
-        role,
+        role: role || "user",
         ativo: true
       },
       { onConflict: "user_id,empresa_id" }
     );
-
   if (error) throw error;
-
-  els.adminVinculoForm.reset();
-  showToast("Usuario vinculado");
-  await refreshAll();
+  return userId;
 }
 
-async function createAdminUserAndVinculo(event) {
-  event.preventDefault();
-  if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
-
-  const formData = new FormData(els.adminInviteForm);
-  const email = String(formData.get("email") || "").trim();
-  const password = String(formData.get("password") || "").trim();
-  const empresaId = String(formData.get("empresa_id") || "").trim();
-  const role = String(formData.get("role") || "user").trim();
-
-  if (!email || !password || !empresaId) return;
-
+async function createAdminAuthUserAndLink({ email, password, empresaId, role }) {
   const accessToken = state.session?.access_token;
   if (!accessToken) {
-    throw new Error("Sessao invalida. Faca login novamente.");
+    throw new Error("Sessão inválida. Faça login novamente.");
   }
 
   const response = await fetch("/api/admin-create-user", {
@@ -16236,19 +16814,171 @@ async function createAdminUserAndVinculo(event) {
       email,
       password,
       empresa_id: empresaId,
-      role
+      role: role || "user"
     })
   });
 
   const payload = await response.json().catch(() => ({}));
-
   if (!response.ok) {
-    throw new Error(payload.error || "Falha ao criar usuario");
+    throw new Error(payload.error || "Falha ao criar usuário");
+  }
+  return payload.user_id;
+}
+
+async function createAdminVinculo(event) {
+  event.preventDefault();
+  if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
+
+  const formData = new FormData(els.adminVinculoForm);
+  const email = String(formData.get("email") || "").trim();
+  const empresaId = String(formData.get("empresa_id") || "").trim();
+  const role = String(formData.get("role") || "user").trim();
+
+  if (!email || !empresaId) return;
+
+  await linkAdminUserByEmail({ email, empresaId, role });
+  els.adminVinculoForm.reset();
+  showToast("Usuário vinculado");
+  await refreshAdminData();
+}
+
+async function createAdminUserAndVinculo(event) {
+  event.preventDefault();
+  if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
+
+  const formData = new FormData(els.adminInviteForm);
+  const email = String(formData.get("email") || "").trim();
+  const password = String(formData.get("password") || "").trim();
+  const empresaId = String(formData.get("empresa_id") || "").trim();
+  const role = String(formData.get("role") || "user").trim();
+  const mode = state.adminUserModalMode === "vincular" ? "vincular" : "criar";
+
+  if (!email || !empresaId) return;
+
+  if (mode === "vincular") {
+    await linkAdminUserByEmail({ email, empresaId, role });
+    showToast("Usuário vinculado");
+  } else {
+    if (!password) {
+      throw new Error("Informe a senha inicial");
+    }
+    await createAdminAuthUserAndLink({ email, password, empresaId, role });
+    showToast("Usuário criado e vinculado");
   }
 
-  els.adminInviteForm.reset();
-  showToast("Usuario criado e vinculado");
-  await refreshAll();
+  closeAdminUserModal();
+  await refreshAdminData();
+  if (state.adminSelectedEmpresaId) {
+    openAdminEmpresaUsersModal(state.adminSelectedEmpresaId);
+  }
+}
+
+async function toggleAdminVinculo(userId, empresaId, currentlyActive) {
+  if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
+  const nextAtivo = !currentlyActive;
+  const { error } = await supabaseClient
+    .from("usuarios_empresas")
+    .update({ ativo: nextAtivo })
+    .eq("user_id", userId)
+    .eq("empresa_id", empresaId);
+  if (error) throw error;
+  showToast(nextAtivo ? "Acesso reativado" : "Acesso desativado");
+  await refreshAdminData();
+  if (state.adminSelectedEmpresaId) {
+    openAdminEmpresaUsersModal(state.adminSelectedEmpresaId);
+  }
+}
+
+async function changeAdminVinculoRole(userId, empresaId, role) {
+  if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
+  const allowed = new Set(["owner", "manager", "user"]);
+  if (!allowed.has(role)) throw new Error("Perfil inválido");
+
+  const { error } = await supabaseClient
+    .from("usuarios_empresas")
+    .update({ role })
+    .eq("user_id", userId)
+    .eq("empresa_id", empresaId);
+  if (error) throw error;
+  showToast(`Perfil atualizado para ${role}`);
+  await refreshAdminData();
+  if (state.adminSelectedEmpresaId) {
+    openAdminEmpresaUsersModal(state.adminSelectedEmpresaId);
+  }
+}
+
+async function submitAdminVenderAcesso() {
+  if (!state.isPlatformAdmin) throw new Error("Acesso restrito ao admin SaaS");
+  setAdminVenderResult("");
+
+  const empresaMode = state.adminVenderEmpresaMode === "existente" ? "existente" : "nova";
+  const empresaForm = new FormData(els.adminVenderEmpresaForm);
+  const ownerForm = new FormData(els.adminVenderOwnerForm);
+
+  const ownerEmail = String(ownerForm.get("email") || "").trim();
+  const ownerPassword = String(ownerForm.get("password") || "").trim();
+  if (!ownerEmail || !ownerPassword) {
+    throw new Error("Preencha e-mail e senha do owner");
+  }
+  if (ownerPassword.length < 6) {
+    throw new Error("A senha do owner precisa ter no mínimo 6 caracteres");
+  }
+
+  let empresaId = "";
+  let empresaNome = "";
+
+  if (empresaMode === "existente") {
+    empresaId = String(empresaForm.get("empresa_id") || "").trim();
+    if (!empresaId) throw new Error("Selecione a empresa existente");
+    const empresa = state.adminEmpresas.find((item) => String(item.id) === empresaId);
+    empresaNome = empresa?.nome || "Empresa";
+  } else {
+    const nome = String(empresaForm.get("nome") || "").trim();
+    const email = String(empresaForm.get("email") || "").trim();
+    const telefone = String(empresaForm.get("telefone") || "").trim();
+    const cidade = String(empresaForm.get("cidade") || "").trim();
+    const uf = String(empresaForm.get("uf") || "").trim().toUpperCase();
+    if (!nome) throw new Error("Informe o nome da empresa");
+
+    const { data, error } = await supabaseClient
+      .from("empresas")
+      .insert({
+        nome,
+        email: email || null,
+        telefone: telefone || null,
+        cidade: cidade || null,
+        uf: uf || null
+      })
+      .select("id, nome")
+      .single();
+    if (error) throw error;
+    empresaId = data.id;
+    empresaNome = data.nome;
+  }
+
+  await createAdminAuthUserAndLink({
+    email: ownerEmail,
+    password: ownerPassword,
+    empresaId,
+    role: "owner"
+  });
+
+  await refreshAdminData();
+
+  setAdminVenderResult(
+    `Acesso liberado para ${empresaNome}.\n\n` +
+      `Owner: ${ownerEmail}\n` +
+      `Senha inicial: ${ownerPassword}\n\n` +
+      `Envie esses dados ao cliente. Ele entra no app e gerencia os usuários da empresa.`
+  );
+  showToast("Empresa e owner criados com sucesso");
+
+  els.adminVenderOwnerForm?.reset();
+  if (empresaMode === "nova") {
+    els.adminVenderEmpresaForm?.reset();
+    state.adminVenderEmpresaMode = "nova";
+    syncAdminVenderEmpresaMode();
+  }
 }
 
 async function createOwnerUser(event) {
@@ -16656,8 +17386,7 @@ function attachEvents() {
           renderOwnerUsersTable();
         } else if (sectionName === "admin") {
           await ensureAdminLoaded();
-          renderAdminEmpresasSelect();
-          renderAdminVinculosTable();
+          renderAdminSection();
         }
         renderMetrics();
       } catch (error) {
@@ -18182,27 +18911,151 @@ function attachEvents() {
     }
   });
 
-  els.adminEmpresaForm.addEventListener("submit", async (event) => {
+  if (els.adminEmpresaForm) {
+    els.adminEmpresaForm.addEventListener("submit", async (event) => {
+      try {
+        await createAdminEmpresa(event);
+      } catch (error) {
+        showToast(`Erro ao salvar empresa: ${error.message}`, "error");
+      }
+    });
+  }
+
+  if (els.adminInviteForm) {
+    els.adminInviteForm.addEventListener("submit", async (event) => {
+      try {
+        await createAdminUserAndVinculo(event);
+      } catch (error) {
+        showToast(`Erro ao criar/vincular usuário: ${error.message}`, "error");
+      }
+    });
+  }
+
+  if (els.adminVinculoForm) {
+    els.adminVinculoForm.addEventListener("submit", async (event) => {
+      try {
+        await createAdminVinculo(event);
+      } catch (error) {
+        showToast(`Erro ao vincular usuário: ${error.message}`, "error");
+      }
+    });
+  }
+
+  // Admin SaaS: navegação, filtros, modais e onboarding
+  document.querySelectorAll("[data-admin-view]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setAdminView(btn.getAttribute("data-admin-view") || "empresas");
+    });
+  });
+
+  els.adminRefreshBtn?.addEventListener("click", async () => {
     try {
-      await createAdminEmpresa(event);
+      await refreshAdminData();
+      showToast("Admin atualizado");
     } catch (error) {
-      showToast(`Erro ao criar empresa: ${error.message}`, "error");
+      showToast(`Erro ao atualizar admin: ${error.message}`, "error");
     }
   });
 
-  els.adminInviteForm.addEventListener("submit", async (event) => {
+  els.adminOpenEmpresaBtn?.addEventListener("click", () => openAdminEmpresaModal());
+  els.adminOpenUserBtn?.addEventListener("click", () => openAdminUserModal());
+  els.adminOpenVenderBtn?.addEventListener("click", () => {
+    setAdminView("vender");
+    setAdminVenderResult("");
+  });
+
+  els.adminEmpresaModalClose?.addEventListener("click", closeAdminEmpresaModal);
+  els.adminEmpresaModalCancel?.addEventListener("click", closeAdminEmpresaModal);
+  els.adminUserModalClose?.addEventListener("click", closeAdminUserModal);
+  els.adminUserModalCancel?.addEventListener("click", closeAdminUserModal);
+  els.adminEmpresaUsersClose?.addEventListener("click", closeAdminEmpresaUsersModal);
+
+  els.adminEmpresaUsersAddBtn?.addEventListener("click", () => {
+    if (!state.adminSelectedEmpresaId) return;
+    openAdminUserModal({ empresaId: state.adminSelectedEmpresaId, role: "user" });
+  });
+
+  els.adminEmpresaModal?.addEventListener("click", (event) => {
+    if (event.target === els.adminEmpresaModal) closeAdminEmpresaModal();
+  });
+  els.adminUserModal?.addEventListener("click", (event) => {
+    if (event.target === els.adminUserModal) closeAdminUserModal();
+  });
+  els.adminEmpresaUsersModal?.addEventListener("click", (event) => {
+    if (event.target === els.adminEmpresaUsersModal) closeAdminEmpresaUsersModal();
+  });
+
+  document.querySelectorAll('input[name="adminUserMode"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (!input.checked) return;
+      state.adminUserModalMode = input.value === "vincular" ? "vincular" : "criar";
+      syncAdminUserModalMode();
+    });
+  });
+
+  document.querySelectorAll('input[name="adminVenderEmpresaMode"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (!input.checked) return;
+      state.adminVenderEmpresaMode = input.value === "existente" ? "existente" : "nova";
+      syncAdminVenderEmpresaMode();
+    });
+  });
+
+  els.adminEmpresaSearch?.addEventListener("input", () => {
+    state.adminEmpresaSearch = els.adminEmpresaSearch.value || "";
+    renderAdminEmpresasTable();
+  });
+
+  els.adminUsuarioSearch?.addEventListener("input", () => {
+    state.adminUsuarioSearch = els.adminUsuarioSearch.value || "";
+    renderAdminVinculosTable();
+  });
+
+  els.adminUsuarioEmpresaFilter?.addEventListener("change", () => {
+    state.adminUsuarioEmpresaFilter = els.adminUsuarioEmpresaFilter.value || "";
+    renderAdminVinculosTable();
+  });
+
+  els.adminUsuarioRoleFilter?.addEventListener("change", () => {
+    state.adminUsuarioRoleFilter = els.adminUsuarioRoleFilter.value || "";
+    renderAdminVinculosTable();
+  });
+
+  els.adminUsuarioAtivoFilter?.addEventListener("change", () => {
+    state.adminUsuarioAtivoFilter = els.adminUsuarioAtivoFilter.value || "";
+    renderAdminVinculosTable();
+  });
+
+  els.adminVenderSubmitBtn?.addEventListener("click", async () => {
     try {
-      await createAdminUserAndVinculo(event);
+      els.adminVenderSubmitBtn.disabled = true;
+      await submitAdminVenderAcesso();
     } catch (error) {
-      showToast(`Erro ao criar usuario: ${error.message}`, "error");
+      setAdminVenderResult(error.message || "Falha ao liberar acesso", true);
+      showToast(`Erro ao vender acesso: ${error.message}`, "error");
+    } finally {
+      if (els.adminVenderSubmitBtn) els.adminVenderSubmitBtn.disabled = false;
     }
   });
 
-  els.adminVinculoForm.addEventListener("submit", async (event) => {
+  document.addEventListener("change", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) return;
+    if (!target.hasAttribute("data-admin-role-vinculo")) return;
+
+    const userId = target.getAttribute("data-user-id");
+    const empresaId = target.getAttribute("data-empresa-id");
+    const role = target.value;
+    const previous = (state.adminVinculos || []).find(
+      (item) =>
+        String(item.user_id) === String(userId) &&
+        String(item.empresa_id) === String(empresaId)
+    );
     try {
-      await createAdminVinculo(event);
+      await changeAdminVinculoRole(userId, empresaId, role);
     } catch (error) {
-      showToast(`Erro ao vincular usuario: ${error.message}`, "error");
+      if (previous?.role) target.value = previous.role;
+      showToast(`Erro ao alterar perfil: ${error.message}`, "error");
     }
   });
 
@@ -18237,6 +19090,48 @@ function attachEvents() {
 
     // Pega atributo no elemento ou no ancestral (menu de acoes / botoes)
     const getData = (name) => target.closest(`[${name}]`)?.getAttribute(name) || target.getAttribute(name);
+
+    // Admin SaaS — ações de tabela
+    const adminEditEmpresaId = getData("data-admin-edit-empresa");
+    if (adminEditEmpresaId) {
+      const empresa = state.adminEmpresas.find((item) => String(item.id) === String(adminEditEmpresaId));
+      if (!empresa) {
+        showToast("Empresa não encontrada", "error");
+        return;
+      }
+      openAdminEmpresaModal(empresa);
+      return;
+    }
+
+    const adminViewUsersId = getData("data-admin-view-users");
+    if (adminViewUsersId) {
+      openAdminEmpresaUsersModal(adminViewUsersId);
+      return;
+    }
+
+    const adminCopyEmpresaId = getData("data-admin-copy-empresa");
+    if (adminCopyEmpresaId) {
+      try {
+        await navigator.clipboard.writeText(String(adminCopyEmpresaId));
+        showToast("ID da empresa copiado");
+      } catch {
+        showToast(`ID: ${adminCopyEmpresaId}`);
+      }
+      return;
+    }
+
+    const adminToggleBtn = target.closest("[data-admin-toggle-vinculo]");
+    if (adminToggleBtn) {
+      const userId = adminToggleBtn.getAttribute("data-user-id");
+      const empresaId = adminToggleBtn.getAttribute("data-empresa-id");
+      const currentlyActive = adminToggleBtn.getAttribute("data-ativo") === "1";
+      try {
+        await toggleAdminVinculo(userId, empresaId, currentlyActive);
+      } catch (error) {
+        showToast(`Erro ao alterar status: ${error.message}`, "error");
+      }
+      return;
+    }
 
     const clienteId = getData("data-del-cliente");
     const clientePedidosId = target.closest("[data-view-cliente-pedidos]")?.getAttribute("data-view-cliente-pedidos")

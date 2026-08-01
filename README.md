@@ -25,25 +25,34 @@ Base SaaS multiempresa para migrar seu AppSheet para web usando HTML, CSS, JavaS
 1. Abra o SQL Editor do Supabase.
 2. Execute o script de [supabase-schema.sql](supabase-schema.sql).
 
-## 2) Criar tenant e usuario
+## 2) Criar tenant e usuario (Admin SaaS)
 
-1. Crie uma empresa na tabela `empresas`.
-2. Crie um usuario no painel Auth do Supabase (email/senha).
-3. Vincule usuario + empresa na tabela `usuarios_empresas`.
-
-Exemplo de vinculo:
-
-```sql
-insert into public.usuarios_empresas (user_id, empresa_id, role)
-values ('UUID_DO_AUTH_USER', 'UUID_DA_EMPRESA', 'owner');
-```
-
-Promover usuario para administrar a plataforma (nova aba Admin SaaS):
+Promova um usuario para administrar a plataforma (aba **Admin SaaS**):
 
 ```sql
 insert into public.platform_admins (user_id)
 values ('UUID_DO_AUTH_USER')
 on conflict (user_id) do nothing;
+```
+
+Com a aba **Admin SaaS** (somente platform admin):
+
+1. **Empresas** — lista todos os tenants, busca, edita contato e ve usuarios de cada uma.
+2. **Usuarios** — lista vinculos com e-mail, perfil e status; ativa/desativa e troca role.
+3. **Vender acesso** — fluxo guiado: cria a empresa + owner em um passo e mostra os dados para entregar ao cliente.
+4. Atalhos **Nova empresa** / **Novo usuario** abrem modais (criar no Auth ou so vincular).
+
+Requisito na Vercel para criar usuarios e listar e-mails:
+
+- `SUPABASE_SERVICE_ROLE_KEY` (alem de `SUPABASE_URL` e `SUPABASE_ANON_KEY`)
+
+Fallback manual (SQL), se precisar:
+
+```sql
+insert into public.empresas (nome) values ('Nome da Empresa');
+
+insert into public.usuarios_empresas (user_id, empresa_id, role)
+values ('UUID_DO_AUTH_USER', 'UUID_DA_EMPRESA', 'owner');
 ```
 
 ## Owner criando usuarios da propria empresa

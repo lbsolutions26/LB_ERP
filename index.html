@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260724relPecasSort2" />
+    <link rel="stylesheet" href="styles.css?v=20260801adminSaaS" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -1482,74 +1482,385 @@
         </section>
 
         <section id="section-admin" class="card app-section hidden">
-          <h2>Admin SaaS</h2>
+          <header class="admin-header">
+            <div>
+              <h2>Admin SaaS</h2>
+              <p class="section-subtitle">
+                Crie empresas, libere o owner e administre todos os acessos da plataforma.
+              </p>
+            </div>
+            <div class="admin-header-actions">
+              <button id="adminRefreshBtn" type="button" class="btn btn-ghost">Atualizar</button>
+              <button id="adminOpenVenderBtn" type="button" class="btn btn-ghost">Vender acesso</button>
+              <button id="adminOpenUserBtn" type="button" class="btn btn-ghost">Novo usuário</button>
+              <button id="adminOpenEmpresaBtn" type="button" class="btn">Nova empresa</button>
+            </div>
+          </header>
 
-          <div class="admin-grid">
-            <article class="form-block">
-              <h3>Nova Empresa</h3>
-              <form id="adminEmpresaForm">
-                <input name="nome" placeholder="Nome da empresa" required />
-                <button type="submit" class="btn">Criar Empresa</button>
-              </form>
+          <div class="admin-kpi-grid" aria-label="Indicadores Admin SaaS">
+            <article class="admin-kpi">
+              <span class="admin-kpi-label">Empresas</span>
+              <strong id="adminKpiEmpresas" class="admin-kpi-value">0</strong>
+              <span class="admin-kpi-hint">tenants cadastrados</span>
             </article>
-
-            <article class="form-block">
-              <h3>Criar Usuario + Vinculo</h3>
-              <form id="adminInviteForm">
-                <input name="email" type="email" placeholder="Email do novo usuario" required />
-                <input name="password" type="password" placeholder="Senha inicial" required minlength="6" />
-                <select name="empresa_id" id="adminInviteEmpresaSelect" required>
-                  <option value="">Selecione a empresa</option>
-                </select>
-                <select name="role" required>
-                  <option value="owner">owner</option>
-                  <option value="manager">manager</option>
-                  <option value="user">user</option>
-                </select>
-                <button type="submit" class="btn">Criar e Vincular</button>
-              </form>
+            <article class="admin-kpi">
+              <span class="admin-kpi-label">Usuários ativos</span>
+              <strong id="adminKpiUsuariosAtivos" class="admin-kpi-value">0</strong>
+              <span class="admin-kpi-hint">vínculos liberados</span>
             </article>
-
-            <article class="form-block">
-              <h3>Vincular Usuario</h3>
-              <form id="adminVinculoForm">
-                <input name="email" type="email" placeholder="Email do usuario auth" required />
-                <select name="empresa_id" id="adminEmpresaSelect" required>
-                  <option value="">Selecione a empresa</option>
-                </select>
-                <select name="role" required>
-                  <option value="owner">owner</option>
-                  <option value="manager">manager</option>
-                  <option value="user">user</option>
-                </select>
-                <button type="submit" class="btn">Vincular</button>
-              </form>
+            <article class="admin-kpi">
+              <span class="admin-kpi-label">Owners</span>
+              <strong id="adminKpiOwners" class="admin-kpi-value">0</strong>
+              <span class="admin-kpi-hint">donos de empresa</span>
+            </article>
+            <article class="admin-kpi admin-kpi--muted">
+              <span class="admin-kpi-label">Inativos</span>
+              <strong id="adminKpiInativos" class="admin-kpi-value">0</strong>
+              <span class="admin-kpi-hint">acessos bloqueados</span>
             </article>
           </div>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th class="sortable" data-table="adminVinculos" data-sort="empresa">Empresa</th>
-                  <th class="sortable" data-table="adminVinculos" data-sort="empresa_id">Empresa ID</th>
-                  <th class="sortable" data-table="adminVinculos" data-sort="user_id">User ID</th>
-                  <th class="sortable" data-table="adminVinculos" data-sort="role">Role</th>
-                  <th class="sortable" data-table="adminVinculos" data-sort="ativo">Ativo</th>
-                </tr>
-                <tr>
-                  <th><input data-table-filter="adminVinculos" data-field="empresa" placeholder="Filtrar" /></th>
-                  <th><input data-table-filter="adminVinculos" data-field="empresa_id" placeholder="Filtrar" /></th>
-                  <th><input data-table-filter="adminVinculos" data-field="user_id" placeholder="Filtrar" /></th>
-                  <th><input data-table-filter="adminVinculos" data-field="role" placeholder="Filtrar" /></th>
-                  <th><input data-table-filter="adminVinculos" data-field="ativo" placeholder="Filtrar" /></th>
-                </tr>
-              </thead>
-              <tbody id="adminVinculosTable"></tbody>
-            </table>
+          <nav class="admin-subnav" aria-label="Navegação Admin SaaS">
+            <button type="button" class="admin-subnav-btn is-active" data-admin-view="empresas">Empresas</button>
+            <button type="button" class="admin-subnav-btn" data-admin-view="usuarios">Usuários</button>
+            <button type="button" class="admin-subnav-btn" data-admin-view="vender">Vender acesso</button>
+          </nav>
+
+          <!-- ABA EMPRESAS -->
+          <div id="adminViewEmpresas" class="admin-view">
+            <div class="admin-toolbar">
+              <label class="admin-search-field">
+                <span class="sr-only">Buscar empresa</span>
+                <input
+                  id="adminEmpresaSearch"
+                  type="search"
+                  placeholder="Buscar por nome, e-mail, cidade ou ID…"
+                  autocomplete="off"
+                />
+              </label>
+              <p id="adminEmpresasCount" class="admin-count-label">0 empresas</p>
+            </div>
+
+            <div class="table-wrap admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-table="adminEmpresas" data-sort="nome">Empresa</th>
+                    <th class="sortable" data-table="adminEmpresas" data-sort="contato">Contato</th>
+                    <th class="sortable" data-table="adminEmpresas" data-sort="local">Local</th>
+                    <th class="sortable" data-table="adminEmpresas" data-sort="usuarios">Usuários</th>
+                    <th class="sortable" data-table="adminEmpresas" data-sort="created_at">Criada em</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="adminEmpresasTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ABA USUÁRIOS -->
+          <div id="adminViewUsuarios" class="admin-view hidden">
+            <div class="admin-toolbar admin-toolbar--filters">
+              <label class="admin-search-field">
+                <span class="sr-only">Buscar usuário</span>
+                <input
+                  id="adminUsuarioSearch"
+                  type="search"
+                  placeholder="Buscar por e-mail, empresa ou user ID…"
+                  autocomplete="off"
+                />
+              </label>
+              <select id="adminUsuarioEmpresaFilter" aria-label="Filtrar por empresa">
+                <option value="">Todas as empresas</option>
+              </select>
+              <select id="adminUsuarioRoleFilter" aria-label="Filtrar por perfil">
+                <option value="">Todos os perfis</option>
+                <option value="owner">owner</option>
+                <option value="manager">manager</option>
+                <option value="user">user</option>
+              </select>
+              <select id="adminUsuarioAtivoFilter" aria-label="Filtrar por status">
+                <option value="">Ativos e inativos</option>
+                <option value="sim">Somente ativos</option>
+                <option value="nao">Somente inativos</option>
+              </select>
+              <p id="adminUsuariosCount" class="admin-count-label">0 usuários</p>
+            </div>
+
+            <div class="table-wrap admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-table="adminVinculos" data-sort="email">Usuário</th>
+                    <th class="sortable" data-table="adminVinculos" data-sort="empresa">Empresa</th>
+                    <th class="sortable" data-table="adminVinculos" data-sort="role">Perfil</th>
+                    <th class="sortable" data-table="adminVinculos" data-sort="ativo">Status</th>
+                    <th class="sortable" data-table="adminVinculos" data-sort="created_at">Desde</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="adminVinculosTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ABA VENDER ACESSO (fluxo guiado) -->
+          <div id="adminViewVender" class="admin-view hidden">
+            <div class="admin-onboarding">
+              <aside class="admin-onboarding-steps" aria-label="Passos do onboarding">
+                <div class="admin-step is-active" data-admin-step="1">
+                  <span class="admin-step-num">1</span>
+                  <div>
+                    <strong>Empresa</strong>
+                    <p>Crie o tenant ou escolha um existente</p>
+                  </div>
+                </div>
+                <div class="admin-step" data-admin-step="2">
+                  <span class="admin-step-num">2</span>
+                  <div>
+                    <strong>Owner</strong>
+                    <p>Crie o primeiro acesso (dono da empresa)</p>
+                  </div>
+                </div>
+                <div class="admin-step" data-admin-step="3">
+                  <span class="admin-step-num">3</span>
+                  <div>
+                    <strong>Entrega</strong>
+                    <p>Envie e-mail e senha ao cliente</p>
+                  </div>
+                </div>
+              </aside>
+
+              <div class="admin-onboarding-main">
+                <article class="admin-panel">
+                  <header class="admin-panel-head">
+                    <div>
+                      <h3>1 · Empresa do cliente</h3>
+                      <p class="section-subtitle">Cadastre a nova empresa ou reutilize uma já existente.</p>
+                    </div>
+                  </header>
+
+                  <div class="admin-radio-row" role="radiogroup" aria-label="Modo da empresa">
+                    <label class="admin-radio-card">
+                      <input type="radio" name="adminVenderEmpresaMode" value="nova" checked />
+                      <span>
+                        <strong>Nova empresa</strong>
+                        <small>Cliente ainda não está no sistema</small>
+                      </span>
+                    </label>
+                    <label class="admin-radio-card">
+                      <input type="radio" name="adminVenderEmpresaMode" value="existente" />
+                      <span>
+                        <strong>Empresa existente</strong>
+                        <small>Já cadastrei, só falta o owner</small>
+                      </span>
+                    </label>
+                  </div>
+
+                  <form id="adminVenderEmpresaForm" class="admin-form-grid">
+                    <div id="adminVenderNovaEmpresaFields" class="admin-form-grid">
+                      <label class="admin-field admin-field--full">
+                        Nome da empresa *
+                        <input name="nome" placeholder="Ex.: Oficina Silva Bikes" required />
+                      </label>
+                      <label class="admin-field">
+                        E-mail da empresa
+                        <input name="email" type="email" placeholder="contato@empresa.com" />
+                      </label>
+                      <label class="admin-field">
+                        Telefone
+                        <input name="telefone" placeholder="(00) 00000-0000" />
+                      </label>
+                      <label class="admin-field">
+                        Cidade
+                        <input name="cidade" placeholder="Cidade" />
+                      </label>
+                      <label class="admin-field">
+                        UF
+                        <input name="uf" maxlength="2" placeholder="SP" />
+                      </label>
+                    </div>
+
+                    <div id="adminVenderEmpresaExistenteFields" class="admin-form-grid hidden">
+                      <label class="admin-field admin-field--full">
+                        Selecionar empresa *
+                        <select name="empresa_id" id="adminVenderEmpresaSelect">
+                          <option value="">Selecione a empresa</option>
+                        </select>
+                      </label>
+                    </div>
+                  </form>
+                </article>
+
+                <article class="admin-panel">
+                  <header class="admin-panel-head">
+                    <div>
+                      <h3>2 · Owner (primeiro acesso)</h3>
+                      <p class="section-subtitle">Esse usuário será o dono da empresa e poderá criar os demais.</p>
+                    </div>
+                  </header>
+
+                  <form id="adminVenderOwnerForm" class="admin-form-grid">
+                    <label class="admin-field">
+                      E-mail do owner *
+                      <input name="email" type="email" placeholder="dono@empresa.com" required />
+                    </label>
+                    <label class="admin-field">
+                      Senha inicial *
+                      <input name="password" type="password" placeholder="Mínimo 6 caracteres" required minlength="6" />
+                    </label>
+                    <p class="admin-hint admin-field--full">
+                      O perfil será <strong>owner</strong>. Depois o próprio cliente cria managers e usuários na aba Usuários.
+                    </p>
+                  </form>
+                </article>
+
+                <div class="admin-onboarding-actions">
+                  <button id="adminVenderSubmitBtn" type="button" class="btn">
+                    Criar empresa + owner e liberar acesso
+                  </button>
+                  <p id="adminVenderResult" class="admin-result hidden" role="status"></p>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </main>
+    </div>
+
+    <!-- Modal: Empresa (criar/editar) — Admin SaaS -->
+    <div id="adminEmpresaModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="adminEmpresaModalTitle">
+      <div class="modal-card admin-modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="adminEmpresaModalTitle">Nova empresa</h3>
+            <p class="modal-subtitle">Cadastro do tenant no SaaS</p>
+          </div>
+          <button id="adminEmpresaModalClose" type="button" class="btn btn-ghost">Fechar</button>
+        </div>
+        <form id="adminEmpresaForm" class="admin-form-grid">
+          <input type="hidden" name="id" id="adminEmpresaIdInput" value="" />
+          <label class="admin-field admin-field--full">
+            Nome *
+            <input name="nome" id="adminEmpresaNomeInput" placeholder="Nome da empresa" required />
+          </label>
+          <label class="admin-field">
+            E-mail
+            <input name="email" id="adminEmpresaEmailInput" type="email" placeholder="contato@empresa.com" />
+          </label>
+          <label class="admin-field">
+            Telefone
+            <input name="telefone" id="adminEmpresaTelefoneInput" placeholder="(00) 00000-0000" />
+          </label>
+          <label class="admin-field">
+            Cidade
+            <input name="cidade" id="adminEmpresaCidadeInput" placeholder="Cidade" />
+          </label>
+          <label class="admin-field">
+            UF
+            <input name="uf" id="adminEmpresaUfInput" maxlength="2" placeholder="SP" />
+          </label>
+          <div class="admin-modal-actions">
+            <button type="button" id="adminEmpresaModalCancel" class="btn btn-ghost">Cancelar</button>
+            <button type="submit" class="btn" id="adminEmpresaSubmitBtn">Salvar empresa</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Novo usuário / vínculo — Admin SaaS -->
+    <div id="adminUserModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="adminUserModalTitle">
+      <div class="modal-card admin-modal-card">
+        <div class="modal-head">
+          <div>
+            <h3 id="adminUserModalTitle">Novo usuário</h3>
+            <p class="modal-subtitle">Crie um acesso novo ou vincule um e-mail que já existe no Auth</p>
+          </div>
+          <button id="adminUserModalClose" type="button" class="btn btn-ghost">Fechar</button>
+        </div>
+
+        <div class="admin-radio-row" role="radiogroup" aria-label="Modo do usuário">
+          <label class="admin-radio-card">
+            <input type="radio" name="adminUserMode" value="criar" checked />
+            <span>
+              <strong>Criar novo</strong>
+              <small>Gera login + senha</small>
+            </span>
+          </label>
+          <label class="admin-radio-card">
+            <input type="radio" name="adminUserMode" value="vincular" />
+            <span>
+              <strong>Só vincular</strong>
+              <small>Usuário Auth já existe</small>
+            </span>
+          </label>
+        </div>
+
+        <form id="adminInviteForm" class="admin-form-grid">
+          <label class="admin-field">
+            E-mail *
+            <input name="email" type="email" placeholder="usuario@empresa.com" required />
+          </label>
+          <label class="admin-field" id="adminInvitePasswordField">
+            Senha inicial *
+            <input name="password" type="password" placeholder="Mínimo 6 caracteres" minlength="6" />
+          </label>
+          <label class="admin-field">
+            Empresa *
+            <select name="empresa_id" id="adminInviteEmpresaSelect" required>
+              <option value="">Selecione a empresa</option>
+            </select>
+          </label>
+          <label class="admin-field">
+            Perfil *
+            <select name="role" required>
+              <option value="owner">owner — dono da empresa</option>
+              <option value="manager">manager — gestor</option>
+              <option value="user">user — operador</option>
+            </select>
+          </label>
+          <div class="admin-modal-actions">
+            <button type="button" id="adminUserModalCancel" class="btn btn-ghost">Cancelar</button>
+            <button type="submit" class="btn" id="adminInviteSubmitBtn">Criar e vincular</button>
+          </div>
+        </form>
+
+        <!-- form oculto mantido para API de vínculo existente (reusa handler) -->
+        <form id="adminVinculoForm" class="hidden" aria-hidden="true">
+          <input name="email" />
+          <select name="empresa_id" id="adminEmpresaSelect"></select>
+          <select name="role"></select>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Usuários da empresa — Admin SaaS -->
+    <div id="adminEmpresaUsersModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="adminEmpresaUsersTitle">
+      <div class="modal-card admin-modal-card admin-modal-card--wide">
+        <div class="modal-head">
+          <div>
+            <h3 id="adminEmpresaUsersTitle">Usuários da empresa</h3>
+            <p id="adminEmpresaUsersSubtitle" class="modal-subtitle">—</p>
+          </div>
+          <div class="admin-modal-head-actions">
+            <button id="adminEmpresaUsersAddBtn" type="button" class="btn">Adicionar usuário</button>
+            <button id="adminEmpresaUsersClose" type="button" class="btn btn-ghost">Fechar</button>
+          </div>
+        </div>
+        <div class="table-wrap admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Usuário</th>
+                <th>Perfil</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="adminEmpresaUsersTable"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <div id="produtoModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="produtoModalTitle">
@@ -2732,6 +3043,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260724relPecasSort1"></script>
+    <script type="module" src="app.js?v=20260801adminSaaS"></script>
   </body>
 </html>
