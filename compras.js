@@ -547,7 +547,10 @@ export function installComprasModule(ctx) {
       quantidade: 1,
       valorUnitario: Number(produto?.custo || produto?.preco || 0),
       atualizaCusto: true,
-      atualizaEstoque: true
+      atualizaEstoque: true,
+      ean: "",
+      cProd: "",
+      unidade: ""
     };
   }
 
@@ -571,8 +574,457 @@ export function installComprasModule(ctx) {
       formaPagamentoId: "",
       itens: [createNotaItem()],
       // Parcelas editáveis (como no pedido a receber)
-      parcelasEditadas: []
+      parcelasEditadas: [],
+      nfeImport: null
     };
+  }
+
+  /* ---------- Importação XML NF-e ---------- */
+
+  function onlyDigits(value) {
+    return String(value || "").replace(/\D/g, "");
+  }
+
+  function normalizeEanCode(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const upper = raw.toUpperCase();
+    if (
+      upper === "SEM GTIN" ||
+      upper === "SEMGTIN" ||
+      upper === "GTIN" ||
+      upper === "N/A" ||
+      upper === "NA" ||
+      upper === "0" ||
+      upper === "0000000000000" ||
+      upper === "00000000000000"
+    ) {
+      return "";
+    }
+    // Mantém dígitos; EAN-8/12/13/14
+    const digits = onlyDigits(raw);
+    if (digits.length >= 8 && digits.length <= 14) return digits;
+    // Alguns fornecedores mandam alfanumérico curto
+    if (raw.length >= 4 && raw.length <= 40) return raw;
+    return "";
+  }
+
+  function xmlLocalName(node) {
+    if (!node) return "";
+    const local = node.localName || "";
+    if (local) return local;
+    return String(node.nodeName || "").replace(/^.*:/, "");
+  }
+
+  function xmlChildren(node) {
+    return node ? Array.from(node.children || []) : [];
+  }
+
+  function xmlFindAll(root, name) {
+    const out = [];
+    const walk = (node) => {
+      if (!node || node.nodeType !== 1) return;
+      if (xmlLocalName(node) === name) out.push(node);
+      for (const child of xmlChildren(node)) walk(child);
+    };
+    walk(root);
+    return out;
+  }
+
+  function xmlFindFirst(root, name) {
+    return xmlFindAll(root, name)[0] || null;
+  }
+
+  function xmlChildText(parent, childName) {
+    if (!parent) return "";
+    const child = xmlChildren(parent).find((c) => xmlLocalName(c) === childName);
+    return child ? String(child.textContent || "").trim() : "";
+  }
+
+  function xmlDeepText(root, pathNames) {
+    let cur = root;
+    for (const name of pathNames) {
+      if (!cur) return "";
+      cur = xmlChildren(cur).find((c) => xmlLocalName(c) === name) || null;
+    }
+    return cur ? String(cur.textContent || "").trim() : "";
+  }
+
+  function parseNfeXmlNumber(value) {
+    const raw = String(value || "").trim().replace(/\s/g, "").replace(",", ".");
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function parseNfeXmlDate(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    // 2024-03-15T10:20:00-03:00 ou 2024-03-15
+    const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : "";
+  }
+
+  /**
+   * Parseia XML de NF-e (nfeProc ou NFe) e devolve dados úteis para a nota de entrada.
+   */
+  function parseNfeXmlString(xmlText) {
+    const text = String(xmlText || "").trim();
+    if (!text) throw new Error("Arquivo XML vazio.");
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, "text/xml");
+    const parseError = doc.querySelector("parsererror");
+    if (parseError) {
+      throw new Error("XML inválido. Envie o arquivo .xml da NF-e (não o DANFE em PDF).");
+    }
+
+    const infNFe =
+      xmlFindFirst(doc.documentElement, "infNFe") ||
+      xmlFindFirst(doc, "infNFe");
+    if (!infNFe) {
+      throw new Error("Não achei a tag infNFe. Confirme se o arquivo é XML de NF-e (modelo 55).");
+    }
+
+    const ide = xmlFindFirst(infNFe, "ide");
+    const emit = xmlFindFirst(infNFe, "emit");
+    const total = xmlFindFirst(infNFe, "total");
+    const icmsTot = total ? xmlFindFirst(total, "ICMSTot") : null;
+
+    let chave = "";
+    const idAttr = infNFe.getAttribute("Id") || infNFe.getAttribute("id") || "";
+    const chaveFromId = onlyDigits(idAttr);
+    if (chaveFromId.length >= 44) chave = chaveFromId.slice(-44);
+    if (!chave) {
+      const chNFe = xmlFindFirst(doc.documentElement, "chNFe");
+      if (chNFe) chave = onlyDigits(chNFe.textContent).slice(0, 44);
+    }
+
+    const nNF = xmlChildText(ide, "nNF");
+    const serie = xmlChildText(ide, "serie");
+    const dataEmissao =
+      parseNfeXmlDate(xmlChildText(ide, "dhEmi")) ||
+      parseNfeXmlDate(xmlChildText(ide, "dEmi"));
+
+    const emitDoc =
+      xmlChildText(emit, "CNPJ") ||
+      xmlChildText(emit, "CPF") ||
+      "";
+    const emitNome = xmlChildText(emit, "xNome") || xmlChildText(emit, "xFant") || "";
+    const enderEmit = emit ? xmlFindFirst(emit, "enderEmit") : null;
+    const emitCidade = enderEmit ? xmlChildText(enderEmit, "xMun") : "";
+    const emitUf = enderEmit ? xmlChildText(enderEmit, "UF") : "";
+
+    const vProd = parseNfeXmlNumber(xmlChildText(icmsTot, "vProd"));
+    const vDesc = parseNfeXmlNumber(xmlChildText(icmsTot, "vDesc"));
+    const vFrete = parseNfeXmlNumber(xmlChildText(icmsTot, "vFrete"));
+    const vOutro = parseNfeXmlNumber(xmlChildText(icmsTot, "vOutro"));
+    const vNF = parseNfeXmlNumber(xmlChildText(icmsTot, "vNF"));
+
+    const dets = xmlFindAll(infNFe, "det");
+    const itens = [];
+    for (const det of dets) {
+      const prod = xmlFindFirst(det, "prod");
+      if (!prod) continue;
+      const cProd = xmlChildText(prod, "cProd");
+      const cEAN = normalizeEanCode(xmlChildText(prod, "cEAN"));
+      const cEANTrib = normalizeEanCode(xmlChildText(prod, "cEANTrib"));
+      const ean = cEAN || cEANTrib;
+      const xProd = xmlChildText(prod, "xProd");
+      const uCom = xmlChildText(prod, "uCom");
+      const qCom = parseNfeXmlNumber(xmlChildText(prod, "qCom"));
+      const vUnCom = parseNfeXmlNumber(xmlChildText(prod, "vUnCom"));
+      const vProdItem = parseNfeXmlNumber(xmlChildText(prod, "vProd"));
+      let quantidade = qCom > 0 ? qCom : 1;
+      let valorUnitario = vUnCom;
+      if (valorUnitario <= 0 && vProdItem > 0 && quantidade > 0) {
+        valorUnitario = vProdItem / quantidade;
+      }
+      itens.push({
+        cProd,
+        ean,
+        descricao: xProd || cProd || "Item NF-e",
+        unidade: uCom || "",
+        quantidade,
+        valorUnitario: Number(valorUnitario.toFixed(4)),
+        valorTotal: Number((vProdItem || quantidade * valorUnitario).toFixed(2))
+      });
+    }
+
+    if (!itens.length) {
+      throw new Error("A NF-e não tem itens (det/prod).");
+    }
+
+    // Duplicatas de cobrança (parcelas)
+    const dups = xmlFindAll(infNFe, "dup");
+    const parcelas = dups
+      .map((dup, idx) => ({
+        numero: idx + 1,
+        vencimento: parseNfeXmlDate(xmlChildText(dup, "dVenc")),
+        valor: parseNfeXmlNumber(xmlChildText(dup, "vDup")),
+        formaPagamentoId: "",
+        status: "pendente"
+      }))
+      .filter((p) => p.valor > 0 || p.vencimento);
+
+    return {
+      chave,
+      numeroNf: nNF,
+      serie,
+      dataEmissao,
+      emitente: {
+        documento: onlyDigits(emitDoc),
+        nome: emitNome,
+        cidade: emitCidade,
+        uf: emitUf
+      },
+      totais: {
+        valorProdutos: vProd,
+        valorDesconto: vDesc,
+        valorFrete: vFrete,
+        valorOutras: vOutro,
+        valorTotal: vNF
+      },
+      itens,
+      parcelas
+    };
+  }
+
+  function findProdutoByEan(ean) {
+    const code = normalizeEanCode(ean);
+    if (!code) return null;
+    const codeNorm = code.toLowerCase();
+    return (
+      (state().produtos || []).find((p) => {
+        const candidates = [
+          p.codigo,
+          p.external_id,
+          p.sku,
+          p.codigo_barras,
+          p.ean
+        ]
+          .map((v) => normalizeEanCode(v).toLowerCase())
+          .filter(Boolean);
+        return candidates.includes(codeNorm);
+      }) || null
+    );
+  }
+
+  function findFornecedorByDocumento(documento) {
+    const dig = onlyDigits(documento);
+    if (!dig) return null;
+    return (
+      (state().compras.fornecedores || []).find(
+        (f) => onlyDigits(f.documento) === dig
+      ) || null
+    );
+  }
+
+  async function ensureFornecedorFromNfe(emitente) {
+    if (!emitente?.nome && !emitente?.documento) return "";
+    const existing = findFornecedorByDocumento(emitente.documento);
+    if (existing) return String(existing.id);
+
+    const payload = {
+      empresa_id: state().empresaId,
+      nome: String(emitente.nome || "Fornecedor NF-e").trim() || "Fornecedor NF-e",
+      documento: emitente.documento || null,
+      cidade: emitente.cidade || null,
+      uf: emitente.uf || null,
+      ativo: true,
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await sb()
+      .from("fornecedores")
+      .insert(payload)
+      .select("id, nome, documento, cidade, uf, ativo")
+      .single();
+    if (error) throw error;
+    state().compras.fornecedores = [...(state().compras.fornecedores || []), data];
+    return String(data.id);
+  }
+
+  async function createProdutoFromNfeItem(item) {
+    const ean = normalizeEanCode(item.ean);
+    const nome = String(item.descricao || "Produto NF-e").trim().slice(0, 200) || "Produto NF-e";
+    const custo = Number(item.valorUnitario || 0);
+    // Preço de venda inicial: custo com margem 30% (editável depois)
+    const precoVenda = custo > 0 ? Number((custo * 1.3).toFixed(2)) : 0;
+
+    const payload = {
+      empresa_id: state().empresaId,
+      nome,
+      external_id: ean || (item.cProd ? String(item.cProd).slice(0, 60) : null),
+      preco_venda: precoVenda,
+      custo: custo > 0 ? Number(custo.toFixed(4)) : null,
+      estoque_atual: 0,
+      estoque_minimo: 0,
+      lead_time_dias: 7,
+      ativo: true,
+      controla_estoque: true,
+      descricao: item.unidade ? `Unidade NF: ${item.unidade}` : null
+    };
+
+    const { data, error } = await sb()
+      .from("produto_catalogo")
+      .insert(payload)
+      .select(
+        "id, nome, external_id, preco_venda, custo, estoque_atual, estoque_minimo, ativo, controla_estoque"
+      )
+      .single();
+    if (error) throw error;
+
+    // Normaliza para o shape usado no app
+    const produto = {
+      ...data,
+      codigo: data.external_id ? String(data.external_id) : "",
+      preco: Number(data.preco_venda || 0),
+      estoque: Number(data.estoque_atual || 0)
+    };
+    state().produtos = [...(state().produtos || []), produto];
+    return produto;
+  }
+
+  function setNotaNfeImportStatus(message, type = "") {
+    const e = els();
+    if (!e.notaNfeImportStatus) return;
+    e.notaNfeImportStatus.textContent = message || "";
+    e.notaNfeImportStatus.classList.toggle("is-ok", type === "ok");
+    e.notaNfeImportStatus.classList.toggle("is-error", type === "error");
+  }
+
+  async function applyNfeImportToDraft(parsed, { criarProdutos = true } = {}) {
+    await ensureProdutosLoaded({ force: false });
+    const draft = state().notaEntradaModal;
+    if (!draft || draft.status === "lancada" || draft.status === "cancelada") {
+      throw new Error("Só é possível importar XML em nota nova ou rascunho.");
+    }
+
+    // Fornecedor
+    const fornecedorId = await ensureFornecedorFromNfe(parsed.emitente);
+    draft.fornecedorId = fornecedorId || draft.fornecedorId || "";
+
+    draft.numeroNf = parsed.numeroNf || draft.numeroNf || "";
+    draft.serie = parsed.serie || draft.serie || "";
+    draft.chaveAcesso = parsed.chave || draft.chaveAcesso || "";
+    if (parsed.dataEmissao) draft.dataEmissao = parsed.dataEmissao;
+    if (!draft.dataEntrada) draft.dataEntrada = formatDateInput(new Date());
+
+    draft.valorDesconto = Number(parsed.totais?.valorDesconto || 0);
+    draft.valorFrete = Number(parsed.totais?.valorFrete || 0);
+    draft.valorOutras = Number(parsed.totais?.valorOutras || 0);
+
+    let matched = 0;
+    let created = 0;
+    let withoutEan = 0;
+    const itensNota = [];
+
+    for (const nfeItem of parsed.itens || []) {
+      const ean = normalizeEanCode(nfeItem.ean);
+      let produto = ean ? findProdutoByEan(ean) : null;
+
+      if (!produto && criarProdutos) {
+        // Cria mesmo sem EAN, usando cProd como código interno
+        if (ean || nfeItem.cProd || nfeItem.descricao) {
+          produto = await createProdutoFromNfeItem(nfeItem);
+          created += 1;
+        }
+      } else if (produto) {
+        matched += 1;
+      }
+
+      if (!ean) withoutEan += 1;
+
+      itensNota.push({
+        rowId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        produtoId: produto?.id ? String(produto.id) : "",
+        descricao: nfeItem.descricao || produto?.nome || "",
+        quantidade: Number(nfeItem.quantidade || 1),
+        valorUnitario: Number(nfeItem.valorUnitario || 0),
+        atualizaCusto: true,
+        atualizaEstoque: true,
+        ean: ean || "",
+        cProd: nfeItem.cProd || "",
+        unidade: nfeItem.unidade || ""
+      });
+    }
+
+    draft.itens = itensNota.length ? itensNota : [createNotaItem()];
+
+    // Parcelas da NF (duplicatas) se existirem
+    if (Array.isArray(parsed.parcelas) && parsed.parcelas.length) {
+      draft.parcelasEditadas = parsed.parcelas.map((p, idx) => ({
+        numero: p.numero || idx + 1,
+        vencimento: p.vencimento || draft.vencimentoPrimeira || formatDateInput(new Date()),
+        valor: Number(p.valor || 0),
+        formaPagamentoId: draft.formaPagamentoId || "",
+        status: "pendente"
+      }));
+      draft.parcelas = draft.parcelasEditadas.length;
+      if (draft.parcelasEditadas[0]?.vencimento) {
+        draft.vencimentoPrimeira = draft.parcelasEditadas[0].vencimento;
+      }
+    } else {
+      ensureNotaParcelasEditadas(true);
+    }
+
+    draft.nfeImport = {
+      chave: parsed.chave || "",
+      emitente: parsed.emitente || null,
+      importadoEm: new Date().toISOString(),
+      qtdItens: itensNota.length,
+      matched,
+      created
+    };
+
+    if (parsed.emitente?.nome) {
+      const obsTag = `NF-e importada · ${parsed.emitente.nome}`;
+      if (!String(draft.observacoes || "").includes("NF-e importada")) {
+        draft.observacoes = draft.observacoes
+          ? `${draft.observacoes}\n${obsTag}`
+          : obsTag;
+      }
+    }
+
+    // Recarrega produtos no app se criamos algum
+    if (created > 0) {
+      state().produtosLoaded = false;
+      await ensureProdutosLoaded({ force: true });
+    }
+
+    return { matched, created, withoutEan, total: itensNota.length };
+  }
+
+  async function handleNotaNfeXmlFile(file) {
+    if (!file) return;
+    const e = els();
+    const draft = state().notaEntradaModal;
+    if (draft?.status === "lancada" || draft?.status === "cancelada") {
+      throw new Error("Não é possível importar XML em nota já lançada/cancelada.");
+    }
+
+    setNotaNfeImportStatus("Lendo XML…");
+    const text = await file.text();
+    const parsed = parseNfeXmlString(text);
+    const criarProdutos = e.notaNfeCriarProdutos ? e.notaNfeCriarProdutos.checked : true;
+
+    setNotaNfeImportStatus("Aplicando itens e produtos…");
+    const stats = await applyNfeImportToDraft(parsed, { criarProdutos });
+
+    // Reabre o form com os dados
+    openNotaModal({ keepDraft: true });
+
+    const parts = [
+      `${stats.total} item(ns)`,
+      `${stats.matched} já cadastrado(s)`,
+      `${stats.created} criado(s)`,
+      stats.withoutEan ? `${stats.withoutEan} sem EAN` : ""
+    ].filter(Boolean);
+
+    setNotaNfeImportStatus(
+      `XML importado: ${parts.join(" · ")}. Revise e salve o rascunho ou lance a nota.`,
+      "ok"
+    );
+    showToast("XML da NF-e importado na nota");
   }
 
   function addDaysYmd(ymd, days) {
@@ -2471,10 +2923,13 @@ export function installComprasModule(ctx) {
           <label>
             Descrição
             <input data-nota-field="descricao" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.descricao || "")}" ${readonly ? "readonly" : ""} />
+            ${item.ean || item.cProd
+              ? `<span class="nota-item-ean">${item.ean ? `EAN ${escapeHtml(item.ean)}` : ""}${item.ean && item.cProd ? " · " : ""}${item.cProd ? `cProd ${escapeHtml(item.cProd)}` : ""}</span>`
+              : ""}
           </label>
           <label>
             Qtd
-            <input type="number" min="0" step="1" data-nota-field="quantidade" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.quantidade)}" ${readonly ? "readonly" : ""} />
+            <input type="number" min="0" step="any" data-nota-field="quantidade" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.quantidade)}" ${readonly ? "readonly" : ""} />
           </label>
           <label>
             Custo unit.
@@ -2544,6 +2999,9 @@ export function installComprasModule(ctx) {
     if (e.notaEntradaSaveBtn) e.notaEntradaSaveBtn.classList.toggle("hidden", readonly);
     if (e.notaEntradaLancarBtn) e.notaEntradaLancarBtn.classList.toggle("hidden", readonly);
     if (e.notaEntradaAddItemBtn) e.notaEntradaAddItemBtn.classList.toggle("hidden", readonly);
+    if (e.notaNfeImportBar) e.notaNfeImportBar.classList.toggle("hidden", readonly);
+    if (e.notaNfeXmlInput && !readonly) e.notaNfeXmlInput.value = "";
+    if (!draft.nfeImport) setNotaNfeImportStatus("");
     if (!Array.isArray(draft.parcelasEditadas) || !draft.parcelasEditadas.length) {
       ensureNotaParcelasEditadas(true);
     }
@@ -2623,7 +3081,13 @@ export function installComprasModule(ctx) {
       intervalo_dias: draft.intervaloDias || 30,
       forma_pagamento_id: draft.formaPagamentoId ? Number(draft.formaPagamentoId) : null,
       raw_payload: {
-        parcelas_editadas: parcelasEditadas
+        parcelas_editadas: parcelasEditadas,
+        nfe_import: draft.nfeImport || null,
+        itens_meta: itens.map((item) => ({
+          ean: item.ean || "",
+          cProd: item.cProd || "",
+          unidade: item.unidade || ""
+        }))
       },
       updated_at: new Date().toISOString()
     };
@@ -2727,17 +3191,24 @@ export function installComprasModule(ctx) {
       intervaloDias: Number(nota.intervalo_dias || 30),
       formaPagamentoId: nota.forma_pagamento_id ? String(nota.forma_pagamento_id) : "",
       itens: (itens || []).length
-        ? itens.map((item) => ({
-            rowId: `${item.id}`,
-            produtoId: item.produto_id ? String(item.produto_id) : "",
-            descricao: item.descricao || "",
-            quantidade: Number(item.quantidade || 0),
-            valorUnitario: Number(item.valor_unitario || 0),
-            atualizaCusto: item.atualiza_custo !== false,
-            atualizaEstoque: item.atualiza_estoque !== false
-          }))
+        ? itens.map((item, idx) => {
+            const meta = Array.isArray(raw.itens_meta) ? raw.itens_meta[idx] || {} : {};
+            return {
+              rowId: `${item.id}`,
+              produtoId: item.produto_id ? String(item.produto_id) : "",
+              descricao: item.descricao || "",
+              quantidade: Number(item.quantidade || 0),
+              valorUnitario: Number(item.valor_unitario || 0),
+              atualizaCusto: item.atualiza_custo !== false,
+              atualizaEstoque: item.atualiza_estoque !== false,
+              ean: meta.ean || "",
+              cProd: meta.cProd || "",
+              unidade: meta.unidade || ""
+            };
+          })
         : [createNotaItem()],
-      parcelasEditadas: parcelasFromRaw
+      parcelasEditadas: parcelasFromRaw,
+      nfeImport: raw.nfe_import || null
     };
 
     if (!parcelasFromRaw?.length) {
@@ -3131,6 +3602,25 @@ export function installComprasModule(ctx) {
       e.notaEntradaAddItemBtn.addEventListener("click", () => {
         state().notaEntradaModal.itens.push(createNotaItem());
         renderNotaItensGrid();
+      });
+    }
+
+    if (e.notaNfeXmlInput) {
+      e.notaNfeXmlInput.addEventListener("change", async () => {
+        const file = e.notaNfeXmlInput.files?.[0];
+        if (!file) return;
+        try {
+          await ensureComprasLoaded();
+          await ensureProdutosLoaded({ force: false });
+          await handleNotaNfeXmlFile(file);
+        } catch (err) {
+          console.error(err);
+          setNotaNfeImportStatus(err.message || "Falha ao importar XML", "error");
+          showToast(`Erro ao importar XML: ${err.message}`, "error");
+        } finally {
+          // Permite reimportar o mesmo arquivo
+          e.notaNfeXmlInput.value = "";
+        }
       });
     }
     if (e.notaEntradaSaveBtn) {

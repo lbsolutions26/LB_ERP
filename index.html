@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260801modalStack" />
+    <link rel="stylesheet" href="styles.css?v=20260801nfeXml" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -2883,6 +2883,28 @@
           <button id="closeNotaEntradaModalBtn" class="btn btn-ghost" type="button">Fechar</button>
         </div>
         <div class="nota-entrada-form">
+          <div id="notaNfeImportBar" class="nota-nfe-import">
+            <div class="nota-nfe-import-main">
+              <div>
+                <strong>Importar XML da NF-e</strong>
+                <p class="documento-items-hint">
+                  Preenche chave, fornecedor, totais e itens com EAN/código de barras. Ideal para o primeiro cadastro.
+                </p>
+              </div>
+              <div class="nota-nfe-import-actions">
+                <label class="btn btn-ghost nota-nfe-file-btn">
+                  Escolher arquivo XML
+                  <input id="notaNfeXmlInput" type="file" accept=".xml,text/xml,application/xml" hidden />
+                </label>
+                <label class="checkbox-inline nota-nfe-create-check">
+                  <input type="checkbox" id="notaNfeCriarProdutos" checked />
+                  Criar produtos novos pelo EAN
+                </label>
+              </div>
+            </div>
+            <p id="notaNfeImportStatus" class="nota-nfe-import-status" role="status" aria-live="polite"></p>
+          </div>
+
           <div class="nota-entrada-grid">
             <label>Fornecedor
               <div class="fornecedor-combo" data-fornecedor-combo="nota">
@@ -3171,6 +3193,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260801caixaKeys"></script>
+    <script type="module" src="app.js?v=20260801nfeXml"></script>
   </body>
 </html>

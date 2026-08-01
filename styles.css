@@ -5518,6 +5518,80 @@ textarea:focus {
   max-height: 92vh;
   overflow: auto;
 }
+
+.nota-nfe-import {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px dashed rgba(22, 93, 89, 0.35);
+  background: linear-gradient(155deg, rgba(22, 93, 89, 0.06) 0%, rgba(255, 255, 255, 0.9) 55%);
+  display: grid;
+  gap: 0.55rem;
+}
+
+.nota-nfe-import-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.nota-nfe-import-main strong {
+  display: block;
+  color: var(--brand-strong);
+  font-size: 0.95rem;
+}
+
+.nota-nfe-import-main .documento-items-hint {
+  margin: 0.2rem 0 0;
+  max-width: 48ch;
+}
+
+.nota-nfe-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+}
+
+.nota-nfe-file-btn {
+  cursor: pointer;
+  margin: 0;
+}
+
+.nota-nfe-create-check {
+  font-size: 0.86rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.nota-nfe-import-status {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.nota-nfe-import-status.is-ok {
+  color: var(--brand-strong);
+  font-weight: 600;
+}
+
+.nota-nfe-import-status.is-error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.nota-item-ean {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .nota-entrada-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

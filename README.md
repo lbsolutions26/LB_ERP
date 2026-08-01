@@ -55,6 +55,17 @@ insert into public.usuarios_empresas (user_id, empresa_id, role)
 values ('UUID_DO_AUTH_USER', 'UUID_DA_EMPRESA', 'owner');
 ```
 
+## Importar XML da NF-e (Compras)
+
+Na tela **Compras → Nova nota de entrada** ha o bloco **Importar XML da NF-e**:
+
+1. Escolha o arquivo `.xml` da nota (nao o PDF do DANFE).
+2. O sistema preenche chave, fornecedor (cria se o CNPJ nao existir), totais e itens.
+3. Com **Criar produtos novos pelo EAN** marcado, itens com codigo de barras ainda nao cadastrados viram produto no catalogo (custo da NF, preco venda sugerido = custo + 30%).
+4. Revise, salve rascunho ou **Salvar e lancar** (estoque + contas a pagar).
+
+Campos lidos do XML: `cEAN`/`cEANTrib`, `xProd`, `qCom`, `vUnCom`, `vProd`, emitente, totais e duplicatas de cobranca quando existirem.
+
 ## Multiempresa (mesmo usuario em varias empresas)
 
 - Um mesmo login pode estar em varias empresas via `usuarios_empresas` (ex.: owner de 2 tenants).
