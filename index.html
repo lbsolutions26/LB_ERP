@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260801multiEmpresa" />
+    <link rel="stylesheet" href="styles.css?v=20260801navHamburger" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -35,42 +35,165 @@
 
     <div id="appShell" class="hidden">
       <header class="topbar">
-        <div class="topbar-brand">
-          <img id="empresaLogoApp" class="topbar-logo hidden" alt="Logo da empresa" />
-          <div class="topbar-brand-text">
-            <h1 id="empresaNomeApp" class="topbar-empresa-nome">Empresa</h1>
-            <div id="empresaSwitcherWrap" class="topbar-empresa-switcher hidden">
-              <label class="sr-only" for="empresaSwitcherSelect">Empresa ativa</label>
-              <select id="empresaSwitcherSelect" class="empresa-switcher-select" aria-label="Trocar de empresa"></select>
-              <span id="empresaRoleBadge" class="empresa-role-badge" hidden></span>
+        <div class="topbar-left">
+          <button
+            id="navMenuBtn"
+            type="button"
+            class="nav-hamburger"
+            aria-label="Abrir menu"
+            aria-controls="appNavDrawer"
+            aria-expanded="false"
+          >
+            <span class="nav-hamburger-lines" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </span>
+          </button>
+          <div class="topbar-brand">
+            <img id="empresaLogoApp" class="topbar-logo hidden" alt="Logo da empresa" />
+            <div class="topbar-brand-text">
+              <h1 id="empresaNomeApp" class="topbar-empresa-nome">Empresa</h1>
+              <div id="empresaSwitcherWrap" class="topbar-empresa-switcher hidden">
+                <label class="sr-only" for="empresaSwitcherSelect">Empresa ativa</label>
+                <select id="empresaSwitcherSelect" class="empresa-switcher-select" aria-label="Trocar de empresa"></select>
+                <span id="empresaRoleBadge" class="empresa-role-badge" hidden></span>
+              </div>
+              <p id="topbarSectionLabel" class="topbar-section-label">Dashboard</p>
+              <p id="saasTitleApp" class="topbar-saas-label">LB ERP SaaS</p>
+              <p id="empresaInfo" class="subtitle topbar-user-line">—</p>
             </div>
-            <p id="saasTitleApp" class="topbar-saas-label">LB ERP SaaS</p>
-            <p id="empresaInfo" class="subtitle topbar-user-line">—</p>
           </div>
         </div>
         <div class="top-actions">
-          <button id="changePasswordBtn" class="btn btn-ghost">Trocar senha</button>
-          <button id="refreshBtn" class="btn btn-ghost">Atualizar</button>
-          <button id="logoutBtn" class="btn btn-ghost">Sair</button>
+          <button id="changePasswordBtn" class="btn btn-ghost top-action-btn" type="button">Senha</button>
+          <button id="refreshBtn" class="btn btn-ghost top-action-btn" type="button">Atualizar</button>
+          <button id="logoutBtn" class="btn btn-ghost top-action-btn" type="button">Sair</button>
         </div>
       </header>
 
-      <nav class="menu-tabs">
-        <button class="tab active" data-section="dashboard">Dashboard</button>
-        <button class="tab" data-section="clientes">Clientes</button>
-        <button class="tab" data-section="pedidos" data-tab-pedidos>Pedidos</button>
-        <button class="tab" data-section="financeiro">Contas a Receber</button>
-        <button class="tab" data-section="compras">Compras</button>
-        <button class="tab" data-section="orcamentos" data-tab-orcamentos>Orcamentos</button>
-        <button class="tab" data-section="despesas">Contas a Pagar</button>
-        <button class="tab" data-section="produtos">Produtos</button>
-        <button class="tab" data-section="estoque">Estoque</button>
-        <button class="tab" data-section="calendario">Calendário</button>
-        <button id="ownerUsersTab" class="tab hidden" data-section="usuarios">Usuarios</button>
-        <button class="tab" data-section="configuracoes">Configurações</button>
-        <button class="tab" data-section="relatorios">Relatorios</button>
-        <button id="adminTab" class="tab hidden" data-section="admin">Admin SaaS</button>
-      </nav>
+      <div id="appNavOverlay" class="nav-overlay hidden" hidden></div>
+
+      <aside id="appNavDrawer" class="nav-drawer" aria-hidden="true" aria-label="Menu principal">
+        <div class="nav-drawer-head">
+          <div class="nav-drawer-head-text">
+            <strong>Menu</strong>
+            <span id="navDrawerSubtitle">Navegação do ERP</span>
+          </div>
+          <button id="navMenuCloseBtn" type="button" class="nav-drawer-close" aria-label="Fechar menu">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+
+        <nav class="nav-drawer-body" aria-label="Seções do sistema">
+          <div class="nav-group">
+            <p class="nav-group-label">Visão geral</p>
+            <button class="tab nav-item active" type="button" data-section="dashboard">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 13h7V4H4v9zm9 7h7V4h-7v16zM4 20h7v-5H4v5z"/></svg>
+              </span>
+              <span class="nav-item-label">Dashboard</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <p class="nav-group-label">Vendas</p>
+            <button class="tab nav-item" type="button" data-section="clientes">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </span>
+              <span class="nav-item-label">Clientes</span>
+            </button>
+            <button class="tab nav-item" type="button" data-section="pedidos" data-tab-pedidos>
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2h12l1 7H5L6 2z"/><path d="M5 9h14l-1.2 10.2A2 2 0 0 1 15.8 21H8.2a2 2 0 0 1-2-1.8L5 9z"/><path d="M9 13h6"/></svg>
+              </span>
+              <span class="nav-item-label">Pedidos</span>
+            </button>
+            <button class="tab nav-item" type="button" data-section="orcamentos" data-tab-orcamentos>
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7l-5-5z"/><path d="M14 2v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
+              </span>
+              <span class="nav-item-label">Orçamentos</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <p class="nav-group-label">Financeiro</p>
+            <button class="tab nav-item" type="button" data-section="financeiro">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </span>
+              <span class="nav-item-label">Contas a Receber</span>
+            </button>
+            <button class="tab nav-item" type="button" data-section="despesas">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+              </span>
+              <span class="nav-item-label">Contas a Pagar</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <p class="nav-group-label">Operações</p>
+            <button class="tab nav-item" type="button" data-section="compras">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h13l2 9H7L5 4H2"/><circle cx="9" cy="20" r="1.5"/><circle cx="17" cy="20" r="1.5"/></svg>
+              </span>
+              <span class="nav-item-label">Compras</span>
+            </button>
+            <button class="tab nav-item" type="button" data-section="produtos">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5"/><path d="M12 22V12"/></svg>
+              </span>
+              <span class="nav-item-label">Produtos</span>
+            </button>
+            <button class="tab nav-item" type="button" data-section="estoque">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h18"/><path d="M5 7v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </span>
+              <span class="nav-item-label">Estoque</span>
+            </button>
+            <button class="tab nav-item" type="button" data-section="calendario">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              </span>
+              <span class="nav-item-label">Calendário</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <p class="nav-group-label">Sistema</p>
+            <button id="ownerUsersTab" class="tab nav-item hidden" type="button" data-section="usuarios">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </span>
+              <span class="nav-item-label">Usuários</span>
+            </button>
+            <button class="tab nav-item" type="button" data-section="configuracoes">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+              </span>
+              <span class="nav-item-label">Configurações</span>
+            </button>
+            <button class="tab nav-item" type="button" data-section="relatorios">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 17V10"/><path d="M12 17V7"/><path d="M16 17v-4"/></svg>
+              </span>
+              <span class="nav-item-label">Relatórios</span>
+            </button>
+            <button id="adminTab" class="tab nav-item hidden" type="button" data-section="admin">
+              <span class="nav-item-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </span>
+              <span class="nav-item-label">Admin SaaS</span>
+            </button>
+          </div>
+        </nav>
+
+        <div class="nav-drawer-foot">
+          <span id="navDrawerUser" class="nav-drawer-user">—</span>
+          <span class="nav-drawer-hint">Toque fora ou Esc para fechar</span>
+        </div>
+      </aside>
 
       <main class="layout">
         <section id="section-dashboard" class="card app-section active-section dashboard-section">
@@ -3048,6 +3171,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260801multiEmpresa"></script>
+    <script type="module" src="app.js?v=20260801navHamburger"></script>
   </body>
 </html>

@@ -106,23 +106,36 @@ body {
 .topbar {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem 1rem 1rem;
+  padding: 1rem 1rem 0.75rem;
   display: flex;
   justify-content: space-between;
-  align-items: start;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.85rem;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: linear-gradient(180deg, rgba(242, 239, 232, 0.96) 0%, rgba(242, 239, 232, 0.88) 70%, transparent 100%);
+  backdrop-filter: blur(10px);
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .topbar-brand {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.75rem;
   min-width: 0;
 }
 
 .topbar-logo {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   border-radius: 12px;
   border: 1px solid rgba(22, 93, 89, 0.18);
@@ -140,16 +153,24 @@ body {
 .topbar-empresa-nome {
   margin: 0;
   font-family: "Sora", sans-serif;
-  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--brand-strong);
   line-height: 1.15;
 }
 
+.topbar-section-label {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
 .topbar-saas-label {
   margin: 0;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -158,8 +179,12 @@ body {
 }
 
 .topbar-user-line {
-  margin: 0.15rem 0 0;
-  font-size: 0.86rem;
+  margin: 0.12rem 0 0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(48vw, 320px);
 }
 
 .topbar-empresa-switcher {
@@ -245,16 +270,256 @@ body {
 
 .top-actions {
   display: flex;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  flex: 0 0 auto;
 }
 
-.menu-tabs {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1rem;
+.top-action-btn {
+  padding: 0.45rem 0.7rem;
+  font-size: 0.86rem;
+}
+
+/* ========== Menu hambúrguer + drawer ========== */
+.nav-hamburger {
+  appearance: none;
+  border: 1px solid rgba(22, 93, 89, 0.18);
+  background: #fff;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(33, 32, 28, 0.06);
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.nav-hamburger:hover {
+  border-color: rgba(22, 93, 89, 0.35);
+  background: #f7fffe;
+}
+
+.nav-hamburger:active {
+  transform: scale(0.97);
+}
+
+.nav-hamburger-lines {
+  display: grid;
+  gap: 5px;
+  width: 18px;
+}
+
+.nav-hamburger-lines span {
+  display: block;
+  height: 2px;
+  border-radius: 99px;
+  background: var(--brand-strong);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  transform-origin: center;
+}
+
+body.nav-open .nav-hamburger-lines span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+body.nav-open .nav-hamburger-lines span:nth-child(2) {
+  opacity: 0;
+}
+
+body.nav-open .nav-hamburger-lines span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+.nav-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(22, 24, 22, 0.42);
+  backdrop-filter: blur(2px);
+  z-index: 90;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+
+.nav-overlay:not(.hidden) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nav-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(320px, 88vw);
+  z-index: 100;
   display: flex;
-  gap: 0.5rem;
-  overflow-x: auto;
+  flex-direction: column;
+  background: linear-gradient(180deg, #fffefb 0%, #f6f1e8 100%);
+  border-right: 1px solid rgba(217, 210, 196, 0.95);
+  box-shadow: 12px 0 40px rgba(20, 24, 22, 0.18);
+  transform: translateX(-105%);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.nav-drawer.is-open {
+  transform: translateX(0);
+}
+
+.nav-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.1rem 1rem 0.9rem;
+  border-bottom: 1px solid rgba(217, 210, 196, 0.85);
+}
+
+.nav-drawer-head-text {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.nav-drawer-head-text strong {
+  font-family: "Sora", sans-serif;
+  font-size: 1.1rem;
+  color: var(--brand-strong);
+}
+
+.nav-drawer-head-text span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.nav-drawer-close {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: #fff;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 1.35rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.nav-drawer-close:hover {
+  background: #f4f0e8;
+}
+
+.nav-drawer-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.75rem 0.7rem 1rem;
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+}
+
+.nav-group {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.nav-group-label {
+  margin: 0 0 0.15rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Itens do drawer (mantém .tab por compatibilidade com o app.js) */
+.nav-item.tab {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 0.62rem 0.7rem;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, transform 0.14s ease;
+}
+
+.nav-item.tab:hover {
+  background: rgba(22, 93, 89, 0.08);
+  border-color: rgba(22, 93, 89, 0.08);
+}
+
+.nav-item.tab.active {
+  background: linear-gradient(140deg, #185f5a 0%, #104642 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 8px 18px rgba(15, 71, 68, 0.22);
+}
+
+.nav-item-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.nav-item-icon svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nav-item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-drawer-foot {
+  padding: 0.85rem 1rem 1rem;
+  border-top: 1px solid rgba(217, 210, 196, 0.85);
+  display: grid;
+  gap: 0.25rem;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.nav-drawer-user {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.nav-drawer-hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+body.nav-open {
+  overflow: hidden;
+}
+
+/* Legado: se ainda existir barra horizontal em algum cache */
+.menu-tabs {
+  display: none;
 }
 
 .tab {
@@ -4882,17 +5147,33 @@ textarea:focus {
 
 @media (max-width: 640px) {
   .topbar {
-    flex-direction: column;
-    align-items: stretch;
+    align-items: flex-start;
+    padding-top: 0.85rem;
   }
 
   .topbar-logo {
-    width: 48px;
-    height: 48px;
+    width: 42px;
+    height: 42px;
+  }
+
+  .topbar-user-line,
+  .topbar-saas-label {
+    display: none;
   }
 
   .top-actions {
     flex-wrap: wrap;
+    max-width: 42%;
+  }
+
+  .top-action-btn {
+    padding: 0.4rem 0.55rem;
+    font-size: 0.8rem;
+  }
+
+  .empresa-switcher-select {
+    min-width: 0;
+    width: 100%;
   }
 
   .metric-grid {

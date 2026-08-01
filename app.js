@@ -280,6 +280,13 @@ const els = {
   empresaSwitcherSelect: document.getElementById("empresaSwitcherSelect"),
   empresaRoleBadge: document.getElementById("empresaRoleBadge"),
   adminTab: document.getElementById("adminTab"),
+  navMenuBtn: document.getElementById("navMenuBtn"),
+  navMenuCloseBtn: document.getElementById("navMenuCloseBtn"),
+  appNavDrawer: document.getElementById("appNavDrawer"),
+  appNavOverlay: document.getElementById("appNavOverlay"),
+  topbarSectionLabel: document.getElementById("topbarSectionLabel"),
+  navDrawerSubtitle: document.getElementById("navDrawerSubtitle"),
+  navDrawerUser: document.getElementById("navDrawerUser"),
   saasTitleLogin: document.getElementById("saasTitleLogin"),
   saasTitleApp: document.getElementById("saasTitleApp"),
   empresaNomeApp: document.getElementById("empresaNomeApp"),
@@ -340,7 +347,7 @@ const els = {
   caixaLastSaleBanner: document.getElementById("caixaLastSaleBanner"),
   caixaShortcutsHint: document.getElementById("caixaShortcutsHint"),
   caixaLastProductPreview: document.getElementById("caixaLastProductPreview"),
-  tabs: Array.from(document.querySelectorAll(".tab")),
+  tabs: Array.from(document.querySelectorAll(".nav-item.tab, button.tab[data-section]")),
   sections: Array.from(document.querySelectorAll(".app-section")),
   clienteForm: document.getElementById("clienteForm"),
   clienteModal: document.getElementById("clienteModal"),
@@ -931,11 +938,19 @@ function updateAppBrandChrome() {
           : "";
       els.empresaInfo.textContent = `${state.session.user.email} · ${role}${multi}`;
     }
+    if (els.navDrawerUser) {
+      els.navDrawerUser.textContent = state.session.user.email;
+    }
+    if (els.navDrawerSubtitle) {
+      els.navDrawerSubtitle.textContent = empresaNome || "Navegação do ERP";
+    }
   } else {
     document.title = saasName;
     if (els.empresaInfo) {
       els.empresaInfo.textContent = "—";
     }
+    if (els.navDrawerUser) els.navDrawerUser.textContent = "—";
+    if (els.navDrawerSubtitle) els.navDrawerSubtitle.textContent = "Navegação do ERP";
   }
 
   renderEmpresaSwitcher();
@@ -1119,6 +1134,91 @@ function isMissingRelationError(error) {
   return String(error.message || "").toLowerCase().includes("does not exist");
 }
 
+const SECTION_LABELS = {
+  dashboard: "Dashboard",
+  clientes: "Clientes",
+  pedidos: "Pedidos",
+  orcamentos: "Orçamentos",
+  financeiro: "Contas a Receber",
+  despesas: "Contas a Pagar",
+  compras: "Compras",
+  produtos: "Produtos",
+  estoque: "Estoque",
+  calendario: "Calendário",
+  usuarios: "Usuários",
+  configuracoes: "Configurações",
+  relatorios: "Relatórios",
+  admin: "Admin SaaS"
+};
+
+function getSectionLabel(sectionName) {
+  if (sectionName === "pedidos") {
+    const label =
+      els.tabPedidos?.querySelector?.(".nav-item-label")?.textContent ||
+      els.tabPedidos?.textContent ||
+      SECTION_LABELS.pedidos;
+    return String(label || SECTION_LABELS.pedidos).trim();
+  }
+  return SECTION_LABELS[sectionName] || sectionName || "Dashboard";
+}
+
+function setNavItemLabel(tabEl, text) {
+  if (!tabEl) return;
+  const label = tabEl.querySelector?.(".nav-item-label");
+  if (label) {
+    label.textContent = text;
+    return;
+  }
+  tabEl.textContent = text;
+}
+
+function isAppNavOpen() {
+  return document.body.classList.contains("nav-open");
+}
+
+function openAppNav() {
+  if (!els.appNavDrawer) return;
+  document.body.classList.add("nav-open");
+  els.appNavDrawer.classList.add("is-open");
+  els.appNavDrawer.setAttribute("aria-hidden", "false");
+  if (els.appNavOverlay) {
+    els.appNavOverlay.hidden = false;
+    els.appNavOverlay.classList.remove("hidden");
+  }
+  if (els.navMenuBtn) {
+    els.navMenuBtn.setAttribute("aria-expanded", "true");
+    els.navMenuBtn.setAttribute("aria-label", "Fechar menu");
+  }
+  // Foco no primeiro item visível
+  window.requestAnimationFrame(() => {
+    const first =
+      els.appNavDrawer.querySelector(".nav-item:not(.hidden)") ||
+      els.navMenuCloseBtn;
+    if (first && typeof first.focus === "function") first.focus();
+  });
+}
+
+function closeAppNav() {
+  document.body.classList.remove("nav-open");
+  if (els.appNavDrawer) {
+    els.appNavDrawer.classList.remove("is-open");
+    els.appNavDrawer.setAttribute("aria-hidden", "true");
+  }
+  if (els.appNavOverlay) {
+    els.appNavOverlay.classList.add("hidden");
+    els.appNavOverlay.hidden = true;
+  }
+  if (els.navMenuBtn) {
+    els.navMenuBtn.setAttribute("aria-expanded", "false");
+    els.navMenuBtn.setAttribute("aria-label", "Abrir menu");
+  }
+}
+
+function toggleAppNav() {
+  if (isAppNavOpen()) closeAppNav();
+  else openAppNav();
+}
+
 function setSection(sectionName) {
   if (sectionName === "admin" && !state.isPlatformAdmin) {
     sectionName = "dashboard";
@@ -1140,6 +1240,13 @@ function setSection(sectionName) {
     section.classList.toggle("hidden", !isTarget);
     section.classList.toggle("active-section", isTarget);
   }
+
+  if (els.topbarSectionLabel) {
+    els.topbarSectionLabel.textContent = getSectionLabel(sectionName);
+  }
+
+  // Fecha o drawer ao navegar (UX de menu mobile/moderno)
+  if (isAppNavOpen()) closeAppNav();
 }
 
 function getHomeSection() {
@@ -8748,10 +8855,17 @@ function applyEmpresaUiProfile(config = null) {
   const pedidoLabel = ui.pedido_label || "Pedido";
 
   if (els.tabPedidos) {
-    els.tabPedidos.textContent = pedidosLabel;
+    setNavItemLabel(els.tabPedidos, pedidosLabel);
   }
   if (els.tabOrcamentos) {
     els.tabOrcamentos.classList.toggle("hidden", ui.show_orcamentos === false);
+  }
+  // Atualiza o rótulo do topo se a seção ativa for pedidos
+  if (els.topbarSectionLabel) {
+    const activeTab = els.tabs.find((t) => t.classList.contains("active"));
+    if (activeTab?.dataset?.section) {
+      els.topbarSectionLabel.textContent = getSectionLabel(activeTab.dataset.section);
+    }
   }
   if (els.pedidosSectionTitle) {
     els.pedidosSectionTitle.textContent = pedidosLabel;
@@ -17417,6 +17531,7 @@ async function handleSession(session) {
     state.switchingEmpresa = false;
     resetTenantScopedCaches();
     state.adminLoaded = false;
+    closeAppNav();
     updateAppBrandChrome();
     updateAdminVisibility();
     updateOwnerUsersVisibility();
@@ -17499,6 +17614,15 @@ function attachEvents() {
   initComprasModule();
   initCalendarioModule();
   els.refreshBtn.addEventListener("click", refreshAll);
+
+  els.navMenuBtn?.addEventListener("click", () => toggleAppNav());
+  els.navMenuCloseBtn?.addEventListener("click", () => closeAppNav());
+  els.appNavOverlay?.addEventListener("click", () => closeAppNav());
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isAppNavOpen()) {
+      closeAppNav();
+    }
+  });
 
   els.empresaSwitcherSelect?.addEventListener("change", async (event) => {
     const select = event.target;
