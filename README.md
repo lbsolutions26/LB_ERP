@@ -55,11 +55,18 @@ insert into public.usuarios_empresas (user_id, empresa_id, role)
 values ('UUID_DO_AUTH_USER', 'UUID_DA_EMPRESA', 'owner');
 ```
 
+## Multiempresa (mesmo usuario em varias empresas)
+
+- Um mesmo login pode estar em varias empresas via `usuarios_empresas` (ex.: owner de 2 tenants).
+- No topo do app, o seletor **Empresa ativa** troca o contexto.
+- A ultima empresa usada e lembrada no navegador (`localStorage`).
+- Ao trocar, o app recarrega os dados do novo tenant (clientes, pedidos, estoque, etc.).
+
 ## Owner criando usuarios da propria empresa
 
 - O usuario com role `owner` ve a aba `Usuarios`.
-- Ele pode criar novos usuarios apenas para a empresa dele.
-- Nao existe selecao de empresa nessa tela (isolamento automatico).
+- Ele pode criar novos usuarios apenas para a empresa **ativa** no seletor.
+- Nao existe selecao manual de empresa nessa tela (usa a empresa ativa).
 
 ## 3) Configurar credenciais
 

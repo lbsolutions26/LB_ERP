@@ -48,7 +48,7 @@ module.exports = async function handler(req, res) {
   }
 
   const ownerCheckResponse = await fetch(
-    `${SUPABASE_URL}/rest/v1/usuarios_empresas?select=empresa_id,role,ativo&user_id=eq.${callerUserId}&role=eq.owner&ativo=is.true&limit=1`,
+    `${SUPABASE_URL}/rest/v1/usuarios_empresas?select=empresa_id,role,ativo&user_id=eq.${callerUserId}&role=eq.owner&ativo=is.true`,
     {
       headers: {
         apikey: SUPABASE_SERVICE_ROLE_KEY,
@@ -66,9 +66,14 @@ module.exports = async function handler(req, res) {
     return res.status(403).json({ error: "Only owners can create users for their empresa" });
   }
 
-  const ownerEmpresaId = ownerRows[0].empresa_id;
-  if (empresaIdFromBody && empresaIdFromBody !== ownerEmpresaId) {
-    return res.status(403).json({ error: "Owner can only create users for own empresa" });
+  // Aceita multiempresa: o owner pode gerir várias empresas; usa a enviada no body se for dele.
+  let ownerEmpresaId = ownerRows[0].empresa_id;
+  if (empresaIdFromBody) {
+    const match = ownerRows.find((row) => String(row.empresa_id) === String(empresaIdFromBody));
+    if (!match) {
+      return res.status(403).json({ error: "Owner can only create users for own empresa" });
+    }
+    ownerEmpresaId = match.empresa_id;
   }
 
   const allowedRoles = new Set(["manager", "user"]);

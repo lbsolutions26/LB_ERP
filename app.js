@@ -53,8 +53,11 @@ const state = {
   empresaId: null,
   empresaNome: "",
   empresaConfig: null,
+  /** Vínculos ativos do usuário logado: { empresa_id, role, created_at, empresas } */
+  empresasDoUsuario: [],
   currentRole: "user",
   isPlatformAdmin: false,
+  switchingEmpresa: false,
   clientes: [],
   produtos: [],
   produtosSource: "produto_catalogo",
@@ -273,6 +276,9 @@ const els = {
   loginForm: document.getElementById("loginForm"),
   logoutBtn: document.getElementById("logoutBtn"),
   ownerUsersTab: document.getElementById("ownerUsersTab"),
+  empresaSwitcherWrap: document.getElementById("empresaSwitcherWrap"),
+  empresaSwitcherSelect: document.getElementById("empresaSwitcherSelect"),
+  empresaRoleBadge: document.getElementById("empresaRoleBadge"),
   adminTab: document.getElementById("adminTab"),
   saasTitleLogin: document.getElementById("saasTitleLogin"),
   saasTitleApp: document.getElementById("saasTitleApp"),
@@ -918,7 +924,12 @@ function updateAppBrandChrome() {
   if (state.session?.user?.email) {
     document.title = `${empresaNome} · ${saasName}`;
     if (els.empresaInfo) {
-      els.empresaInfo.textContent = state.session.user.email;
+      const role = String(state.currentRole || "user");
+      const multi =
+        Array.isArray(state.empresasDoUsuario) && state.empresasDoUsuario.length > 1
+          ? ` · ${state.empresasDoUsuario.length} empresas`
+          : "";
+      els.empresaInfo.textContent = `${state.session.user.email} · ${role}${multi}`;
     }
   } else {
     document.title = saasName;
@@ -926,6 +937,8 @@ function updateAppBrandChrome() {
       els.empresaInfo.textContent = "—";
     }
   }
+
+  renderEmpresaSwitcher();
 }
 
 const moeda = new Intl.NumberFormat("pt-BR", {
@@ -9213,51 +9226,249 @@ async function saveEmpresaConfig(event) {
   }
 }
 
-async function loadEmpresaContext() {
-  const userId = state.session?.user?.id;
-  if (!userId) {
-    state.empresaId = null;
-    state.empresaNome = "";
-    state.empresaConfig = null;
-    return;
+function getPreferredEmpresaStorageKey(userId) {
+  return `lb_erp_selected_empresa_${userId}`;
+}
+
+function readPreferredEmpresaId(userId) {
+  if (!userId) return "";
+  try {
+    return String(localStorage.getItem(getPreferredEmpresaStorageKey(userId)) || "").trim();
+  } catch {
+    return "";
   }
+}
 
-  let data = null;
-  let error = null;
-
-  ({ data, error } = await supabaseClient
-    .from("usuarios_empresas")
-    .select(EMPRESA_CONFIG_SELECT_FULL)
-    .eq("user_id", userId)
-    .eq("ativo", true)
-    .limit(1)
-    .maybeSingle());
-
-  // Ambiente ainda sem migration de colunas de config
-  if (error && (isMissingRelationError(error) || /column|does not exist|schema cache/i.test(String(error.message || "")))) {
-    ({ data, error } = await supabaseClient
-      .from("usuarios_empresas")
-      .select(EMPRESA_CONFIG_SELECT_BASIC)
-      .eq("user_id", userId)
-      .eq("ativo", true)
-      .limit(1)
-      .maybeSingle());
+function writePreferredEmpresaId(userId, empresaId) {
+  if (!userId || !empresaId) return;
+  try {
+    localStorage.setItem(getPreferredEmpresaStorageKey(userId), String(empresaId));
+  } catch {
+    /* ignore quota / private mode */
   }
+}
 
-  if (error) throw error;
-  if (!data) {
-    throw new Error("Usuario sem empresa vinculada em usuarios_empresas");
-  }
-
-  state.empresaId = data.empresa_id;
-  state.currentRole = data.role || "user";
-  const empresaRow = data.empresas || {};
+function applyEmpresaMembership(membership) {
+  if (!membership) return;
+  state.empresaId = membership.empresa_id;
+  state.currentRole = membership.role || "user";
+  const empresaRow = membership.empresas || {};
   state.empresaNome = empresaRow.nome || "Empresa";
   state.empresaConfig = normalizeEmpresaConfig(empresaRow, state.empresaNome);
   fillEmpresaConfigForm(state.empresaConfig);
   updateAppBrandChrome();
   applyEmpresaUiProfile(state.empresaConfig);
   updateOwnerUsersVisibility();
+}
+
+function renderEmpresaSwitcher() {
+  const wrap = els.empresaSwitcherWrap;
+  const select = els.empresaSwitcherSelect;
+  const badge = els.empresaRoleBadge;
+  const brandText = els.empresaNomeApp?.parentElement;
+  const memberships = Array.isArray(state.empresasDoUsuario) ? state.empresasDoUsuario : [];
+
+  if (!wrap || !select) return;
+
+  if (!state.session || !memberships.length) {
+    wrap.classList.add("hidden");
+    brandText?.classList.remove("has-empresa-switcher");
+    if (badge) {
+      badge.hidden = true;
+      badge.textContent = "";
+    }
+    return;
+  }
+
+  wrap.classList.remove("hidden");
+  brandText?.classList.toggle("has-empresa-switcher", memberships.length > 1);
+
+  const current = String(state.empresaId || "");
+  select.innerHTML = memberships
+    .map((item) => {
+      const id = String(item.empresa_id || "");
+      const nome = item.empresas?.nome || "Empresa";
+      const role = item.role || "user";
+      const label =
+        memberships.length > 1 ? `${nome} (${role})` : nome;
+      return `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+
+  if (current && [...select.options].some((opt) => opt.value === current)) {
+    select.value = current;
+  } else if (select.options.length) {
+    select.selectedIndex = 0;
+  }
+
+  select.disabled = memberships.length <= 1;
+  select.title =
+    memberships.length > 1
+      ? "Trocar de empresa"
+      : "Você está vinculado a uma empresa";
+
+  if (badge) {
+    const role = String(state.currentRole || "user");
+    badge.hidden = false;
+    badge.textContent = role;
+    badge.dataset.role = role;
+  }
+
+  // Com multiempresa, o H1 vira rótulo; o select carrega o nome ativo.
+  if (els.empresaNomeApp) {
+    if (memberships.length > 1) {
+      els.empresaNomeApp.textContent = "Empresa ativa";
+    }
+  }
+}
+
+/**
+ * Limpa caches de negócio ao trocar de tenant (mantém sessão e Admin SaaS).
+ */
+function resetTenantScopedCaches() {
+  state.clientes = [];
+  state.produtos = [];
+  state.pedidos = [];
+  state.pedidosProdutos = [];
+  state.pedidosProdutosRaw = [];
+  state.itensDocumento = [];
+  state.contasReceber = [];
+  state.recebimentos = [];
+  state.parcelasReceberPrevistas = [];
+  state.ownerUsers = [];
+  state.dashboardMonthlyCash = [];
+  state.dashboardDaily = [];
+  state.dashboardCounts = {
+    clientes: 0,
+    despesas: 0,
+    produtosTotal: 0,
+    produtosComSaldo: 0,
+    produtosPontoPedido: 0,
+    orcamentoAberto: 0
+  };
+  state.pedidosLimit = 50;
+  state.pedidosTotalCarregado = 0;
+  state.pedidosCountTotal = 0;
+  state.pedidosFaturamentoTotal = 0;
+  state.pedidosSearchMode = false;
+  state.pedidosSearchLoading = false;
+
+  state.clientesLoaded = false;
+  state.produtosLoaded = false;
+  state.pedidosLoaded = false;
+  state.contasReceberLoaded = false;
+  state.orcamentosLoaded = false;
+  state.despesasLoaded = false;
+  state.ownerUsersLoaded = false;
+  state.estoqueMovimentosLoaded = false;
+  state.estoqueReservasLoaded = false;
+  state.estoqueMovimentos = [];
+  state.estoqueReservas = {};
+  state.estoqueAbcRows = [];
+  state.estoqueInventarioDraft = {};
+
+  if (state.compras) {
+    state.compras.loaded = false;
+    state.compras.fornecedores = [];
+    state.compras.notas = [];
+    state.compras.contas = [];
+    state.compras.parcelas = [];
+    state.compras.pagamentos = [];
+  }
+  if (state.calendario) {
+    state.calendario.loaded = false;
+    state.calendario.horarios = [];
+    state.calendario.feriados = [];
+  }
+}
+
+async function switchEmpresa(empresaId) {
+  const nextId = String(empresaId || "").trim();
+  if (!nextId || nextId === String(state.empresaId || "")) return;
+  if (state.switchingEmpresa) return;
+
+  const membership = (state.empresasDoUsuario || []).find(
+    (item) => String(item.empresa_id) === nextId
+  );
+  if (!membership) {
+    showToast("Empresa não disponível para este usuário", "error");
+    renderEmpresaSwitcher();
+    return;
+  }
+
+  const userId = state.session?.user?.id;
+  state.switchingEmpresa = true;
+  if (els.empresaSwitcherSelect) els.empresaSwitcherSelect.disabled = true;
+
+  try {
+    writePreferredEmpresaId(userId, nextId);
+    resetTenantScopedCaches();
+    applyEmpresaMembership(membership);
+    showToast(`Trocou para ${state.empresaNome}`);
+    await refreshAll();
+    await openHomeSection();
+  } catch (error) {
+    showToast(`Erro ao trocar de empresa: ${error.message}`, "error");
+    throw error;
+  } finally {
+    state.switchingEmpresa = false;
+    renderEmpresaSwitcher();
+  }
+}
+
+async function loadEmpresaContext() {
+  const userId = state.session?.user?.id;
+  if (!userId) {
+    state.empresaId = null;
+    state.empresaNome = "";
+    state.empresaConfig = null;
+    state.empresasDoUsuario = [];
+    state.currentRole = "user";
+    renderEmpresaSwitcher();
+    return;
+  }
+
+  let rows = null;
+  let error = null;
+
+  ({ data: rows, error } = await supabaseClient
+    .from("usuarios_empresas")
+    .select(EMPRESA_CONFIG_SELECT_FULL)
+    .eq("user_id", userId)
+    .eq("ativo", true)
+    .order("created_at", { ascending: true }));
+
+  // Ambiente ainda sem migration de colunas de config
+  if (error && (isMissingRelationError(error) || /column|does not exist|schema cache/i.test(String(error.message || "")))) {
+    ({ data: rows, error } = await supabaseClient
+      .from("usuarios_empresas")
+      .select(EMPRESA_CONFIG_SELECT_BASIC)
+      .eq("user_id", userId)
+      .eq("ativo", true)
+      .order("created_at", { ascending: true }));
+  }
+
+  if (error) throw error;
+  if (!rows || !rows.length) {
+    throw new Error("Usuario sem empresa vinculada em usuarios_empresas");
+  }
+
+  // Ordena por nome da empresa para o seletor ficar legível
+  const memberships = [...rows].sort((a, b) => {
+    const an = String(a.empresas?.nome || "").toLowerCase();
+    const bn = String(b.empresas?.nome || "").toLowerCase();
+    return an.localeCompare(bn, "pt-BR");
+  });
+
+  state.empresasDoUsuario = memberships;
+
+  const preferred = readPreferredEmpresaId(userId);
+  const selected =
+    memberships.find((item) => String(item.empresa_id) === preferred) ||
+    memberships[0];
+
+  writePreferredEmpresaId(userId, selected.empresa_id);
+  applyEmpresaMembership(selected);
 }
 
 async function loadOwnerUsers() {
@@ -17200,25 +17411,13 @@ async function handleSession(session) {
     state.empresaId = null;
     state.empresaNome = "";
     state.empresaConfig = null;
+    state.empresasDoUsuario = [];
     state.currentRole = "user";
     state.isPlatformAdmin = false;
-    updateAppBrandChrome();
-    state.pedidosLoaded = false;
-    state.pedidos = [];
-    state.pedidosLimit = 50;
-    state.pedidosTotalCarregado = 0;
-    state.pedidosProdutosRaw = [];
-    state.pedidosProdutos = [];
-    state.pedidosCountTotal = 0;
-    state.pedidosFaturamentoTotal = 0;
-    state.clientesLoaded = false;
-    state.produtosLoaded = false;
-    state.contasReceberLoaded = false;
-    state.orcamentosLoaded = false;
-    state.despesasLoaded = false;
-    state.ownerUsersLoaded = false;
+    state.switchingEmpresa = false;
+    resetTenantScopedCaches();
     state.adminLoaded = false;
-    state.dashboardCounts = { clientes: 0, despesas: 0, produtosTotal: 0, produtosComSaldo: 0, produtosPontoPedido: 0, orcamentoAberto: 0 };
+    updateAppBrandChrome();
     updateAdminVisibility();
     updateOwnerUsersVisibility();
     setSection("dashboard");
@@ -17300,6 +17499,20 @@ function attachEvents() {
   initComprasModule();
   initCalendarioModule();
   els.refreshBtn.addEventListener("click", refreshAll);
+
+  els.empresaSwitcherSelect?.addEventListener("change", async (event) => {
+    const select = event.target;
+    if (!(select instanceof HTMLSelectElement)) return;
+    const nextId = select.value;
+    if (!nextId || nextId === String(state.empresaId || "")) return;
+    try {
+      await switchEmpresa(nextId);
+    } catch {
+      // switchEmpresa já exibe toast; restaura o select
+      renderEmpresaSwitcher();
+    }
+  });
+
   els.loginForm.addEventListener("submit", async (event) => {
     try {
       await login(event);
