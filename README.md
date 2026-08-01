@@ -61,10 +61,16 @@ Na tela **Compras → Nova nota de entrada** ha o bloco **Importar XML da NF-e**
 
 1. Escolha o arquivo `.xml` da nota (nao o PDF do DANFE).
 2. O sistema preenche chave, fornecedor (cria se o CNPJ nao existir), totais e itens.
-3. Com **Criar produtos novos pelo EAN** marcado, itens com codigo de barras ainda nao cadastrados viram produto no catalogo (custo da NF, preco venda sugerido = custo + 30%).
-4. Revise, salve rascunho ou **Salvar e lancar** (estoque + contas a pagar).
+3. **Reconhecimento de produtos (ordem):**
+   - mesmo **EAN/codigo de barras** no catalogo;
+   - **de/para do fornecedor** (codigo `cProd` da NF ja vinculado antes);
+   - se ainda nao reconhecer → tela de **de/para** (vincular a produto existente ou criar novo).
+4. O vinculo `codigo do fornecedor → produto` fica salvo na tabela `fornecedor_produto_codigos` (rode `supabase/add-fornecedor-produto-codigos.sql` no Supabase).
+5. Revise, salve rascunho ou **Salvar e lancar** (estoque + contas a pagar).
 
-Campos lidos do XML: `cEAN`/`cEANTrib`, `xProd`, `qCom`, `vUnCom`, `vProd`, emitente, totais e duplicatas de cobranca quando existirem.
+Campos lidos do XML: `cEAN`/`cEANTrib`, `cProd`, `xProd`, `qCom`, `vUnCom`, `vProd`, emitente, totais e duplicatas de cobranca quando existirem.
+
+Assim, o mesmo refrigerante comprado de dois distribuidores (codigos internos diferentes) aponta para **um unico produto** no seu PDV.
 
 ## Multiempresa (mesmo usuario em varias empresas)
 

@@ -1011,69 +1011,241 @@ export function installComprasModule(ctx) {
     e.notaNfeImportStatus.classList.toggle("is-error", type === "error");
   }
 
-  async function applyNfeImportToDraft(parsed, { criarProdutos = true } = {}) {
-    // Sempre recarrega: reimportar o mesmo XML precisa ver o que a 1ª tentativa já criou
-    await Promise.all([
-      ensureProdutosLoaded({ force: true }),
-      loadFornecedores()
-    ]);
+  function ensureNfeDeParaState() {
+    if (!state().nfeDePara) {
+      state().nfeDePara = {
+        open: false,
+        parsed: null,
+        fornecedorId: "",
+        autoResolved: [],
+        pending: []
+      };
+    }
+    return state().nfeDePara;
+  }
 
-    const draft = state().notaEntradaModal;
-    if (!draft || draft.status === "lancada" || draft.status === "cancelada") {
-      throw new Error("Só é possível importar XML em nota nova ou rascunho.");
+  async function loadFornecedorProdutoMaps(fornecedorId) {
+    if (!fornecedorId || !state().empresaId) return [];
+    const { data, error } = await sb()
+      .from("fornecedor_produto_codigos")
+      .select("id, fornecedor_id, codigo_fornecedor, ean, produto_id, descricao_fornecedor")
+      .eq("empresa_id", state().empresaId)
+      .eq("fornecedor_id", Number(fornecedorId));
+    if (error) {
+      // Tabela ainda não migrada
+      if (/does not exist|schema cache|relation/i.test(String(error.message || ""))) {
+        console.warn("fornecedor_produto_codigos ausente — rode supabase/add-fornecedor-produto-codigos.sql");
+        return [];
+      }
+      throw error;
+    }
+    return data || [];
+  }
+
+  function findProdutoIdInMaps(maps, cProd, ean) {
+    const code = String(cProd || "").trim().toLowerCase();
+    const eanNorm = normalizeEanCode(ean);
+    if (code) {
+      const byCode = maps.find(
+        (m) => String(m.codigo_fornecedor || "").trim().toLowerCase() === code
+      );
+      if (byCode?.produto_id) return String(byCode.produto_id);
+    }
+    if (eanNorm) {
+      const byEan = maps.find(
+        (m) => normalizeEanCode(m.ean) === eanNorm && m.produto_id
+      );
+      if (byEan?.produto_id) return String(byEan.produto_id);
+    }
+    return "";
+  }
+
+  async function upsertFornecedorProdutoMap({
+    fornecedorId,
+    codigoFornecedor,
+    ean,
+    produtoId,
+    descricaoFornecedor
+  }) {
+    const fornId = Number(fornecedorId);
+    const prodId = Number(produtoId);
+    const codigo = String(codigoFornecedor || "").trim();
+    if (!fornId || !prodId || !codigo || !state().empresaId) return;
+
+    const payload = {
+      empresa_id: state().empresaId,
+      fornecedor_id: fornId,
+      codigo_fornecedor: codigo,
+      ean: normalizeEanCode(ean) || null,
+      produto_id: prodId,
+      descricao_fornecedor: String(descricaoFornecedor || "").trim() || null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error } = await sb()
+      .from("fornecedor_produto_codigos")
+      .upsert(payload, { onConflict: "empresa_id,fornecedor_id,codigo_fornecedor" });
+
+    if (error) {
+      if (/does not exist|schema cache|relation/i.test(String(error.message || ""))) {
+        console.warn("Mapeamento de/para não salvo: rode supabase/add-fornecedor-produto-codigos.sql");
+        return;
+      }
+      // Fallback se upsert com onConflict não estiver disponível no PostgREST
+      if (/no unique|on conflict/i.test(String(error.message || ""))) {
+        const { data: existing } = await sb()
+          .from("fornecedor_produto_codigos")
+          .select("id")
+          .eq("empresa_id", state().empresaId)
+          .eq("fornecedor_id", fornId)
+          .eq("codigo_fornecedor", codigo)
+          .maybeSingle();
+        if (existing?.id) {
+          await sb()
+            .from("fornecedor_produto_codigos")
+            .update(payload)
+            .eq("id", existing.id);
+        } else {
+          await sb().from("fornecedor_produto_codigos").insert(payload);
+        }
+        return;
+      }
+      throw error;
+    }
+  }
+
+  function fillProdutoOptionsForDePara(selected = "", filterText = "") {
+    const q = String(filterText || "").trim().toLowerCase();
+    const opts = ['<option value="">Selecione o produto do catálogo…</option>'];
+    for (const p of state().produtos || []) {
+      if (p.ativo === false) continue;
+      const nome = String(p.nome || "");
+      const cod = String(p.codigo || p.external_id || "");
+      if (q) {
+        const hay = `${nome} ${cod}`.toLowerCase();
+        if (!hay.includes(q)) continue;
+      }
+      const sel = String(p.id) === String(selected) ? " selected" : "";
+      const label = cod ? `${nome} · ${cod}` : nome;
+      opts.push(
+        `<option value="${escapeHtml(p.id)}"${sel}>${escapeHtml(label)} — ${moeda.format(p.custo || 0)}</option>`
+      );
+    }
+    return opts.join("");
+  }
+
+  function updateNfeDeParaSummary() {
+    const e = els();
+    const depara = ensureNfeDeParaState();
+    const pending = depara.pending || [];
+    const link = pending.filter((r) => r.action === "link").length;
+    const create = pending.filter((r) => r.action === "create").length;
+    if (e.nfeDeParaSummary) {
+      e.nfeDeParaSummary.textContent = `${pending.length} pendente(s) · ${link} vincular · ${create} criar novo`;
+    }
+  }
+
+  function renderNfeDeParaList() {
+    const e = els();
+    const depara = ensureNfeDeParaState();
+    if (!e.nfeDeParaList) return;
+
+    const rows = depara.pending || [];
+    if (!rows.length) {
+      e.nfeDeParaList.innerHTML =
+        '<p class="documento-items-hint">Nenhum item pendente — todos já foram reconhecidos.</p>';
+      updateNfeDeParaSummary();
+      return;
     }
 
-    // Fornecedor
-    const fornecedorId = await ensureFornecedorFromNfe(parsed.emitente);
-    draft.fornecedorId = fornecedorId || draft.fornecedorId || "";
+    e.nfeDeParaList.innerHTML = rows
+      .map((row, index) => {
+        const linkChecked = row.action === "link" ? "checked" : "";
+        const createChecked = row.action === "create" ? "checked" : "";
+        return `
+        <article class="nfe-depara-row" data-depara-index="${index}">
+          <div class="nfe-depara-row-head">
+            <div>
+              <strong>${escapeHtml(row.descricao || "Item da NF")}</strong>
+              <div class="nfe-depara-meta">
+                ${row.cProd ? `<span>cProd ${escapeHtml(row.cProd)}</span>` : ""}
+                ${row.ean ? `<span>EAN ${escapeHtml(row.ean)}</span>` : "<span>Sem EAN</span>"}
+                <span>Qtd ${escapeHtml(row.quantidade)}</span>
+                <span>${moeda.format(row.valorUnitario)} un.</span>
+                ${row.unidade ? `<span>${escapeHtml(row.unidade)}</span>` : ""}
+              </div>
+            </div>
+          </div>
+          <div class="nfe-depara-actions">
+            <label class="nfe-depara-choice">
+              <input type="radio" name="depara-action-${index}" value="link" data-depara-action="${index}" ${linkChecked} />
+              <span>
+                <strong>Já tenho no catálogo</strong>
+                <small>Vincular a um produto existente (mesmo item, outro código do fornecedor)</small>
+              </span>
+            </label>
+            <label class="nfe-depara-choice">
+              <input type="radio" name="depara-action-${index}" value="create" data-depara-action="${index}" ${createChecked} />
+              <span>
+                <strong>Criar produto novo</strong>
+                <small>Cadastra com nome da NF, EAN (se houver) e custo unitário</small>
+              </span>
+            </label>
+            <div class="nfe-depara-link-fields ${row.action === "link" ? "" : "hidden"}" data-depara-link-fields="${index}">
+              <label>
+                Buscar no catálogo
+                <input type="search" data-depara-filter="${index}" placeholder="Nome ou código…" value="${escapeHtml(row.filter || "")}" autocomplete="off" />
+              </label>
+              <label>
+                Produto existente
+                <select data-depara-produto="${index}">
+                  ${fillProdutoOptionsForDePara(row.produtoId, row.filter || "")}
+                </select>
+              </label>
+            </div>
+          </div>
+        </article>`;
+      })
+      .join("");
 
+    updateNfeDeParaSummary();
+  }
+
+  function openNfeDeParaModal() {
+    const e = els();
+    const depara = ensureNfeDeParaState();
+    depara.open = true;
+    if (e.nfeDeParaSubtitle) {
+      const auto = (depara.autoResolved || []).length;
+      const pend = (depara.pending || []).length;
+      e.nfeDeParaSubtitle.textContent =
+        auto > 0
+          ? `${auto} item(ns) já reconhecido(s) automaticamente. Restam ${pend} para você indicar o de/para.`
+          : `Indique o destino de ${pend} item(ns) da NF. O vínculo fica salvo para este fornecedor.`;
+    }
+    renderNfeDeParaList();
+    e.nfeDeParaModal?.classList.remove("hidden");
+  }
+
+  function closeNfeDeParaModal() {
+    const e = els();
+    const depara = ensureNfeDeParaState();
+    depara.open = false;
+    e.nfeDeParaModal?.classList.add("hidden");
+  }
+
+  function applyNfeHeaderToDraft(parsed, fornecedorId) {
+    const draft = state().notaEntradaModal;
+    draft.fornecedorId = fornecedorId || draft.fornecedorId || "";
     draft.numeroNf = parsed.numeroNf || draft.numeroNf || "";
     draft.serie = parsed.serie || draft.serie || "";
     draft.chaveAcesso = parsed.chave || draft.chaveAcesso || "";
     if (parsed.dataEmissao) draft.dataEmissao = parsed.dataEmissao;
     if (!draft.dataEntrada) draft.dataEntrada = formatDateInput(new Date());
-
     draft.valorDesconto = Number(parsed.totais?.valorDesconto || 0);
     draft.valorFrete = Number(parsed.totais?.valorFrete || 0);
     draft.valorOutras = Number(parsed.totais?.valorOutras || 0);
 
-    let matched = 0;
-    let created = 0;
-    let withoutEan = 0;
-    const itensNota = [];
-
-    for (const nfeItem of parsed.itens || []) {
-      const ean = normalizeEanCode(nfeItem.ean);
-      let produto = await findProdutoByEanOrCode(ean, nfeItem.cProd);
-
-      if (produto) {
-        matched += 1;
-      } else if (criarProdutos && (ean || nfeItem.cProd || nfeItem.descricao)) {
-        const result = await createProdutoFromNfeItem(nfeItem);
-        produto = result.produto;
-        if (result.created) created += 1;
-        else if (produto) matched += 1;
-      }
-
-      if (!ean) withoutEan += 1;
-
-      itensNota.push({
-        rowId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        produtoId: produto?.id ? String(produto.id) : "",
-        descricao: nfeItem.descricao || produto?.nome || "",
-        quantidade: Number(nfeItem.quantidade || 1),
-        valorUnitario: Number(nfeItem.valorUnitario || 0),
-        atualizaCusto: true,
-        atualizaEstoque: true,
-        ean: ean || "",
-        cProd: nfeItem.cProd || "",
-        unidade: nfeItem.unidade || ""
-      });
-    }
-
-    draft.itens = itensNota.length ? itensNota : [createNotaItem()];
-
-    // Parcelas da NF (duplicatas) se existirem
     if (Array.isArray(parsed.parcelas) && parsed.parcelas.length) {
       draft.parcelasEditadas = parsed.parcelas.map((p, idx) => ({
         numero: p.numero || idx + 1,
@@ -1090,15 +1262,6 @@ export function installComprasModule(ctx) {
       ensureNotaParcelasEditadas(true);
     }
 
-    draft.nfeImport = {
-      chave: parsed.chave || "",
-      emitente: parsed.emitente || null,
-      importadoEm: new Date().toISOString(),
-      qtdItens: itensNota.length,
-      matched,
-      created
-    };
-
     if (parsed.emitente?.nome) {
       const obsTag = `NF-e importada · ${parsed.emitente.nome}`;
       if (!String(draft.observacoes || "").includes("NF-e importada")) {
@@ -1107,19 +1270,254 @@ export function installComprasModule(ctx) {
           : obsTag;
       }
     }
+  }
 
-    // Recarrega produtos no app se criamos algum
-    if (created > 0) {
+  function buildNotaItemFromResolved(nfeItem, produto) {
+    return {
+      rowId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      produtoId: produto?.id ? String(produto.id) : "",
+      descricao: nfeItem.descricao || produto?.nome || "",
+      quantidade: Number(nfeItem.quantidade || 1),
+      valorUnitario: Number(nfeItem.valorUnitario || 0),
+      atualizaCusto: true,
+      atualizaEstoque: true,
+      ean: normalizeEanCode(nfeItem.ean) || "",
+      cProd: nfeItem.cProd || "",
+      unidade: nfeItem.unidade || ""
+    };
+  }
+
+  async function finishNfeImportWithItems(parsed, fornecedorId, resolvedItems, stats) {
+    const draft = state().notaEntradaModal;
+    applyNfeHeaderToDraft(parsed, fornecedorId);
+    draft.itens = resolvedItems.length ? resolvedItems : [createNotaItem()];
+    draft.nfeImport = {
+      chave: parsed.chave || "",
+      emitente: parsed.emitente || null,
+      importadoEm: new Date().toISOString(),
+      qtdItens: resolvedItems.length,
+      matched: stats.matched || 0,
+      created: stats.created || 0,
+      mapped: stats.mapped || 0
+    };
+
+    // Persiste de/para para próximas compras deste fornecedor
+    for (const item of resolvedItems) {
+      if (item.produtoId && item.cProd) {
+        await upsertFornecedorProdutoMap({
+          fornecedorId,
+          codigoFornecedor: item.cProd,
+          ean: item.ean,
+          produtoId: item.produtoId,
+          descricaoFornecedor: item.descricao
+        });
+      }
+    }
+
+    if ((stats.created || 0) > 0) {
       state().produtosLoaded = false;
       await ensureProdutosLoaded({ force: true });
     }
 
-    return { matched, created, withoutEan, total: itensNota.length };
+    openNotaModal({ keepDraft: true });
+
+    const parts = [
+      `${resolvedItems.length} item(ns)`,
+      stats.matched ? `${stats.matched} por EAN/código` : "",
+      stats.mapped ? `${stats.mapped} pelo de/para do fornecedor` : "",
+      stats.created ? `${stats.created} criado(s)` : "",
+      stats.linked ? `${stats.linked} vinculado(s) manualmente` : ""
+    ].filter(Boolean);
+
+    setNotaNfeImportStatus(
+      `XML importado: ${parts.join(" · ")}. Revise e salve o rascunho ou lance a nota.`,
+      "ok"
+    );
+    showToast("XML da NF-e importado na nota");
+  }
+
+  /**
+   * Importa NF-e:
+   * 1) match por EAN
+   * 2) match por de/para do fornecedor (cProd)
+   * 3) pendentes → tela de de/para (vincular ou criar)
+   */
+  async function applyNfeImportToDraft(parsed) {
+    await Promise.all([
+      ensureProdutosLoaded({ force: true }),
+      loadFornecedores()
+    ]);
+
+    const draft = state().notaEntradaModal;
+    if (!draft || draft.status === "lancada" || draft.status === "cancelada") {
+      throw new Error("Só é possível importar XML em nota nova ou rascunho.");
+    }
+
+    const fornecedorId = await ensureFornecedorFromNfe(parsed.emitente);
+    const maps = await loadFornecedorProdutoMaps(fornecedorId);
+
+    const autoResolved = [];
+    const pending = [];
+    let matched = 0;
+    let mapped = 0;
+
+    for (const nfeItem of parsed.itens || []) {
+      const ean = normalizeEanCode(nfeItem.ean);
+      const cProd = String(nfeItem.cProd || "").trim();
+
+      // 1) EAN / código no catálogo
+      let produto = await findProdutoByEanOrCode(ean, cProd);
+      let how = "";
+
+      // 2) Mapa do fornecedor (cProd → produto)
+      if (!produto) {
+        const mappedId = findProdutoIdInMaps(maps, cProd, ean);
+        if (mappedId) {
+          produto =
+            (state().produtos || []).find((p) => String(p.id) === String(mappedId)) ||
+            null;
+          if (!produto) {
+            const { data } = await sb()
+              .from("produto_catalogo")
+              .select(
+                "id, nome, external_id, preco_venda, custo, estoque_atual, estoque_minimo, ativo, controla_estoque"
+              )
+              .eq("empresa_id", state().empresaId)
+              .eq("id", mappedId)
+              .maybeSingle();
+            if (data) produto = rememberProdutoInState(normalizeProdutoRow(data));
+          }
+          if (produto) how = "map";
+        }
+      } else {
+        how = "ean";
+      }
+
+      if (produto) {
+        if (how === "map") mapped += 1;
+        else matched += 1;
+        autoResolved.push({
+          nfeItem: { ...nfeItem, ean },
+          produto,
+          how
+        });
+      } else {
+        pending.push({
+          key: `${cProd}|${ean}|${nfeItem.descricao}|${Math.random().toString(16).slice(2)}`,
+          cProd,
+          ean,
+          descricao: nfeItem.descricao || "",
+          quantidade: Number(nfeItem.quantidade || 1),
+          valorUnitario: Number(nfeItem.valorUnitario || 0),
+          unidade: nfeItem.unidade || "",
+          action: "create",
+          produtoId: "",
+          filter: ""
+        });
+      }
+    }
+
+    // Aplica cabeçalho já (usuário vê a nota por trás se cancelar o de/para)
+    applyNfeHeaderToDraft(parsed, fornecedorId);
+    openNotaModal({ keepDraft: true });
+
+    if (!pending.length) {
+      const itensNota = autoResolved.map((r) =>
+        buildNotaItemFromResolved(r.nfeItem, r.produto)
+      );
+      await finishNfeImportWithItems(parsed, fornecedorId, itensNota, {
+        matched,
+        mapped,
+        created: 0,
+        linked: 0
+      });
+      return { needsDePara: false, matched, mapped, pending: 0 };
+    }
+
+    const depara = ensureNfeDeParaState();
+    depara.parsed = parsed;
+    depara.fornecedorId = fornecedorId;
+    depara.autoResolved = autoResolved;
+    depara.pending = pending;
+    depara.statsBase = { matched, mapped };
+
+    setNotaNfeImportStatus(
+      `${autoResolved.length} item(ns) reconhecido(s). ${pending.length} precisam de de/para.`,
+      ""
+    );
+    openNfeDeParaModal();
+    return { needsDePara: true, matched, mapped, pending: pending.length };
+  }
+
+  async function confirmNfeDePara() {
+    const depara = ensureNfeDeParaState();
+    const pending = depara.pending || [];
+    const parsed = depara.parsed;
+    const fornecedorId = depara.fornecedorId;
+    if (!parsed) throw new Error("Sessão de de/para inválida. Importe o XML de novo.");
+
+    // Validação
+    for (const row of pending) {
+      if (row.action === "link" && !row.produtoId) {
+        throw new Error(
+          `Selecione o produto do catálogo para “${row.descricao || row.cProd || "item"}”.`
+        );
+      }
+    }
+
+    let created = 0;
+    let linked = 0;
+    const resolvedItems = (depara.autoResolved || []).map((r) =>
+      buildNotaItemFromResolved(r.nfeItem, r.produto)
+    );
+
+    for (const row of pending) {
+      let produto = null;
+      if (row.action === "link") {
+        produto =
+          (state().produtos || []).find((p) => String(p.id) === String(row.produtoId)) ||
+          null;
+        if (!produto) throw new Error("Produto vinculado não encontrado no catálogo.");
+        linked += 1;
+      } else {
+        const result = await createProdutoFromNfeItem({
+          ean: row.ean,
+          cProd: row.cProd,
+          descricao: row.descricao,
+          valorUnitario: row.valorUnitario,
+          unidade: row.unidade
+        });
+        produto = result.produto;
+        if (result.created) created += 1;
+        else linked += 1;
+      }
+
+      resolvedItems.push(
+        buildNotaItemFromResolved(
+          {
+            ean: row.ean,
+            cProd: row.cProd,
+            descricao: row.descricao,
+            quantidade: row.quantidade,
+            valorUnitario: row.valorUnitario,
+            unidade: row.unidade
+          },
+          produto
+        )
+      );
+    }
+
+    closeNfeDeParaModal();
+    await finishNfeImportWithItems(parsed, fornecedorId, resolvedItems, {
+      matched: depara.statsBase?.matched || 0,
+      mapped: depara.statsBase?.mapped || 0,
+      created,
+      linked
+    });
   }
 
   async function handleNotaNfeXmlFile(file) {
     if (!file) return;
-    const e = els();
     const draft = state().notaEntradaModal;
     if (draft?.status === "lancada" || draft?.status === "cancelada") {
       throw new Error("Não é possível importar XML em nota já lançada/cancelada.");
@@ -1128,26 +1526,9 @@ export function installComprasModule(ctx) {
     setNotaNfeImportStatus("Lendo XML…");
     const text = await file.text();
     const parsed = parseNfeXmlString(text);
-    const criarProdutos = e.notaNfeCriarProdutos ? e.notaNfeCriarProdutos.checked : true;
 
-    setNotaNfeImportStatus("Aplicando itens e produtos…");
-    const stats = await applyNfeImportToDraft(parsed, { criarProdutos });
-
-    // Reabre o form com os dados
-    openNotaModal({ keepDraft: true });
-
-    const parts = [
-      `${stats.total} item(ns)`,
-      `${stats.matched} já cadastrado(s)`,
-      `${stats.created} criado(s)`,
-      stats.withoutEan ? `${stats.withoutEan} sem EAN` : ""
-    ].filter(Boolean);
-
-    setNotaNfeImportStatus(
-      `XML importado: ${parts.join(" · ")}. Revise e salve o rascunho ou lance a nota.`,
-      "ok"
-    );
-    showToast("XML da NF-e importado na nota");
+    setNotaNfeImportStatus("Reconhecendo produtos (EAN e de/para do fornecedor)…");
+    await applyNfeImportToDraft(parsed);
   }
 
   function addDaysYmd(ymd, days) {
@@ -3746,6 +4127,75 @@ export function installComprasModule(ctx) {
         }
       });
     }
+
+    // De/para NF-e
+    const closeDePara = () => {
+      closeNfeDeParaModal();
+      setNotaNfeImportStatus(
+        "De/para cancelado. Itens reconhecidos automaticamente (se houver) ficaram na nota; reimporte o XML para mapear o restante.",
+        ""
+      );
+    };
+    e.nfeDeParaCloseBtn?.addEventListener("click", closeDePara);
+    e.nfeDeParaCancelBtn?.addEventListener("click", closeDePara);
+    e.nfeDeParaModal?.addEventListener("click", (ev) => {
+      if (ev.target === e.nfeDeParaModal) closeDePara();
+    });
+    e.nfeDeParaAllCreateBtn?.addEventListener("click", () => {
+      const depara = ensureNfeDeParaState();
+      for (const row of depara.pending || []) {
+        row.action = "create";
+        row.produtoId = "";
+      }
+      renderNfeDeParaList();
+    });
+    e.nfeDeParaConfirmBtn?.addEventListener("click", async () => {
+      try {
+        e.nfeDeParaConfirmBtn.disabled = true;
+        await confirmNfeDePara();
+      } catch (err) {
+        showToast(`Erro no de/para: ${err.message}`, "error");
+      } finally {
+        if (e.nfeDeParaConfirmBtn) e.nfeDeParaConfirmBtn.disabled = false;
+      }
+    });
+    e.nfeDeParaList?.addEventListener("change", (ev) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLElement)) return;
+      const depara = ensureNfeDeParaState();
+      const actionEl = t.closest("[data-depara-action]");
+      if (t.matches("[data-depara-action]") || actionEl) {
+        const idx = Number(t.getAttribute("data-depara-action") || actionEl?.getAttribute("data-depara-action"));
+        const row = depara.pending?.[idx];
+        if (!row) return;
+        row.action = t.value === "link" ? "link" : "create";
+        if (row.action === "create") row.produtoId = "";
+        renderNfeDeParaList();
+        return;
+      }
+      if (t.matches("[data-depara-produto]")) {
+        const idx = Number(t.getAttribute("data-depara-produto"));
+        const row = depara.pending?.[idx];
+        if (!row) return;
+        row.produtoId = t.value || "";
+        row.action = "link";
+        updateNfeDeParaSummary();
+      }
+    });
+    e.nfeDeParaList?.addEventListener("input", (ev) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLElement) || !t.matches("[data-depara-filter]")) return;
+      const idx = Number(t.getAttribute("data-depara-filter"));
+      const depara = ensureNfeDeParaState();
+      const row = depara.pending?.[idx];
+      if (!row) return;
+      row.filter = t.value || "";
+      const select = e.nfeDeParaList.querySelector(`[data-depara-produto="${idx}"]`);
+      if (select) {
+        const current = row.produtoId || "";
+        select.innerHTML = fillProdutoOptionsForDePara(current, row.filter);
+      }
+    });
     if (e.notaEntradaSaveBtn) {
       e.notaEntradaSaveBtn.addEventListener("click", async () => {
         try {
