@@ -161,6 +161,7 @@ const state = {
   adminUsuarioAtivoFilter: "",
   adminSelectedEmpresaId: null,
   adminUserModalMode: "criar",
+  adminUserModalReturnToEmpresaUsers: false,
   adminVenderEmpresaMode: "nova",
   pedidos: [],
   pedidosLoaded: false,
@@ -9798,15 +9799,42 @@ function openAdminUserModal(options = {}) {
     roleSelect.value = options.role;
   }
   syncAdminUserModalMode();
+
+  // Evita um modal atrás do outro: se a lista de usuários da empresa estiver
+  // aberta, esconde temporariamente e reabre ao fechar o formulário.
+  const usersModalOpen =
+    els.adminEmpresaUsersModal &&
+    !els.adminEmpresaUsersModal.classList.contains("hidden");
+  if (usersModalOpen) {
+    state.adminUserModalReturnToEmpresaUsers = true;
+    // Mantém a empresa selecionada para reabrir a lista depois
+    if (options.empresaId) state.adminSelectedEmpresaId = options.empresaId;
+    els.adminEmpresaUsersModal.classList.add("hidden");
+  } else {
+    state.adminUserModalReturnToEmpresaUsers = Boolean(options.returnToEmpresaUsers);
+  }
+
   els.adminUserModal?.classList.remove("hidden");
+  els.adminUserModal?.classList.add("modal-overlay--stack");
   els.adminInviteForm.querySelector('input[name="email"]')?.focus();
 }
 
-function closeAdminUserModal() {
+function closeAdminUserModal(options = {}) {
   els.adminUserModal?.classList.add("hidden");
+  els.adminUserModal?.classList.remove("modal-overlay--stack");
   els.adminInviteForm?.reset();
   state.adminUserModalMode = "criar";
   syncAdminUserModalMode();
+
+  const shouldReturn =
+    !options.skipReturn &&
+    state.adminUserModalReturnToEmpresaUsers &&
+    state.adminSelectedEmpresaId;
+  state.adminUserModalReturnToEmpresaUsers = false;
+
+  if (shouldReturn) {
+    openAdminEmpresaUsersModal(state.adminSelectedEmpresaId);
+  }
 }
 
 function openAdminEmpresaUsersModal(empresaId) {
@@ -9826,11 +9854,18 @@ function openAdminEmpresaUsersModal(empresaId) {
   }
   renderAdminEmpresaUsersTable();
   els.adminEmpresaUsersModal?.classList.remove("hidden");
+  els.adminEmpresaUsersModal?.classList.remove("modal-overlay--stack");
 }
 
 function closeAdminEmpresaUsersModal() {
   els.adminEmpresaUsersModal?.classList.add("hidden");
+  // Se o formulário de usuário estiver aberto por cima, não perde o contexto
+  // de empresa enquanto o usuário ainda está cadastrando.
+  if (els.adminUserModal && !els.adminUserModal.classList.contains("hidden")) {
+    return;
+  }
   state.adminSelectedEmpresaId = null;
+  state.adminUserModalReturnToEmpresaUsers = false;
 }
 
 function syncAdminVenderEmpresaMode() {
@@ -17191,10 +17226,12 @@ async function createAdminUserAndVinculo(event) {
     showToast("Usuário criado e vinculado");
   }
 
-  closeAdminUserModal();
+  // Fecha o form sem reabrir a lista duas vezes; reabre após o refresh.
+  const returnEmpresaId = state.adminSelectedEmpresaId || empresaId || null;
+  closeAdminUserModal({ skipReturn: true });
   await refreshAdminData();
-  if (state.adminSelectedEmpresaId) {
-    openAdminEmpresaUsersModal(state.adminSelectedEmpresaId);
+  if (returnEmpresaId) {
+    openAdminEmpresaUsersModal(returnEmpresaId);
   }
 }
 

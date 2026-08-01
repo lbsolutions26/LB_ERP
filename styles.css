@@ -2541,7 +2541,8 @@ table thead input {
   display: grid;
   place-items: center;
   padding: 1rem;
-  z-index: 20;
+  /* Acima do topbar (40) e do drawer (100) */
+  z-index: 200;
 }
 
 .modal-card {
@@ -5655,7 +5656,7 @@ tr.is-clickable-row:hover {
   border: 1px dashed #ddd1bb;
 }
 .modal-overlay--stack {
-  z-index: 45;
+  z-index: 220;
 }
 
 /* Contas a pagar: badge pessoal x empresa */
