@@ -789,10 +789,32 @@ export function installComprasModule(ctx) {
     };
   }
 
-  function findProdutoByEan(ean) {
-    const code = normalizeEanCode(ean);
-    if (!code) return null;
-    const codeNorm = code.toLowerCase();
+  function normalizeProdutoRow(data) {
+    if (!data) return null;
+    return {
+      ...data,
+      codigo: data.external_id ? String(data.external_id).trim() : "",
+      external_id: data.external_id ? String(data.external_id).trim() : "",
+      preco: Number(data.preco_venda || data.preco || 0),
+      custo: data.custo != null ? Number(data.custo) : 0,
+      estoque: Number(data.estoque_atual || data.estoque || 0)
+    };
+  }
+
+  function rememberProdutoInState(produto) {
+    if (!produto?.id) return produto;
+    const list = state().produtos || [];
+    const idx = list.findIndex((p) => Number(p.id) === Number(produto.id));
+    if (idx >= 0) list[idx] = { ...list[idx], ...produto };
+    else list.push(produto);
+    state().produtos = list;
+    return produto;
+  }
+
+  function findProdutoByCodeInMemory(code) {
+    const codeNorm = normalizeEanCode(code) || String(code || "").trim();
+    if (!codeNorm) return null;
+    const needle = codeNorm.toLowerCase();
     return (
       (state().produtos || []).find((p) => {
         const candidates = [
@@ -800,13 +822,50 @@ export function installComprasModule(ctx) {
           p.external_id,
           p.sku,
           p.codigo_barras,
-          p.ean
+          p.ean,
+          p.cProd
         ]
-          .map((v) => normalizeEanCode(v).toLowerCase())
+          .map((v) => (normalizeEanCode(v) || String(v || "").trim()).toLowerCase())
           .filter(Boolean);
-        return candidates.includes(codeNorm);
+        return candidates.includes(needle);
       }) || null
     );
+  }
+
+  async function findProdutoByExternalIdInDb(code) {
+    const externalId = normalizeEanCode(code) || String(code || "").trim();
+    if (!externalId || !state().empresaId) return null;
+    const { data, error } = await sb()
+      .from("produto_catalogo")
+      .select(
+        "id, nome, external_id, preco_venda, custo, estoque_atual, estoque_minimo, ativo, controla_estoque"
+      )
+      .eq("empresa_id", state().empresaId)
+      .eq("external_id", externalId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return rememberProdutoInState(normalizeProdutoRow(data));
+  }
+
+  /** Memória + banco: reimportar o mesmo XML não tenta recriar produto. */
+  async function findProdutoByEanOrCode(ean, cProd = "") {
+    const eanCode = normalizeEanCode(ean);
+    const cProdCode = String(cProd || "").trim();
+
+    if (eanCode) {
+      const mem = findProdutoByCodeInMemory(eanCode);
+      if (mem) return mem;
+      const db = await findProdutoByExternalIdInDb(eanCode);
+      if (db) return db;
+    }
+    if (cProdCode) {
+      const mem = findProdutoByCodeInMemory(cProdCode);
+      if (mem) return mem;
+      const db = await findProdutoByExternalIdInDb(cProdCode);
+      if (db) return db;
+    }
+    return null;
   }
 
   function findFornecedorByDocumento(documento) {
@@ -819,9 +878,44 @@ export function installComprasModule(ctx) {
     );
   }
 
+  async function findFornecedorByDocumentoInDb(documento) {
+    const dig = onlyDigits(documento);
+    if (!dig || !state().empresaId) return null;
+    // Busca ampla e filtra por dígitos (documento pode estar formatado)
+    const { data, error } = await sb()
+      .from("fornecedores")
+      .select("id, nome, documento, cidade, uf, ativo")
+      .eq("empresa_id", state().empresaId)
+      .limit(500);
+    if (error) throw error;
+    const hit = (data || []).find((f) => onlyDigits(f.documento) === dig) || null;
+    if (hit) {
+      const list = state().compras.fornecedores || [];
+      if (!list.some((f) => Number(f.id) === Number(hit.id))) {
+        state().compras.fornecedores = [...list, hit];
+      }
+    }
+    return hit;
+  }
+
+  function isUniqueViolation(error) {
+    const msg = String(error?.message || error?.details || error || "");
+    const code = String(error?.code || "");
+    return (
+      code === "23505" ||
+      /duplicate key|unique constraint|ux_produto_catalogo_empresa_external_id|ux_fornecedores_empresa_documento/i.test(
+        msg
+      )
+    );
+  }
+
   async function ensureFornecedorFromNfe(emitente) {
     if (!emitente?.nome && !emitente?.documento) return "";
-    const existing = findFornecedorByDocumento(emitente.documento);
+
+    let existing = findFornecedorByDocumento(emitente.documento);
+    if (!existing && emitente.documento) {
+      existing = await findFornecedorByDocumentoInDb(emitente.documento);
+    }
     if (existing) return String(existing.id);
 
     const payload = {
@@ -838,13 +932,35 @@ export function installComprasModule(ctx) {
       .insert(payload)
       .select("id, nome, documento, cidade, uf, ativo")
       .single();
-    if (error) throw error;
+
+    if (error) {
+      // Já existe (import anterior): reaproveita
+      if (isUniqueViolation(error) && emitente.documento) {
+        const again = await findFornecedorByDocumentoInDb(emitente.documento);
+        if (again) return String(again.id);
+      }
+      throw error;
+    }
     state().compras.fornecedores = [...(state().compras.fornecedores || []), data];
     return String(data.id);
   }
 
+  /**
+   * Cria produto a partir do item da NF-e.
+   * Se o EAN/cProd já existir (reimport), reutiliza sem erro.
+   * @returns {{ produto: object|null, created: boolean }}
+   */
   async function createProdutoFromNfeItem(item) {
     const ean = normalizeEanCode(item.ean);
+    const externalId =
+      ean || (item.cProd ? String(item.cProd).trim().slice(0, 60) : null);
+
+    // Última checagem antes de inserir (evita corrida / reimport)
+    if (externalId) {
+      const existing = await findProdutoByEanOrCode(ean, item.cProd);
+      if (existing) return { produto: existing, created: false };
+    }
+
     const nome = String(item.descricao || "Produto NF-e").trim().slice(0, 200) || "Produto NF-e";
     const custo = Number(item.valorUnitario || 0);
     // Preço de venda inicial: custo com margem 30% (editável depois)
@@ -853,7 +969,7 @@ export function installComprasModule(ctx) {
     const payload = {
       empresa_id: state().empresaId,
       nome,
-      external_id: ean || (item.cProd ? String(item.cProd).slice(0, 60) : null),
+      external_id: externalId,
       preco_venda: precoVenda,
       custo: custo > 0 ? Number(custo.toFixed(4)) : null,
       estoque_atual: 0,
@@ -871,17 +987,20 @@ export function installComprasModule(ctx) {
         "id, nome, external_id, preco_venda, custo, estoque_atual, estoque_minimo, ativo, controla_estoque"
       )
       .single();
-    if (error) throw error;
 
-    // Normaliza para o shape usado no app
-    const produto = {
-      ...data,
-      codigo: data.external_id ? String(data.external_id) : "",
-      preco: Number(data.preco_venda || 0),
-      estoque: Number(data.estoque_atual || 0)
+    if (error) {
+      // Produto já criado em import anterior: busca e reutiliza
+      if (isUniqueViolation(error) && externalId) {
+        const existing = await findProdutoByExternalIdInDb(externalId);
+        if (existing) return { produto: existing, created: false };
+      }
+      throw error;
+    }
+
+    return {
+      produto: rememberProdutoInState(normalizeProdutoRow(data)),
+      created: true
     };
-    state().produtos = [...(state().produtos || []), produto];
-    return produto;
   }
 
   function setNotaNfeImportStatus(message, type = "") {
@@ -893,7 +1012,12 @@ export function installComprasModule(ctx) {
   }
 
   async function applyNfeImportToDraft(parsed, { criarProdutos = true } = {}) {
-    await ensureProdutosLoaded({ force: false });
+    // Sempre recarrega: reimportar o mesmo XML precisa ver o que a 1ª tentativa já criou
+    await Promise.all([
+      ensureProdutosLoaded({ force: true }),
+      loadFornecedores()
+    ]);
+
     const draft = state().notaEntradaModal;
     if (!draft || draft.status === "lancada" || draft.status === "cancelada") {
       throw new Error("Só é possível importar XML em nota nova ou rascunho.");
@@ -920,16 +1044,15 @@ export function installComprasModule(ctx) {
 
     for (const nfeItem of parsed.itens || []) {
       const ean = normalizeEanCode(nfeItem.ean);
-      let produto = ean ? findProdutoByEan(ean) : null;
+      let produto = await findProdutoByEanOrCode(ean, nfeItem.cProd);
 
-      if (!produto && criarProdutos) {
-        // Cria mesmo sem EAN, usando cProd como código interno
-        if (ean || nfeItem.cProd || nfeItem.descricao) {
-          produto = await createProdutoFromNfeItem(nfeItem);
-          created += 1;
-        }
-      } else if (produto) {
+      if (produto) {
         matched += 1;
+      } else if (criarProdutos && (ean || nfeItem.cProd || nfeItem.descricao)) {
+        const result = await createProdutoFromNfeItem(nfeItem);
+        produto = result.produto;
+        if (result.created) created += 1;
+        else if (produto) matched += 1;
       }
 
       if (!ean) withoutEan += 1;
