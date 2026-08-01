@@ -4237,6 +4237,118 @@ function isCaixaOpen() {
   return Boolean(els.caixaModal && !els.caixaModal.classList.contains("hidden"));
 }
 
+/** Normaliza teclas de atalho (F2/F4/F8/Esc/Enter) em diferentes browsers/teclados. */
+function getShortcutKeyId(event) {
+  if (!event) return "";
+  const key = String(event.key || "");
+  const code = String(event.code || "");
+  const kc = Number(event.keyCode || event.which || 0);
+
+  if (/^F\d{1,2}$/i.test(key)) return key.toUpperCase();
+  if (/^F\d{1,2}$/i.test(code)) return code.toUpperCase();
+
+  // Fallback por keyCode (alguns ambientes reportam key genérico)
+  if (kc === 113) return "F2";
+  if (kc === 115) return "F4";
+  if (kc === 119) return "F8";
+  if (kc === 27 || key === "Escape" || key === "Esc") return "Escape";
+  if (kc === 13 || key === "Enter") return "Enter";
+
+  return key;
+}
+
+/**
+ * Atalhos do PDV/Caixa.
+ * Usa capture=true para ganhar prioridade sobre inputs e o browser.
+ * Retorna true se consumiu o evento.
+ */
+function handleCaixaKeyboardShortcut(event) {
+  if (!isCaixaOpen()) return false;
+
+  // Scanner de barras por cima do caixa: só Esc fecha o scanner
+  if (barcodeScannerState?.open) {
+    if (getShortcutKeyId(event) === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeBarcodeScannerModal().catch(() => {});
+      return true;
+    }
+    return false;
+  }
+
+  // Outro modal empilhado por cima (ex.: scanner, lightbox, cliente rápido)
+  const blockingModal = document.querySelector(
+    ".modal-overlay:not(.hidden), #imageLightbox:not(.hidden), #novoClienteRapidoModal:not(.hidden)"
+  );
+  if (blockingModal && !els.caixaModal?.contains(blockingModal)) {
+    // Esc nos modais empilhados fica com o handler deles
+    return false;
+  }
+
+  const k = getShortcutKeyId(event);
+
+  if (k === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeCaixaModal();
+    return true;
+  }
+
+  if (k === "F2") {
+    event.preventDefault();
+    event.stopPropagation();
+    els.caixaProdutoSearch?.focus();
+    els.caixaProdutoSearch?.select?.();
+    return true;
+  }
+
+  if (k === "F4") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (state.novoDocumentoSaving) {
+      showToast("Aguarde, finalizando venda…");
+      return true;
+    }
+    finalizeCaixaVenda().catch((error) => {
+      showToast(error.message || "Erro ao finalizar venda", "error");
+    });
+    return true;
+  }
+
+  if (k === "F8") {
+    event.preventDefault();
+    event.stopPropagation();
+    const itens = getCaixaCartItens();
+    if (!itens.length) {
+      showToast("Carrinho já está vazio");
+      els.caixaProdutoSearch?.focus();
+      return true;
+    }
+    if (window.confirm("Limpar o carrinho?")) {
+      state.novoDocumentoModal.itens = [];
+      renderCaixaCart();
+      renderCaixaLastProductPreview(null);
+      showToast("Carrinho limpo");
+      els.caixaProdutoSearch?.focus();
+    }
+    return true;
+  }
+
+  // Ctrl/Cmd + Enter também finaliza (atalho extra, útil se F4 for capturado pelo SO)
+  if (k === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!state.novoDocumentoSaving) {
+      finalizeCaixaVenda().catch((error) => {
+        showToast(error.message || "Erro ao finalizar venda", "error");
+      });
+    }
+    return true;
+  }
+
+  return false;
+}
+
 /** Estado do scanner de código de barras (câmera). */
 const barcodeScannerState = {
   open: false,
@@ -18037,7 +18149,11 @@ function attachEvents() {
       renderCaixaProdutoResults(els.caixaProdutoSearch.value || "");
     });
     els.caixaProdutoSearch.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
+      // F2/F4/F8/Esc tratados no handler global (capture)
+      const sk = getShortcutKeyId(event);
+      if (sk === "F2" || sk === "F4" || sk === "F8" || sk === "Escape") return;
+      if (sk === "Enter" && (event.ctrlKey || event.metaKey)) return;
+      if (sk !== "Enter") return;
       event.preventDefault();
       handleCaixaSearchSubmit();
     });
@@ -18144,44 +18260,14 @@ function attachEvents() {
       applyEmpresaTipoPresetToForm(els.empresaConfigTipoEmpresa.value);
     });
   }
-  document.addEventListener("keydown", (event) => {
-    // Esc fecha o scanner de barras com prioridade
-    if (event.key === "Escape" && barcodeScannerState.open) {
-      event.preventDefault();
-      closeBarcodeScannerModal().catch(() => {});
-      return;
-    }
-    if (!isCaixaOpen()) return;
-    // Atalhos do PDV (não dispara se estiver digitando em outro modal empilhado)
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeCaixaModal();
-      return;
-    }
-    if (event.key === "F2") {
-      event.preventDefault();
-      els.caixaProdutoSearch?.focus();
-      els.caixaProdutoSearch?.select?.();
-      return;
-    }
-    if (event.key === "F4") {
-      event.preventDefault();
-      if (!state.novoDocumentoSaving) {
-        finalizeCaixaVenda().catch((error) => {
-          showToast(error.message || "Erro ao finalizar venda", "error");
-        });
-      }
-      return;
-    }
-    if (event.key === "F8") {
-      event.preventDefault();
-      if (getCaixaCartItens().length && window.confirm("Limpar o carrinho?")) {
-        state.novoDocumentoModal.itens = [];
-        renderCaixaCart();
-        els.caixaProdutoSearch?.focus();
-      }
-    }
-  });
+  // Atalhos do PDV em capture: garante F2/F4/F8/Esc mesmo com foco no input
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      handleCaixaKeyboardShortcut(event);
+    },
+    true
+  );
 
   async function openNovoOrcamentoRapido() {
     try {
