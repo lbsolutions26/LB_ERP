@@ -3070,7 +3070,9 @@ table thead input {
   gap: 0.55rem;
 }
 
-/* Seletor de produto em tela cheia (não fecha o pedido) */
+/* Seletor de produto em tela cheia (não fecha o pedido).
+   Acima de .modal-overlay (200) e .modal-overlay--stack (220),
+   pois o painel é movido para o body ao abrir. */
 .produto-combo-panel--sheet {
   position: fixed !important;
   inset: 0;
@@ -3078,7 +3080,7 @@ table thead input {
   right: 0;
   top: 0;
   bottom: 0;
-  z-index: 70;
+  z-index: 230;
   width: 100%;
   max-width: none;
   height: 100%;
