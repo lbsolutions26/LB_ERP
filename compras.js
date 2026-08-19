@@ -4099,7 +4099,8 @@ export function installComprasModule(ctx) {
     }
     if (e.notaEntradaModal) {
       e.notaEntradaModal.addEventListener("click", (ev) => {
-        if (ev.target === e.notaEntradaModal) closeNotaModal();
+        // Tela cheia: clique no fundo não fecha (evita perder XML/itens/parcelas).
+        ev.stopPropagation();
       });
     }
     if (e.notaEntradaAddItemBtn) {
@@ -4394,7 +4395,7 @@ export function installComprasModule(ctx) {
     }
     if (e.despesaModal) {
       e.despesaModal.addEventListener("click", (ev) => {
-        if (ev.target === e.despesaModal) closeDespesaModal();
+        ev.stopPropagation();
       });
     }
     if (e.despesaForm) {

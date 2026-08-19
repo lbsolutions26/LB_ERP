@@ -5877,15 +5877,32 @@ tr.is-clickable-row:hover {
 }
 
 /* Telas de criação em página cheia (pedido, orçamento, cliente, despesa, nota, produto, estoque). */
-.modal-overlay.modal-overlay--fullscreen {
+.modal-overlay.modal-overlay--fullscreen,
+#novoDocumentoModal,
+#clienteModal,
+#despesaModal,
+#notaEntradaModal,
+#produtoModal,
+#estoqueMovimentoModal {
   padding: 0;
   place-items: stretch;
   align-items: stretch;
+  justify-items: stretch;
   grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   background: var(--bg-soft);
 }
 
-.modal-overlay.modal-overlay--fullscreen .modal-card {
+.modal-overlay.modal-overlay--fullscreen .modal-card,
+#novoDocumentoModal .modal-card,
+#clienteModal .modal-card,
+#despesaModal .modal-card,
+#notaEntradaModal .modal-card,
+#produtoModal .modal-card,
+#estoqueMovimentoModal .modal-card,
+#notaEntradaModal .modal-card.modal-nota-card,
+#produtoModal .modal-card.modal-produto-card,
+#novoDocumentoModal .modal-card.modal-documento-card {
   width: 100%;
   max-width: none;
   height: 100%;
@@ -5900,7 +5917,13 @@ tr.is-clickable-row:hover {
   padding: 0;
 }
 
-.modal-overlay.modal-overlay--fullscreen .modal-head {
+.modal-overlay.modal-overlay--fullscreen .modal-head,
+#novoDocumentoModal .modal-head,
+#clienteModal .modal-head,
+#despesaModal .modal-head,
+#notaEntradaModal .modal-head,
+#produtoModal .modal-head,
+#estoqueMovimentoModal .modal-head {
   flex-shrink: 0;
   position: relative;
   top: auto;
@@ -5928,7 +5951,13 @@ tr.is-clickable-row:hover {
 }
 
 .modal-overlay.modal-overlay--fullscreen .modal-card > form,
-.modal-overlay.modal-overlay--fullscreen .modal-card > .nota-entrada-form {
+.modal-overlay.modal-overlay--fullscreen .modal-card > .nota-entrada-form,
+#novoDocumentoModal .modal-card > form,
+#clienteModal .modal-card > form,
+#despesaModal .modal-card > form,
+#notaEntradaModal .modal-card > .nota-entrada-form,
+#produtoModal .modal-card > form,
+#estoqueMovimentoModal .modal-card > form {
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -5972,7 +6001,13 @@ tr.is-clickable-row:hover {
   grid-column: 1 / -1;
 }
 
-body:has(.modal-overlay--fullscreen:not(.hidden)) {
+body:has(.modal-overlay--fullscreen:not(.hidden)),
+body:has(#novoDocumentoModal:not(.hidden)),
+body:has(#clienteModal:not(.hidden)),
+body:has(#despesaModal:not(.hidden)),
+body:has(#notaEntradaModal:not(.hidden)),
+body:has(#produtoModal:not(.hidden)),
+body:has(#estoqueMovimentoModal:not(.hidden)) {
   overflow: hidden;
 }
 

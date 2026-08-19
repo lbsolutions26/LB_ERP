@@ -1,4 +1,4 @@
-import { installComprasModule } from "./compras.js";
+import { installComprasModule } from "./compras.js?v=20260819noBackdropClose";
 import { installCalendarioModule } from "./calendario.js";
 
 let supabaseClient;
@@ -2156,6 +2156,40 @@ function getNovoDocumentoPagamentoState() {
   };
 }
 
+function pedidoTemFormaPagamento(pagamentoState = null, parcelasEditadas = null) {
+  const pag = pagamentoState || getNovoDocumentoPagamentoState();
+  if (String(pag.formaPagamentoId || "").trim()) return true;
+  const parcelas = Array.isArray(parcelasEditadas)
+    ? parcelasEditadas
+    : state.novoDocumentoModal?.parcelasEditadas;
+  if (!Array.isArray(parcelas)) return false;
+  return parcelas.some((parcela) => String(parcela?.formaPagamentoId || "").trim());
+}
+
+/** Pedido com forma de pagamento sai de Aberto para Fechado (baixa estoque). */
+function resolvePedidoStatusComPagamento(status, { tipo, pagamentoState, parcelasEditadas } = {}) {
+  const current = String(status || "aberto").toLowerCase();
+  const docTipo = tipo || state.novoDocumentoModal?.tipo;
+  if (docTipo !== "pedido") return current || "aberto";
+  if (current === "cancelado" || current === "fechado") return current;
+  if (!pedidoTemFormaPagamento(pagamentoState, parcelasEditadas)) return current || "aberto";
+  return "fechado";
+}
+
+function maybePromotePedidoStatusToFechado() {
+  const draft = state.novoDocumentoModal;
+  if (!draft || draft.tipo !== "pedido") return false;
+  const next = resolvePedidoStatusComPagamento(draft.status, {
+    tipo: draft.tipo,
+    pagamentoState: getNovoDocumentoPagamentoState(),
+    parcelasEditadas: draft.parcelasEditadas
+  });
+  if (next !== "fechado" || String(draft.status || "").toLowerCase() === "fechado") return false;
+  draft.status = "fechado";
+  if (els.novoDocumentoStatusSelect) els.novoDocumentoStatusSelect.value = "fechado";
+  return true;
+}
+
 function setNovoDocumentoPagamentoField(field, value, options = {}) {
   const current = getNovoDocumentoPagamentoState();
   let nextValue = value;
@@ -2180,6 +2214,10 @@ function setNovoDocumentoPagamentoField(field, value, options = {}) {
     ...current,
     [field]: nextValue
   };
+
+  if (field === "formaPagamentoId") {
+    maybePromotePedidoStatusToFechado();
+  }
 
   if (options.skipRender) {
     updateNovoDocumentoPagamentoResumoOnly();
@@ -4184,7 +4222,7 @@ function renderNovoDocumentoModal() {
   if (els.novoDocumentoModalSubtitle) {
     if (isConversao) {
       els.novoDocumentoModalSubtitle.textContent =
-        "Dados copiados do orçamento. Ajuste o pagamento se precisar e salve para gerar o pedido.";
+        "Dados copiados do orçamento. Informe a forma de pagamento e salve — o pedido fecha automaticamente e baixa o estoque.";
     } else {
       const tipoLabel = state.novoDocumentoModal.tipo === "orcamento" ? "orçamento" : "pedido";
       els.novoDocumentoModalSubtitle.textContent = isEdit && state.novoDocumentoModal.fotoUrl
@@ -6251,7 +6289,7 @@ async function convertOrcamentoToPedido(orcamentoId) {
     tipo: "pedido",
     documentoId: null,
     clienteId: documento.cliente_id ? String(documento.cliente_id) : "",
-    status: "aberto",
+    status: pedidoTemFormaPagamento(pagamento) ? "fechado" : "aberto",
     observacoes: documento.observacoes || "",
     dataEmissao: formatDateInput(new Date()),
     fotoUrl,
@@ -8022,7 +8060,7 @@ async function saveNovoDocumento(event, options = {}) {
       ? clienteIdFromDraft
       : clienteIdFromForm;
     const clienteId = Number.isFinite(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
-    const status = String(
+    let status = String(
       draft.status ||
         (formData ? formData.get("status") : "") ||
         (fromCaixa ? ui.default_pedido_status : "aberto") ||
@@ -8040,6 +8078,20 @@ async function saveNovoDocumento(event, options = {}) {
     ).trim();
     const itens = getDocumentoItensPayload();
     const pagamentoState = getNovoDocumentoPagamentoState();
+    const statusAntesPagamento = status;
+    status = resolvePedidoStatusComPagamento(status, {
+      tipo: draft.tipo,
+      pagamentoState,
+      parcelasEditadas: draft.parcelasEditadas
+    });
+    const statusAutoFechado =
+      draft.tipo === "pedido" &&
+      status === "fechado" &&
+      String(statusAntesPagamento || "").toLowerCase() !== "fechado";
+    draft.status = status;
+    if (els.novoDocumentoStatusSelect && draft.tipo === "pedido") {
+      els.novoDocumentoStatusSelect.value = status;
+    }
 
     if (!itens.length) {
       throw new Error("Adicione ao menos um item antes de salvar.");
@@ -8315,8 +8367,9 @@ async function saveNovoDocumento(event, options = {}) {
     }
 
     const pedidoLabel = getEmpresaUiProfile().pedido_label || "Pedido";
+    const fechadoHint = statusAutoFechado ? " Status Fechado (forma de pagamento informada)." : "";
     if (conversaoMsg) {
-      showToast(`${pedidoLabel} #${documentoId} criado a partir do orçamento.${conversaoMsg}`);
+      showToast(`${pedidoLabel} #${documentoId} criado a partir do orçamento.${conversaoMsg}${fechadoHint}`);
     } else {
       showToast(
         draft.tipo === "orcamento"
@@ -8324,10 +8377,10 @@ async function saveNovoDocumento(event, options = {}) {
             ? "Orcamento atualizado"
             : "Orcamento salvo"
           : isEdit
-            ? `${pedidoLabel} atualizado`
+            ? `${pedidoLabel} atualizado${fechadoHint}`
             : fromCaixa
               ? `${pedidoLabel} #${documentoId} finalizado`
-              : `${pedidoLabel} salvo`
+              : `${pedidoLabel} salvo${fechadoHint}`
       );
     }
     await refreshAll();
@@ -17976,7 +18029,8 @@ function attachEvents() {
   }
   if (els.clienteModal) {
     els.clienteModal.addEventListener("click", (event) => {
-      if (event.target === els.clienteModal) closeClienteModal();
+      // Tela cheia: clique no fundo não fecha (evita perder o cadastro).
+      event.stopPropagation();
     });
   }
 
@@ -18320,10 +18374,7 @@ function attachEvents() {
 
   if (els.produtoModal) {
     els.produtoModal.addEventListener("click", (event) => {
-      if (event.target === els.produtoModal) {
-        setProdutoFormMode({ editing: false });
-        closeProdutoModal();
-      }
+      event.stopPropagation();
     });
   }
 
@@ -18351,7 +18402,7 @@ function attachEvents() {
   }
   if (els.estoqueMovimentoModal) {
     els.estoqueMovimentoModal.addEventListener("click", (event) => {
-      if (event.target === els.estoqueMovimentoModal) closeEstoqueMovimentoModal();
+      event.stopPropagation();
     });
   }
   if (els.estoqueMovimentoForm) {
@@ -18656,9 +18707,8 @@ function attachEvents() {
 
   if (els.novoDocumentoModal) {
     els.novoDocumentoModal.addEventListener("click", (event) => {
-      if (event.target === els.novoDocumentoModal) {
-        closeNovoDocumentoModal();
-      }
+      // Tela cheia: clique fora do card não fecha (evita perder itens/pagamento).
+      event.stopPropagation();
     });
   }
 
@@ -18921,6 +18971,7 @@ function attachEvents() {
       if (!field) return;
       const value = target.value;
       atualizarParcelaEditavel(index, field, value);
+      if (field === "formaPagamentoId") maybePromotePedidoStatusToFechado();
     };
     els.novoDocumentoParcelasList.addEventListener("input", handleParcelaField);
     els.novoDocumentoParcelasList.addEventListener("change", handleParcelaField);
