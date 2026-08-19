@@ -5876,6 +5876,125 @@ tr.is-clickable-row:hover {
   z-index: 220;
 }
 
+/* Telas de criação em página cheia (pedido, orçamento, cliente, despesa, nota, produto, estoque). */
+.modal-overlay.modal-overlay--fullscreen {
+  padding: 0;
+  place-items: stretch;
+  align-items: stretch;
+  grid-template-rows: minmax(0, 1fr);
+  background: var(--bg-soft);
+}
+
+.modal-overlay.modal-overlay--fullscreen .modal-card {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.modal-overlay.modal-overlay--fullscreen .modal-head {
+  flex-shrink: 0;
+  position: relative;
+  top: auto;
+  z-index: 8;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0.9rem 1.25rem;
+  padding-top: calc(0.9rem + env(safe-area-inset-top, 0px));
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-overlay.modal-overlay--fullscreen .modal-documento-head {
+  background: var(--bg-soft);
+  padding: 0.9rem 1.25rem;
+  padding-top: calc(0.9rem + env(safe-area-inset-top, 0px));
+  margin: 0;
+}
+
+.modal-overlay.modal-overlay--fullscreen .modal-head h3 {
+  margin: 0;
+  font-family: "Sora", sans-serif;
+  font-size: 1.22rem;
+}
+
+.modal-overlay.modal-overlay--fullscreen .modal-card > form,
+.modal-overlay.modal-overlay--fullscreen .modal-card > .nota-entrada-form {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 0;
+  padding: 1rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+.modal-overlay.modal-overlay--fullscreen .documento-modal-footer,
+.modal-overlay.modal-overlay--fullscreen .produto-form-actions,
+.modal-overlay.modal-overlay--fullscreen .quick-client-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  background: linear-gradient(180deg, rgba(251, 248, 241, 0) 0%, var(--bg-soft) 32%);
+  padding: 0.9rem 0 0.2rem;
+  margin-top: 0.5rem;
+}
+
+#clienteModal.modal-overlay--fullscreen .quick-client-form,
+#despesaModal.modal-overlay--fullscreen .estoque-movimento-form,
+#estoqueMovimentoModal.modal-overlay--fullscreen .estoque-movimento-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 0.85rem 1.25rem;
+  max-width: 960px;
+  width: 100%;
+  margin-inline: auto;
+}
+
+#clienteModal.modal-overlay--fullscreen .quick-client-actions,
+#despesaModal.modal-overlay--fullscreen .despesa-classificacao-block,
+#despesaModal.modal-overlay--fullscreen .checkbox-inline,
+#despesaModal.modal-overlay--fullscreen .documento-modal-footer,
+#despesaModal.modal-overlay--fullscreen label:has(textarea),
+#estoqueMovimentoModal.modal-overlay--fullscreen .checkbox-inline,
+#estoqueMovimentoModal.modal-overlay--fullscreen .documento-modal-footer,
+#estoqueMovimentoModal.modal-overlay--fullscreen label:has(textarea),
+#estoqueMovimentoModal.modal-overlay--fullscreen #estoqueMovimentoSaldoInfo {
+  grid-column: 1 / -1;
+}
+
+body:has(.modal-overlay--fullscreen:not(.hidden)) {
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .modal-overlay.modal-overlay--fullscreen .modal-head,
+  .modal-overlay.modal-overlay--fullscreen .modal-documento-head {
+    padding: 0.75rem 0.9rem;
+    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  }
+
+  .modal-overlay.modal-overlay--fullscreen .modal-card > form,
+  .modal-overlay.modal-overlay--fullscreen .modal-card > .nota-entrada-form {
+    padding: 0.85rem 0.9rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  #clienteModal.modal-overlay--fullscreen .quick-client-form,
+  #despesaModal.modal-overlay--fullscreen .estoque-movimento-form,
+  #estoqueMovimentoModal.modal-overlay--fullscreen .estoque-movimento-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Contas a pagar: badge pessoal x empresa */
 .gasto-badge {
   display: inline-block;
