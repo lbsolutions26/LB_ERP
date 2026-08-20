@@ -5594,6 +5594,92 @@ textarea:focus {
   letter-spacing: 0.02em;
 }
 
+.nota-item-main {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.25fr) minmax(220px, 1.85fr) 88px 112px 112px;
+  gap: 0.5rem 0.55rem;
+  align-items: start;
+}
+
+.nota-item-main label,
+.nota-item-row > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.nota-item-main input,
+.nota-item-main select,
+.nota-item-row > label input,
+.nota-item-row > label select {
+  width: 100%;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  box-sizing: border-box;
+  border: 1px solid #cabfa9;
+  border-radius: 10px;
+  padding: 0 0.65rem;
+  font: inherit;
+  background: #fff;
+  color: var(--ink);
+}
+
+.nota-item-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+}
+
+.nota-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-right: auto;
+}
+
+.nota-item-meta span {
+  background: rgba(22, 93, 89, 0.08);
+  border-radius: 999px;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #0f4744;
+}
+
+.nota-item-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+}
+
+.nota-item-depara-btn {
+  min-height: 2.35rem;
+  font-weight: 700;
+  border: 1px solid rgba(22, 93, 89, 0.38);
+  background: #e8f3f1;
+  color: #0f4744;
+}
+
+.nota-item-depara-btn:hover {
+  background: #d7ece8;
+  border-color: rgba(22, 93, 89, 0.55);
+}
+
+.nota-item-tools .checkbox-inline {
+  margin: 0;
+  min-height: 2.35rem;
+  padding: 0 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #faf8f3;
+}
+
 /* ===== De/para NF-e × catálogo ===== */
 .nfe-depara-card {
   width: min(920px, 100%);
@@ -5757,10 +5843,8 @@ textarea:focus {
 }
 .nota-item-row {
   display: grid;
-  grid-template-columns: minmax(140px, 1.4fr) minmax(140px, 1.6fr) 90px 110px 110px auto auto auto;
-  gap: 0.45rem;
-  align-items: end;
-  padding: 0.55rem;
+  gap: 0.55rem;
+  padding: 0.7rem 0.75rem;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
@@ -5768,7 +5852,7 @@ textarea:focus {
 .nota-item-row label {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.28rem;
   font-size: 0.78rem;
   color: var(--muted);
 }
@@ -5776,8 +5860,20 @@ textarea:focus {
   .nota-entrada-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .nota-item-row {
+  .nota-item-main {
     grid-template-columns: 1fr 1fr;
+  }
+  .nota-item-descricao {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .nota-item-main {
+    grid-template-columns: 1fr;
+  }
+  .nota-item-descricao {
+    grid-column: auto;
   }
 }
 

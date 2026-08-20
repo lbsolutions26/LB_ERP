@@ -1018,10 +1018,21 @@ export function installComprasModule(ctx) {
         parsed: null,
         fornecedorId: "",
         autoResolved: [],
-        pending: []
+        pending: [],
+        mode: "import",
+        itemRowId: ""
       };
+    } else {
+      if (!state().nfeDePara.mode) state().nfeDePara.mode = "import";
     }
     return state().nfeDePara;
+  }
+
+  function resetNfeDeParaChrome() {
+    const e = els();
+    if (e.nfeDeParaTitle) e.nfeDeParaTitle.textContent = "Vincular produtos da NF-e";
+    if (e.nfeDeParaConfirmBtn) e.nfeDeParaConfirmBtn.textContent = "Confirmar vínculos";
+    e.nfeDeParaAllCreateBtn?.classList.remove("hidden");
   }
 
   async function loadFornecedorProdutoMaps(fornecedorId) {
@@ -1215,13 +1226,26 @@ export function installComprasModule(ctx) {
     const e = els();
     const depara = ensureNfeDeParaState();
     depara.open = true;
+    const itemMode = depara.mode === "item";
+    if (e.nfeDeParaTitle) {
+      e.nfeDeParaTitle.textContent = itemMode ? "Ajustar de/para deste item" : "Vincular produtos da NF-e";
+    }
+    if (e.nfeDeParaConfirmBtn) {
+      e.nfeDeParaConfirmBtn.textContent = itemMode ? "Aplicar vínculo" : "Confirmar vínculos";
+    }
+    e.nfeDeParaAllCreateBtn?.classList.toggle("hidden", itemMode);
     if (e.nfeDeParaSubtitle) {
       const auto = (depara.autoResolved || []).length;
       const pend = (depara.pending || []).length;
-      e.nfeDeParaSubtitle.textContent =
-        auto > 0
-          ? `${auto} item(ns) já reconhecido(s) automaticamente. Restam ${pend} para você indicar o de/para.`
-          : `Indique o destino de ${pend} item(ns) da NF. O vínculo fica salvo para este fornecedor.`;
+      if (itemMode) {
+        e.nfeDeParaSubtitle.textContent =
+          "Escolha o produto do catálogo (ou crie um novo). A descrição e o custo da NF não mudam. O vínculo fica salvo para este fornecedor.";
+      } else {
+        e.nfeDeParaSubtitle.textContent =
+          auto > 0
+            ? `${auto} item(ns) já reconhecido(s) automaticamente. Restam ${pend} para você indicar o de/para.`
+            : `Indique o destino de ${pend} item(ns) da NF. O vínculo fica salvo para este fornecedor.`;
+      }
     }
     renderNfeDeParaList();
     e.nfeDeParaModal?.classList.remove("hidden");
@@ -1231,7 +1255,98 @@ export function installComprasModule(ctx) {
     const e = els();
     const depara = ensureNfeDeParaState();
     depara.open = false;
+    depara.mode = "import";
+    depara.itemRowId = "";
+    resetNfeDeParaChrome();
     e.nfeDeParaModal?.classList.add("hidden");
+  }
+
+  async function persistNotaItemDePara(item) {
+    const draft = state().notaEntradaModal;
+    const fornecedorId = draft?.fornecedorId;
+    const produtoId = item?.produtoId;
+    const codigo = String(item?.cProd || item?.ean || "").trim();
+    if (!fornecedorId || !produtoId || !codigo) return;
+    await upsertFornecedorProdutoMap({
+      fornecedorId,
+      codigoFornecedor: item.cProd || item.ean,
+      ean: item.ean,
+      produtoId,
+      descricaoFornecedor: item.descricao
+    });
+  }
+
+  function openNotaItemDePara(rowId) {
+    const draft = state().notaEntradaModal;
+    const item = (draft?.itens || []).find((i) => i.rowId === rowId);
+    if (!item) return;
+    if (!draft.fornecedorId) {
+      showToast("Selecione o fornecedor antes de ajustar o de/para.", "error");
+      return;
+    }
+    const depara = ensureNfeDeParaState();
+    depara.mode = "item";
+    depara.itemRowId = rowId;
+    depara.parsed = draft.nfeImport || { chave: draft.chaveAcesso || "" };
+    depara.fornecedorId = draft.fornecedorId;
+    depara.autoResolved = [];
+    depara.statsBase = { matched: 0, mapped: 0 };
+    depara.pending = [
+      {
+        key: item.rowId,
+        cProd: item.cProd || "",
+        ean: item.ean || "",
+        descricao: item.descricao || "",
+        quantidade: Number(item.quantidade || 1),
+        valorUnitario: Number(item.valorUnitario || 0),
+        unidade: item.unidade || "",
+        action: item.produtoId ? "link" : "create",
+        produtoId: item.produtoId || "",
+        filter: ""
+      }
+    ];
+    openNfeDeParaModal();
+  }
+
+  async function confirmSingleItemDePara() {
+    const depara = ensureNfeDeParaState();
+    const draft = state().notaEntradaModal;
+    const rowId = depara.itemRowId;
+    const pending = depara.pending?.[0];
+    const item = (draft?.itens || []).find((i) => i.rowId === rowId);
+    if (!pending || !item) throw new Error("Item da nota não encontrado para o de/para.");
+    if (pending.action === "link" && !pending.produtoId) {
+      throw new Error("Selecione o produto do catálogo para vincular.");
+    }
+
+    let produto = null;
+    if (pending.action === "link") {
+      produto =
+        (state().produtos || []).find((p) => String(p.id) === String(pending.produtoId)) ||
+        null;
+      if (!produto) throw new Error("Produto vinculado não encontrado no catálogo.");
+    } else {
+      const result = await createProdutoFromNfeItem({
+        ean: pending.ean || item.ean,
+        cProd: pending.cProd || item.cProd,
+        descricao: pending.descricao || item.descricao,
+        valorUnitario: pending.valorUnitario || item.valorUnitario,
+        unidade: pending.unidade || item.unidade
+      });
+      produto = result.produto;
+      if (result.created) {
+        state().produtosLoaded = false;
+        await ensureProdutosLoaded({ force: true });
+      }
+    }
+
+    item.produtoId = produto?.id ? String(produto.id) : "";
+    if (pending.cProd) item.cProd = pending.cProd;
+    if (pending.ean) item.ean = pending.ean;
+    await persistNotaItemDePara(item);
+    closeNfeDeParaModal();
+    renderNotaItensGrid();
+    showToast("De/para aplicado nesta linha e salvo para o fornecedor.");
   }
 
   function applyNfeHeaderToDraft(parsed, fornecedorId) {
@@ -1451,6 +1566,10 @@ export function installComprasModule(ctx) {
 
   async function confirmNfeDePara() {
     const depara = ensureNfeDeParaState();
+    if (depara.mode === "item") {
+      await confirmSingleItemDePara();
+      return;
+    }
     const pending = depara.pending || [];
     const parsed = depara.parsed;
     const fornecedorId = depara.fornecedorId;
@@ -3416,44 +3535,61 @@ export function installComprasModule(ctx) {
     e.notaEntradaItensGrid.innerHTML = (draft.itens || [])
       .map((item, index) => {
         const total = getNotaItemTotal(item);
+        const fromXml = Boolean(item.ean || item.cProd);
+        const deparaLabel = item.produtoId ? "Verificar de/para" : "Ajustar de/para";
+        const metaParts = [];
+        if (item.ean) metaParts.push(`EAN ${escapeHtml(item.ean)}`);
+        if (item.cProd) metaParts.push(`cProd ${escapeHtml(item.cProd)}`);
+        if (item.unidade) metaParts.push(escapeHtml(item.unidade));
         return `
         <div class="nota-item-row" data-nota-row="${escapeHtml(item.rowId)}">
-          <label>
-            Produto
-            <select data-nota-field="produtoId" data-row="${escapeHtml(item.rowId)}" ${readonly ? "disabled" : ""}>
-              ${fillProdutoOptions(item.produtoId)}
-            </select>
-          </label>
-          <label>
-            Descrição
-            <input data-nota-field="descricao" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.descricao || "")}" ${readonly ? "readonly" : ""} />
-            ${item.ean || item.cProd
-              ? `<span class="nota-item-ean">${item.ean ? `EAN ${escapeHtml(item.ean)}` : ""}${item.ean && item.cProd ? " · " : ""}${item.cProd ? `cProd ${escapeHtml(item.cProd)}` : ""}</span>`
-              : ""}
-          </label>
-          <label>
-            Qtd
-            <input type="number" min="0" step="any" data-nota-field="quantidade" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.quantidade)}" ${readonly ? "readonly" : ""} />
-          </label>
-          <label>
-            Custo unit.
-            <input type="number" min="0" step="0.01" data-nota-field="valorUnitario" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.valorUnitario)}" ${readonly ? "readonly" : ""} />
-          </label>
-          <label>
-            Total
-            <input type="text" readonly data-nota-item-total value="${moeda.format(total)}" />
-          </label>
-          <label class="checkbox-inline">
-            <input type="checkbox" data-nota-field="atualizaEstoque" data-row="${escapeHtml(item.rowId)}" ${item.atualizaEstoque ? "checked" : ""} ${readonly ? "disabled" : ""} />
-            Estoque
-          </label>
-          <label class="checkbox-inline">
-            <input type="checkbox" data-nota-field="atualizaCusto" data-row="${escapeHtml(item.rowId)}" ${item.atualizaCusto ? "checked" : ""} ${readonly ? "disabled" : ""} />
-            Custo
-          </label>
-          ${!readonly
-            ? `<button type="button" class="btn btn-ghost" data-remove-nota-item="${escapeHtml(item.rowId)}" ${draft.itens.length <= 1 && index === 0 ? "disabled" : ""}>Remover</button>`
-            : ""}
+          <div class="nota-item-main">
+            <label class="nota-item-produto">
+              Produto
+              <select data-nota-field="produtoId" data-row="${escapeHtml(item.rowId)}" ${readonly ? "disabled" : ""}>
+                ${fillProdutoOptions(item.produtoId)}
+              </select>
+            </label>
+            <label class="nota-item-descricao">
+              Descrição
+              <input data-nota-field="descricao" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.descricao || "")}" ${readonly ? "readonly" : ""} />
+            </label>
+            <label>
+              Qtd
+              <input type="number" min="0" step="any" data-nota-field="quantidade" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.quantidade)}" ${readonly ? "readonly" : ""} />
+            </label>
+            <label>
+              Custo unit.
+              <input type="number" min="0" step="0.01" data-nota-field="valorUnitario" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.valorUnitario)}" ${readonly ? "readonly" : ""} />
+            </label>
+            <label>
+              Total
+              <input type="text" readonly data-nota-item-total value="${moeda.format(total)}" />
+            </label>
+          </div>
+          <div class="nota-item-foot">
+            <div class="nota-item-meta">
+              ${metaParts.length
+                ? metaParts.map((part) => `<span>${part}</span>`).join("")
+                : `<span>${fromXml ? "Item da NF-e" : "Item avulso"}</span>`}
+            </div>
+            <div class="nota-item-tools">
+              ${!readonly
+                ? `<button type="button" class="btn nota-item-depara-btn" data-nota-depara="${escapeHtml(item.rowId)}" title="Vincular este item da NF ao produto do catálogo">${deparaLabel}</button>`
+                : ""}
+              <label class="checkbox-inline">
+                <input type="checkbox" data-nota-field="atualizaEstoque" data-row="${escapeHtml(item.rowId)}" ${item.atualizaEstoque ? "checked" : ""} ${readonly ? "disabled" : ""} />
+                Estoque
+              </label>
+              <label class="checkbox-inline">
+                <input type="checkbox" data-nota-field="atualizaCusto" data-row="${escapeHtml(item.rowId)}" ${item.atualizaCusto ? "checked" : ""} ${readonly ? "disabled" : ""} />
+                Custo
+              </label>
+              ${!readonly
+                ? `<button type="button" class="btn btn-ghost" data-remove-nota-item="${escapeHtml(item.rowId)}" ${draft.itens.length <= 1 && index === 0 ? "disabled" : ""}>Remover</button>`
+                : ""}
+            </div>
+          </div>
         </div>`;
       })
       .join("");
@@ -3619,6 +3755,14 @@ export function installComprasModule(ctx) {
       if (error) throw error;
       notaId = data.id;
       draft.notaId = notaId;
+    }
+
+    for (const item of itens) {
+      try {
+        await persistNotaItemDePara(item);
+      } catch (mapErr) {
+        console.warn("Falha ao gravar de/para ao salvar a nota", mapErr);
+      }
     }
 
     const itensPayload = itens.map((item) => ({
@@ -4131,16 +4275,19 @@ export function installComprasModule(ctx) {
 
     // De/para NF-e
     const closeDePara = () => {
+      const mode = ensureNfeDeParaState().mode;
       closeNfeDeParaModal();
-      setNotaNfeImportStatus(
-        "De/para cancelado. Itens reconhecidos automaticamente (se houver) ficaram na nota; reimporte o XML para mapear o restante.",
-        ""
-      );
+      if (mode !== "item") {
+        setNotaNfeImportStatus(
+          "De/para cancelado. Itens reconhecidos automaticamente (se houver) ficaram na nota; use o botão da linha ou reimporte o XML.",
+          ""
+        );
+      }
     };
     e.nfeDeParaCloseBtn?.addEventListener("click", closeDePara);
     e.nfeDeParaCancelBtn?.addEventListener("click", closeDePara);
     e.nfeDeParaModal?.addEventListener("click", (ev) => {
-      if (ev.target === e.nfeDeParaModal) closeDePara();
+      ev.stopPropagation();
     });
     e.nfeDeParaAllCreateBtn?.addEventListener("click", () => {
       const depara = ensureNfeDeParaState();
@@ -4305,8 +4452,16 @@ export function installComprasModule(ctx) {
         if (field === "produtoId" && t.value) {
           const prod = (state().produtos || []).find((p) => String(p.id) === String(t.value));
           if (prod) {
-            item.descricao = prod.nome;
-            item.valorUnitario = Number(prod.custo || prod.preco || 0);
+            const fromXml = Boolean(item.cProd || item.ean);
+            if (!fromXml) {
+              if (!String(item.descricao || "").trim()) item.descricao = prod.nome;
+              if (!Number(item.valorUnitario)) {
+                item.valorUnitario = Number(prod.custo || prod.preco || 0);
+              }
+            }
+            persistNotaItemDePara(item).catch((err) => {
+              console.warn("Falha ao gravar de/para da linha", err);
+            });
             renderNotaItensGrid();
             return;
           }
@@ -4327,6 +4482,11 @@ export function installComprasModule(ctx) {
         }
       });
       e.notaEntradaItensGrid.addEventListener("click", (ev) => {
+        const deparaBtn = ev.target?.closest?.("[data-nota-depara]");
+        if (deparaBtn) {
+          openNotaItemDePara(deparaBtn.getAttribute("data-nota-depara") || "");
+          return;
+        }
         const btn = ev.target?.closest?.("[data-remove-nota-item]");
         if (!btn) return;
         const rowId = btn.getAttribute("data-remove-nota-item");

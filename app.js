@@ -1,4 +1,4 @@
-import { installComprasModule } from "./compras.js?v=20260819noBackdropClose";
+import { installComprasModule } from "./compras.js?v=20260820notaDeParaLinha";
 import { installCalendarioModule } from "./calendario.js";
 
 let supabaseClient;
