@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260820notaDeParaLinha" />
+    <link rel="stylesheet" href="styles.css?v=20260826fornecedorComboClick" />
   </head>
   <body>
     <div class="bg-glow bg-glow-1"></div>
@@ -2686,7 +2686,8 @@
             <input name="responsavel" id="despesaResponsavel" placeholder="Ex.: João, sócio, eu..." />
           </label>
           <label>Descrição / histórico<input name="descricao" required placeholder="Ex.: Aluguel, energia, frete avulso" /></label>
-          <label>Fornecedor
+          <div class="field-block">
+            <span class="documento-field-label">Fornecedor</span>
             <div class="fornecedor-combo" data-fornecedor-combo="despesa">
               <input type="hidden" name="fornecedor_id" id="despesaFornecedorSelect" value="" />
               <button type="button" class="fornecedor-combo-trigger" data-fornecedor-combo-trigger>
@@ -2698,7 +2699,7 @@
                 <div class="fornecedor-combo-options" data-fornecedor-combo-options></div>
               </div>
             </div>
-          </label>
+          </div>
           <label>Categoria<input name="categoria" placeholder="Ex.: Utilidades, Marketing" /></label>
           <label>Valor total (R$)<input name="valor" type="number" min="0.01" step="0.01" required /></label>
           <label>Data de emissão<input name="emissao" id="despesaEmissao" type="date" required /></label>
@@ -2740,7 +2741,8 @@
           <input type="hidden" id="contaPagarEditId" />
           <div class="nota-entrada-grid">
             <label>Título / número<input id="contaPagarEditTitulo" required /></label>
-            <label>Fornecedor
+            <div class="field-block">
+              <span class="documento-field-label">Fornecedor</span>
               <div class="fornecedor-combo" data-fornecedor-combo="contaEdit">
                 <input type="hidden" id="contaPagarEditFornecedor" value="" />
                 <button type="button" class="fornecedor-combo-trigger" data-fornecedor-combo-trigger>
@@ -2752,7 +2754,7 @@
                   <div class="fornecedor-combo-options" data-fornecedor-combo-options></div>
                 </div>
               </div>
-            </label>
+            </div>
             <label>Data de emissão<input id="contaPagarEditEmissao" type="date" required /></label>
             <label>Origem<input id="contaPagarEditOrigem" type="text" readonly /></label>
             <label id="contaPagarEditClassificacaoWrap">
@@ -2935,7 +2937,8 @@
           </div>
 
           <div class="nota-entrada-grid">
-            <label>Fornecedor
+            <div class="field-block">
+              <span class="documento-field-label">Fornecedor</span>
               <div class="fornecedor-combo" data-fornecedor-combo="nota">
                 <input type="hidden" id="notaEntradaFornecedor" value="" />
                 <button type="button" class="fornecedor-combo-trigger" data-fornecedor-combo-trigger>
@@ -2947,7 +2950,7 @@
                   <div class="fornecedor-combo-options" data-fornecedor-combo-options></div>
                 </div>
               </div>
-            </label>
+            </div>
             <label>Nº NF<input id="notaEntradaNumero" placeholder="12345" /></label>
             <label>Série<input id="notaEntradaSerie" placeholder="1" /></label>
             <label>Chave de acesso<input id="notaEntradaChave" placeholder="44 dígitos (opcional)" /></label>
@@ -3222,6 +3225,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app.js?v=20260820notaDeParaLinha"></script>
+    <script type="module" src="app.js?v=20260826fornecedorComboClick"></script>
   </body>
 </html>

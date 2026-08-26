@@ -3220,10 +3220,44 @@ export function installComprasModule(ctx) {
     setFornecedorComboValue(selectElOrKey, selected, emptyLabel);
   }
 
+  function resetFornecedorComboPanelPos(panel) {
+    if (!panel) return;
+    panel.style.position = "";
+    panel.style.left = "";
+    panel.style.right = "";
+    panel.style.top = "";
+    panel.style.width = "";
+    panel.style.zIndex = "";
+  }
+
+  function positionFornecedorComboPanel(root) {
+    const trigger = root.querySelector("[data-fornecedor-combo-trigger]");
+    const panel = root.querySelector("[data-fornecedor-combo-panel]");
+    if (!trigger || !panel) return;
+    const r = trigger.getBoundingClientRect();
+    const width = Math.max(r.width, 280);
+    let left = r.left;
+    if (left + width > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - width - 8);
+    }
+    const estimated = Math.min(360, window.innerHeight * 0.45);
+    let top = r.bottom + 6;
+    if (top + estimated > window.innerHeight - 8 && r.top > estimated + 8) {
+      top = Math.max(8, r.top - estimated - 6);
+    }
+    panel.style.position = "fixed";
+    panel.style.left = `${left}px`;
+    panel.style.right = "auto";
+    panel.style.top = `${top}px`;
+    panel.style.width = `${width}px`;
+    panel.style.zIndex = "240";
+  }
+
   function closeAllFornecedorCombos(exceptRoot = null) {
     document.querySelectorAll("[data-fornecedor-combo-panel]").forEach((panel) => {
       if (exceptRoot && exceptRoot.contains(panel)) return;
       panel.classList.add("hidden");
+      resetFornecedorComboPanelPos(panel);
     });
   }
 
@@ -3281,6 +3315,7 @@ export function installComprasModule(ctx) {
     const search = root.querySelector("[data-fornecedor-combo-search]");
     if (!panel) return;
     panel.classList.remove("hidden");
+    positionFornecedorComboPanel(root);
     if (search) {
       search.value = "";
       renderFornecedorComboOptions(root, "");
@@ -3366,7 +3401,7 @@ export function installComprasModule(ctx) {
       if (!t.closest("[data-fornecedor-combo]")) {
         closeAllFornecedorCombos();
       }
-    });
+    }, true);
 
     document.addEventListener("input", (ev) => {
       const t = ev.target;
@@ -4241,12 +4276,6 @@ export function installComprasModule(ctx) {
     if (e.closeNotaEntradaModalBtn) {
       e.closeNotaEntradaModalBtn.addEventListener("click", closeNotaModal);
     }
-    if (e.notaEntradaModal) {
-      e.notaEntradaModal.addEventListener("click", (ev) => {
-        // Tela cheia: clique no fundo não fecha (evita perder XML/itens/parcelas).
-        ev.stopPropagation();
-      });
-    }
     if (e.notaEntradaAddItemBtn) {
       e.notaEntradaAddItemBtn.addEventListener("click", () => {
         state().notaEntradaModal.itens.push(createNotaItem());
@@ -4286,9 +4315,6 @@ export function installComprasModule(ctx) {
     };
     e.nfeDeParaCloseBtn?.addEventListener("click", closeDePara);
     e.nfeDeParaCancelBtn?.addEventListener("click", closeDePara);
-    e.nfeDeParaModal?.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-    });
     e.nfeDeParaAllCreateBtn?.addEventListener("click", () => {
       const depara = ensureNfeDeParaState();
       for (const row of depara.pending || []) {
@@ -4552,11 +4578,6 @@ export function installComprasModule(ctx) {
     }
     if (e.closeDespesaModalBtn) {
       e.closeDespesaModalBtn.addEventListener("click", closeDespesaModal);
-    }
-    if (e.despesaModal) {
-      e.despesaModal.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-      });
     }
     if (e.despesaForm) {
       e.despesaForm.addEventListener("submit", async (ev) => {

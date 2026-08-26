@@ -1,4 +1,4 @@
-import { installComprasModule } from "./compras.js?v=20260820notaDeParaLinha";
+import { installComprasModule } from "./compras.js?v=20260826fornecedorComboClick";
 import { installCalendarioModule } from "./calendario.js";
 
 let supabaseClient;
@@ -1391,9 +1391,28 @@ function closeRecebimentoModal() {
   els.recebimentoModal.classList.add("hidden");
 }
 
+function positionNovoDocumentoClientePanel() {
+  const panel = els.novoDocumentoClientePanel;
+  const trigger = els.novoDocumentoClienteTrigger;
+  if (!panel || !trigger) return;
+  const r = trigger.getBoundingClientRect();
+  const width = Math.max(r.width, 280);
+  let left = r.left;
+  if (left + width > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - width - 8);
+  }
+  panel.style.position = "fixed";
+  panel.style.left = `${left}px`;
+  panel.style.right = "auto";
+  panel.style.top = `${r.bottom + 6}px`;
+  panel.style.width = `${width}px`;
+  panel.style.zIndex = "240";
+}
+
 function openNovoDocumentoClientePanel() {
   if (!els.novoDocumentoClientePanel) return;
   els.novoDocumentoClientePanel.classList.remove("hidden");
+  positionNovoDocumentoClientePanel();
   if (els.novoDocumentoClienteTrigger) {
     els.novoDocumentoClienteTrigger.setAttribute("aria-expanded", "true");
   }
@@ -1405,6 +1424,12 @@ function openNovoDocumentoClientePanel() {
 function closeNovoDocumentoClientePanel() {
   if (!els.novoDocumentoClientePanel) return;
   els.novoDocumentoClientePanel.classList.add("hidden");
+  els.novoDocumentoClientePanel.style.position = "";
+  els.novoDocumentoClientePanel.style.left = "";
+  els.novoDocumentoClientePanel.style.right = "";
+  els.novoDocumentoClientePanel.style.top = "";
+  els.novoDocumentoClientePanel.style.width = "";
+  els.novoDocumentoClientePanel.style.zIndex = "";
   if (els.novoDocumentoClienteTrigger) {
     els.novoDocumentoClienteTrigger.setAttribute("aria-expanded", "false");
   }
@@ -18027,12 +18052,6 @@ function attachEvents() {
   if (els.closeClienteModalBtn) {
     els.closeClienteModalBtn.addEventListener("click", closeClienteModal);
   }
-  if (els.clienteModal) {
-    els.clienteModal.addEventListener("click", (event) => {
-      // Tela cheia: clique no fundo não fecha (evita perder o cadastro).
-      event.stopPropagation();
-    });
-  }
 
   els.produtoForm.addEventListener("submit", async (event) => {
     try {
@@ -18372,12 +18391,6 @@ function attachEvents() {
     });
   }
 
-  if (els.produtoModal) {
-    els.produtoModal.addEventListener("click", (event) => {
-      event.stopPropagation();
-    });
-  }
-
   // ---- Estoque: views, filtros, modal e inventario ----
   for (const btn of els.estoqueViewButtons || []) {
     btn.addEventListener("click", async () => {
@@ -18399,11 +18412,6 @@ function attachEvents() {
   }
   if (els.closeEstoqueMovimentoModalBtn) {
     els.closeEstoqueMovimentoModalBtn.addEventListener("click", closeEstoqueMovimentoModal);
-  }
-  if (els.estoqueMovimentoModal) {
-    els.estoqueMovimentoModal.addEventListener("click", (event) => {
-      event.stopPropagation();
-    });
   }
   if (els.estoqueMovimentoForm) {
     els.estoqueMovimentoForm.addEventListener("submit", async (event) => {
@@ -18703,13 +18711,6 @@ function attachEvents() {
 
   if (els.closeNovoClienteRapidoModalBtn) {
     els.closeNovoClienteRapidoModalBtn.addEventListener("click", closeNovoClienteRapidoModal);
-  }
-
-  if (els.novoDocumentoModal) {
-    els.novoDocumentoModal.addEventListener("click", (event) => {
-      // Tela cheia: clique fora do card não fecha (evita perder itens/pagamento).
-      event.stopPropagation();
-    });
   }
 
   if (els.novoClienteRapidoModal) {

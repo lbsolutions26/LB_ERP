@@ -5826,12 +5826,18 @@ textarea:focus {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
 }
-.nota-entrada-grid label {
+.nota-entrada-grid label,
+.nota-entrada-grid .field-block,
+.estoque-movimento-form .field-block {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.field-block .documento-field-label {
+  font-weight: 600;
 }
 .nota-entrada-full {
   grid-column: 1 / -1;
@@ -5919,7 +5925,7 @@ tr.is-clickable-row:hover {
   left: 0;
   right: 0;
   top: calc(100% + 0.35rem);
-  z-index: 50;
+  z-index: 240;
   background: #fffdf8;
   border: 1px solid var(--line);
   border-radius: 14px;
