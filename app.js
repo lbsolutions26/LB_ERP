@@ -1,4 +1,4 @@
-import { installComprasModule } from "./compras.js?v=20260826fornecedorComboClick";
+import { installComprasModule } from "./compras.js?v=20260826notaProdutoBusy";
 import { installCalendarioModule } from "./calendario.js";
 
 let supabaseClient;
@@ -982,7 +982,7 @@ function showToast(message, type = "ok") {
   window.clearTimeout(showToast.timeoutId);
   showToast.timeoutId = window.setTimeout(() => {
     els.toast.classList.add("hidden");
-  }, 2500);
+  }, type === "error" ? 6000 : 2800);
 }
 
 function escapeHtml(value) {

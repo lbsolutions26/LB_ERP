@@ -3561,6 +3561,207 @@ export function installComprasModule(ctx) {
     return opts.join("");
   }
 
+  function getNotaProdutoLabel(produtoId) {
+    if (!produtoId) return "Selecione o produto";
+    const p = (state().produtos || []).find((x) => String(x.id) === String(produtoId));
+    if (!p) return `Produto #${produtoId}`;
+    return `${p.nome} — ${moeda.format(p.custo || 0)}`;
+  }
+
+  function produtoMatchesQuery(p, query) {
+    const tokens = String(query || "")
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!tokens.length) return true;
+    const hay = `${p.nome || ""} ${p.codigo || ""} ${p.external_id || ""} ${p.ean || ""}`.toLowerCase();
+    return tokens.every((tok) => hay.includes(tok));
+  }
+
+  function resetNotaProdutoComboPanelPos(panel) {
+    if (!panel) return;
+    panel.style.position = "";
+    panel.style.left = "";
+    panel.style.right = "";
+    panel.style.top = "";
+    panel.style.width = "";
+    panel.style.zIndex = "";
+  }
+
+  function positionNotaProdutoComboPanel(root) {
+    const trigger = root.querySelector("[data-nota-produto-trigger]");
+    const panel = root.querySelector("[data-nota-produto-panel]");
+    if (!trigger || !panel) return;
+    const r = trigger.getBoundingClientRect();
+    const width = Math.max(r.width, 320);
+    let left = r.left;
+    if (left + width > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - width - 8);
+    }
+    const estimated = Math.min(380, window.innerHeight * 0.5);
+    let top = r.bottom + 6;
+    if (top + estimated > window.innerHeight - 8 && r.top > estimated + 8) {
+      top = Math.max(8, r.top - estimated - 6);
+    }
+    panel.style.position = "fixed";
+    panel.style.left = `${left}px`;
+    panel.style.right = "auto";
+    panel.style.top = `${top}px`;
+    panel.style.width = `${width}px`;
+    panel.style.zIndex = "240";
+  }
+
+  function closeAllNotaProdutoCombos(exceptRoot = null) {
+    document.querySelectorAll("[data-nota-produto-panel]").forEach((panel) => {
+      if (exceptRoot && exceptRoot.contains(panel)) return;
+      panel.classList.add("hidden");
+      resetNotaProdutoComboPanelPos(panel);
+    });
+  }
+
+  function renderNotaProdutoComboOptions(root, query = "") {
+    const optionsEl = root.querySelector("[data-nota-produto-options]");
+    if (!optionsEl) return;
+    const hidden = root.querySelector('input[type="hidden"]');
+    const selected = hidden?.value || "";
+    const q = String(query || "").trim();
+    const list = [];
+    for (const p of state().produtos || []) {
+      if (p.ativo === false) continue;
+      if (!produtoMatchesQuery(p, q)) continue;
+      list.push(p);
+    }
+    const limit = q ? 200 : 80;
+    const shown = list.slice(0, limit);
+    const parts = [];
+    parts.push(`
+      <button type="button" class="fornecedor-combo-option ${selected === "" ? "active" : ""}" data-nota-produto-pick="" data-label="Selecione o produto">
+        Sem produto / avulso
+      </button>
+    `);
+    if (!shown.length) {
+      parts.push(
+        `<div class="fornecedor-combo-empty">Nenhum produto encontrado${q ? ` para “${escapeHtml(q)}”` : ""}.</div>`
+      );
+    } else {
+      for (const p of shown) {
+        const cod = p.codigo || p.external_id || "";
+        parts.push(`
+          <button type="button" class="fornecedor-combo-option ${String(selected) === String(p.id) ? "active" : ""}" data-nota-produto-pick="${escapeHtml(p.id)}" data-label="${escapeHtml(p.nome)}">
+            <span>${escapeHtml(p.nome)}</span>
+            <small>${escapeHtml([cod ? `cód. ${cod}` : "", `custo ${moeda.format(p.custo || 0)}`].filter(Boolean).join(" • "))}</small>
+          </button>
+        `);
+      }
+      if (list.length > shown.length) {
+        parts.push(
+          `<div class="fornecedor-combo-empty">Mostrando ${shown.length} de ${list.length}. Continue digitando para refinar.</div>`
+        );
+      }
+    }
+    optionsEl.innerHTML = parts.join("");
+  }
+
+  function openNotaProdutoCombo(root) {
+    if (!root) return;
+    closeAllNotaProdutoCombos(root);
+    closeAllFornecedorCombos();
+    const panel = root.querySelector("[data-nota-produto-panel]");
+    const search = root.querySelector("[data-nota-produto-search]");
+    if (!panel) return;
+    panel.classList.remove("hidden");
+    positionNotaProdutoComboPanel(root);
+    renderNotaProdutoComboOptions(root, "");
+    if (search) {
+      search.value = "";
+      setTimeout(() => search.focus(), 0);
+    }
+  }
+
+  function pickNotaProdutoCombo(root, produtoId) {
+    const rowId = root.getAttribute("data-nota-produto-combo") || "";
+    const item = (state().notaEntradaModal?.itens || []).find((i) => i.rowId === rowId);
+    if (!item) return;
+    item.produtoId = produtoId ? String(produtoId) : "";
+    const hidden = root.querySelector('input[type="hidden"]');
+    if (hidden) hidden.value = item.produtoId;
+    const labelEl = root.querySelector("[data-nota-produto-label]");
+    if (labelEl) labelEl.textContent = getNotaProdutoLabel(item.produtoId);
+    const prod = (state().produtos || []).find((p) => String(p.id) === String(item.produtoId));
+    const fromXml = Boolean(item.cProd || item.ean);
+    if (prod && !fromXml) {
+      if (!String(item.descricao || "").trim()) {
+        item.descricao = prod.nome;
+        const descInput = document.querySelector(`[data-nota-field="descricao"][data-row="${rowId}"]`);
+        if (descInput) descInput.value = prod.nome;
+      }
+      if (!Number(item.valorUnitario)) {
+        item.valorUnitario = Number(prod.custo || prod.preco || 0);
+        const custoInput = document.querySelector(`[data-nota-field="valorUnitario"][data-row="${rowId}"]`);
+        if (custoInput) custoInput.value = String(item.valorUnitario);
+        updateNotaResumo();
+      }
+    }
+    persistNotaItemDePara(item).catch((err) => {
+      console.warn("Falha ao gravar de/para da linha", err);
+    });
+    closeAllNotaProdutoCombos();
+  }
+
+  function attachNotaProdutoCombos() {
+    if (attachNotaProdutoCombos._done) return;
+    attachNotaProdutoCombos._done = true;
+
+    document.addEventListener("click", (ev) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLElement)) return;
+
+      const trigger = t.closest("[data-nota-produto-trigger]");
+      if (trigger) {
+        ev.preventDefault();
+        const root = trigger.closest("[data-nota-produto-combo]");
+        const panel = root?.querySelector("[data-nota-produto-panel]");
+        if (panel?.classList.contains("hidden")) openNotaProdutoCombo(root);
+        else closeAllNotaProdutoCombos();
+        return;
+      }
+
+      const pick = t.closest("[data-nota-produto-pick]");
+      if (pick) {
+        ev.preventDefault();
+        const root = pick.closest("[data-nota-produto-combo]");
+        if (!root) return;
+        pickNotaProdutoCombo(root, pick.getAttribute("data-nota-produto-pick") || "");
+        return;
+      }
+
+      if (!t.closest("[data-nota-produto-combo]")) {
+        closeAllNotaProdutoCombos();
+      }
+    }, true);
+
+    document.addEventListener("input", (ev) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLElement)) return;
+      if (!t.matches("[data-nota-produto-search]")) return;
+      const root = t.closest("[data-nota-produto-combo]");
+      if (!root) return;
+      renderNotaProdutoComboOptions(root, t.value || "");
+    });
+  }
+
+  function setAppBusy(on, title = "Aguarde", message = "Processando…") {
+    const overlay = document.getElementById("appBusyOverlay");
+    if (!overlay) return;
+    const titleEl = document.getElementById("appBusyTitle");
+    const msgEl = document.getElementById("appBusyMessage");
+    if (titleEl && title) titleEl.textContent = title;
+    if (msgEl && message) msgEl.textContent = message;
+    overlay.classList.toggle("hidden", !on);
+    overlay.hidden = !on;
+  }
+
   function renderNotaItensGrid() {
     const e = els();
     const draft = state().notaEntradaModal;
@@ -3579,12 +3780,20 @@ export function installComprasModule(ctx) {
         return `
         <div class="nota-item-row" data-nota-row="${escapeHtml(item.rowId)}">
           <div class="nota-item-main">
-            <label class="nota-item-produto">
-              Produto
-              <select data-nota-field="produtoId" data-row="${escapeHtml(item.rowId)}" ${readonly ? "disabled" : ""}>
-                ${fillProdutoOptions(item.produtoId)}
-              </select>
-            </label>
+            <div class="nota-item-produto">
+              <span class="documento-field-label">Produto</span>
+              <div class="fornecedor-combo nota-produto-combo" data-nota-produto-combo="${escapeHtml(item.rowId)}">
+                <input type="hidden" data-nota-field="produtoId" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.produtoId || "")}" />
+                <button type="button" class="nota-produto-combo-trigger" data-nota-produto-trigger="${escapeHtml(item.rowId)}" ${readonly ? "disabled" : ""}>
+                  <span data-nota-produto-label>${escapeHtml(getNotaProdutoLabel(item.produtoId))}</span>
+                  <span class="fornecedor-combo-caret">▾</span>
+                </button>
+                <div class="fornecedor-combo-panel nota-produto-combo-panel hidden" data-nota-produto-panel="${escapeHtml(item.rowId)}">
+                  <input type="search" class="nota-produto-combo-search" data-nota-produto-search="${escapeHtml(item.rowId)}" placeholder="Digite para filtrar (nome ou código)…" autocomplete="off" />
+                  <div class="fornecedor-combo-options" data-nota-produto-options="${escapeHtml(item.rowId)}"></div>
+                </div>
+              </div>
+            </div>
             <label class="nota-item-descricao">
               Descrição
               <input data-nota-field="descricao" data-row="${escapeHtml(item.rowId)}" value="${escapeHtml(item.descricao || "")}" ${readonly ? "readonly" : ""} />
@@ -3717,6 +3926,19 @@ export function installComprasModule(ctx) {
   }
 
   async function saveNotaRascunho({ lancar = false } = {}) {
+    if (state().notaSaving) return;
+    state().notaSaving = true;
+    const e = els();
+    const saveBtn = e.notaEntradaSaveBtn;
+    const lancarBtn = e.notaEntradaLancarBtn;
+    if (saveBtn) saveBtn.disabled = true;
+    if (lancarBtn) lancarBtn.disabled = true;
+    setAppBusy(
+      true,
+      lancar ? "Lançando nota" : "Salvando rascunho",
+      "Validando dados da nota…"
+    );
+    try {
     syncNotaDraftFromForm();
     const draft = state().notaEntradaModal;
     const itens = getFilledNotaItens(draft);
@@ -3767,6 +3989,7 @@ export function installComprasModule(ctx) {
       updated_at: new Date().toISOString()
     };
 
+    setAppBusy(true, lancar ? "Lançando nota" : "Salvando rascunho", "Gravando a nota…");
     let notaId = draft.notaId;
     if (notaId) {
       const { error } = await sb()
@@ -3792,6 +4015,7 @@ export function installComprasModule(ctx) {
       draft.notaId = notaId;
     }
 
+    setAppBusy(true, lancar ? "Lançando nota" : "Salvando rascunho", "Gravando itens e vínculos…");
     for (const item of itens) {
       try {
         await persistNotaItemDePara(item);
@@ -3816,15 +4040,23 @@ export function installComprasModule(ctx) {
     if (itensErr) throw itensErr;
 
     if (lancar) {
+      setAppBusy(true, "Lançando nota", "Atualizando estoque e contas a pagar…");
       await lancarNota(notaId);
       showToast(`Nota #${notaId} lançada: estoque e contas a pagar atualizados`);
     } else {
       showToast(`Nota #${notaId} salva como rascunho`);
     }
 
+    setAppBusy(true, lancar ? "Lançando nota" : "Salvando rascunho", "Atualizando a lista…");
     closeNotaModal();
     state().compras.loaded = false;
     await ensureComprasLoaded({ force: true });
+    } finally {
+      state().notaSaving = false;
+      setAppBusy(false);
+      if (saveBtn) saveBtn.disabled = false;
+      if (lancarBtn) lancarBtn.disabled = false;
+    }
   }
 
   async function loadNotaIntoDraft(notaId, { readonly = false } = {}) {
@@ -4226,6 +4458,7 @@ export function installComprasModule(ctx) {
     ensureStateDefaults();
     const e = els();
     attachFornecedorCombos();
+    attachNotaProdutoCombos();
 
     for (const btn of e.comprasViewButtons || []) {
       btn.addEventListener("click", () => {
@@ -4385,6 +4618,7 @@ export function installComprasModule(ctx) {
           if (!window.confirm("Lançar nota? Isso dará entrada no estoque e gerará contas a pagar.")) return;
           await saveNotaRascunho({ lancar: true });
         } catch (err) {
+          console.error(err);
           showToast(`Erro ao lançar nota: ${err.message}`, "error");
         }
       });

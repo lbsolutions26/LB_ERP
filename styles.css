@@ -5097,7 +5097,55 @@ textarea:focus {
   padding: 0.7rem 0.85rem;
   border-radius: 10px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-  z-index: 5;
+  z-index: 500;
+}
+
+.app-busy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 480;
+  background: rgba(20, 24, 30, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.app-busy-card {
+  width: min(420px, 100%);
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.25rem 1.35rem;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.28);
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  text-align: center;
+}
+
+.app-busy-card strong {
+  font-family: "Sora", sans-serif;
+  font-size: 1.05rem;
+  color: #0f4744;
+}
+
+.app-busy-card p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.app-busy-spinner {
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 3px solid rgba(22, 93, 89, 0.18);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: app-busy-spin 0.8s linear infinite;
+}
+
+@keyframes app-busy-spin {
+  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 900px) {
@@ -5602,6 +5650,7 @@ textarea:focus {
 }
 
 .nota-item-main label,
+.nota-item-main .nota-item-produto,
 .nota-item-row > label {
   display: flex;
   flex-direction: column;
@@ -5669,6 +5718,48 @@ textarea:focus {
 .nota-item-depara-btn:hover {
   background: #d7ece8;
   border-color: rgba(22, 93, 89, 0.55);
+}
+
+.nota-produto-combo {
+  width: 100%;
+  min-width: 0;
+}
+
+.nota-produto-combo-trigger {
+  width: 100%;
+  min-height: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid #cabfa9;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.nota-produto-combo-trigger span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nota-produto-combo-panel {
+  z-index: 240;
+}
+
+.nota-produto-combo-search {
+  width: 100%;
+  min-height: 2.45rem;
+  border: 1px solid #cabfa9;
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  font: inherit;
 }
 
 .nota-item-tools .checkbox-inline {
