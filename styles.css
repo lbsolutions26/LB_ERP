@@ -1574,6 +1574,15 @@ button.caixa-mes-split-card {
   color: var(--ink);
 }
 
+.caixa-mes-dia-table tfoot tr.is-clickable {
+  cursor: pointer;
+}
+
+.caixa-mes-dia-table tfoot tr.is-clickable:hover td,
+.caixa-mes-dia-table tfoot tr.is-clickable:focus-visible td {
+  background: rgba(22, 93, 89, 0.1);
+}
+
 .caixa-mes-dia-produtos-table tbody td:first-child,
 .caixa-mes-dia-produtos-table thead th:first-child,
 .caixa-mes-dia-produtos-table tfoot td:first-child {

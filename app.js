@@ -15932,15 +15932,15 @@ function renderCaixaMesDiaBody(rows, range, mode, expectedTotal) {
 
   const foot = isFaturamentoMode
     ? `
-      <tr>
-        <td>Total</td>
+      <tr class="is-clickable" data-cash-month-produtos tabindex="0" title="Ver produtos do mês" aria-label="Ver produtos do mês, do maior faturamento para o menor">
+        <td>Total <span class="cash-month-open-hint">produtos</span></td>
         <td class="cash-month-num">${moeda.format(totals.faturamento)}</td>
         <td class="cash-month-num">${formatCompactNumber(totals.pedidosCount)}</td>
       </tr>
     `
     : `
-      <tr>
-        <td>Total</td>
+      <tr class="is-clickable" data-cash-month-produtos tabindex="0" title="Ver produtos do mês" aria-label="Ver produtos do mês, do maior faturamento para o menor">
+        <td>Total <span class="cash-month-open-hint">produtos</span></td>
         <td class="cash-month-num">${moeda.format(caixaTotal)}</td>
         <td class="cash-month-num">${moeda.format(totals.recebimentos)}</td>
         <td class="cash-month-num">${moeda.format(totals.previsto)}</td>
@@ -15996,8 +15996,8 @@ async function openCaixaMesDiaModal(monthKey) {
   }
   if (els.caixaMesDiaSubtitle) {
     els.caixaMesDiaSubtitle.textContent = mode === "faturamento"
-      ? "Pedidos emitidos em cada dia (não cancelados). Clique em um dia para ver os produtos vendidos."
-      : "Realizado é o que entrou no dia. Previsto é parcela em aberto com vencimento no dia. Clique em um dia para ver os produtos vendidos.";
+      ? "Pedidos emitidos em cada dia (não cancelados). Clique em um dia para ver os produtos vendidos, ou no total para ver o mês."
+      : "Realizado é o que entrou no dia. Previsto é parcela em aberto com vencimento no dia. Clique em um dia para ver os produtos vendidos, ou no total para ver o mês.";
   }
   els.caixaMesDiaBody.innerHTML = '<p class="section-subtitle">Carregando abertura por dia…</p>';
   els.caixaMesDiaModal.classList.remove("hidden");
@@ -16023,18 +16023,10 @@ function formatCaixaDiaLabel(dayKey) {
   return `${date.toLocaleDateString("pt-BR")} · ${weekday}`;
 }
 
-async function loadProdutosVendidosNoDia(dayKey) {
+async function loadProdutosVendidos({ cacheKey, queryStartIso, queryEndIso, includeDoc }) {
   if (!state.empresaId || !supabaseClient) return [];
-  const cacheKey = `${state.empresaId}:${dayKey}`;
   const cached = state.dashboardProdutosByDay?.[cacheKey];
   if (cached) return cached;
-
-  const match = String(dayKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return [];
-  const start = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
-  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1, 0, 0, 0, 0);
-  const queryStartIso = new Date(start.getTime() - 36 * 60 * 60 * 1000).toISOString();
-  const queryEndIso = new Date(end.getTime() + 36 * 60 * 60 * 1000).toISOString();
 
   const docsResp = await fetchAllSupabaseRows(() =>
     supabaseClient
@@ -16050,7 +16042,7 @@ async function loadProdutosVendidosNoDia(dayKey) {
 
   const docs = (docsResp.data || []).filter((doc) => {
     if (String(doc.status || "").toLowerCase() === "cancelado") return false;
-    return businessDayKeyFromTimestamp(doc.data_emissao) === dayKey;
+    return includeDoc(doc);
   });
   if (!docs.length) {
     if (!state.dashboardProdutosByDay) state.dashboardProdutosByDay = {};
@@ -16123,20 +16115,45 @@ async function loadProdutosVendidosNoDia(dayKey) {
   return rows;
 }
 
-function renderCaixaMesDiaProdutos(dayKey, rows) {
+async function loadProdutosVendidosNoDia(dayKey) {
+  const match = String(dayKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return [];
+  const start = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1, 0, 0, 0, 0);
+  return loadProdutosVendidos({
+    cacheKey: `${state.empresaId}:${dayKey}`,
+    queryStartIso: new Date(start.getTime() - 36 * 60 * 60 * 1000).toISOString(),
+    queryEndIso: new Date(end.getTime() + 36 * 60 * 60 * 1000).toISOString(),
+    includeDoc: (doc) => businessDayKeyFromTimestamp(doc.data_emissao) === dayKey
+  });
+}
+
+async function loadProdutosVendidosNoMes(monthKey) {
+  const range = getMonthRangeFromKey(monthKey);
+  if (!range?.start || !range?.end) return [];
+  return loadProdutosVendidos({
+    cacheKey: `${state.empresaId}:mes:${range.key}`,
+    queryStartIso: new Date(range.start.getTime() - 36 * 60 * 60 * 1000).toISOString(),
+    queryEndIso: new Date(range.end.getTime() + 36 * 60 * 60 * 1000).toISOString(),
+    includeDoc: (doc) => businessMonthKeyFromTimestamp(doc.data_emissao) === range.key
+  });
+}
+
+function renderCaixaMesDiaProdutos(rows, options = {}) {
   if (!els.caixaMesDiaBody) return;
-  const label = formatCaixaDiaLabel(dayKey);
+  const title = options.title || "Produtos vendidos";
+  const subtitle = options.subtitle || "Somados por item do pedido, do maior faturamento para o menor.";
+  const emptyText = options.emptyText || "Nenhum produto vendido neste período.";
+  const valueLabel = options.valueLabel || "Faturamento";
   const quantidade = rows.reduce((sum, row) => sum + Number(row.quantidade || 0), 0);
   const total = roundMoney(rows.reduce((sum, row) => sum + Number(row.total || 0), 0));
 
-  if (els.caixaMesDiaTitle) els.caixaMesDiaTitle.textContent = label;
-  if (els.caixaMesDiaSubtitle) {
-    els.caixaMesDiaSubtitle.textContent = "Produtos vendidos neste dia, somados por item do pedido.";
-  }
+  if (els.caixaMesDiaTitle) els.caixaMesDiaTitle.textContent = title;
+  if (els.caixaMesDiaSubtitle) els.caixaMesDiaSubtitle.textContent = subtitle;
 
   if (!rows.length) {
     els.caixaMesDiaBody.innerHTML = `
-      <p class="section-subtitle">Nenhum produto vendido neste dia.</p>
+      <p class="section-subtitle">${escapeHtml(emptyText)}</p>
     `;
     return;
   }
@@ -16154,7 +16171,7 @@ function renderCaixaMesDiaProdutos(dayKey, rows) {
     <div class="dashboard-cash-summary-group caixa-mes-dia-summary">
       <div class="dashboard-cash-summary"><span>Produtos</span><strong>${formatCompactNumber(rows.length)}</strong></div>
       <div class="dashboard-cash-summary"><span>Quantidade</span><strong>${escapeHtml(formatPedidoProdutoQuantidade(quantidade))}</strong></div>
-      <div class="dashboard-cash-summary"><span>Total</span><strong>${moeda.format(total)}</strong></div>
+      <div class="dashboard-cash-summary"><span>${escapeHtml(valueLabel)}</span><strong>${moeda.format(total)}</strong></div>
     </div>
     <div class="cash-month-table-wrap">
       <table class="cash-month-table caixa-mes-dia-produtos-table">
@@ -16163,7 +16180,7 @@ function renderCaixaMesDiaProdutos(dayKey, rows) {
             <th scope="col">Produto</th>
             <th scope="col" class="cash-month-num">Qtd</th>
             <th scope="col" class="cash-month-num">Pedidos</th>
-            <th scope="col" class="cash-month-num">Total</th>
+            <th scope="col" class="cash-month-num">${escapeHtml(valueLabel)}</th>
           </tr>
         </thead>
         <tbody>${body}</tbody>
@@ -16192,8 +16209,8 @@ async function showCaixaMesDiaMonthAgain() {
   if (els.caixaMesDiaTitle) els.caixaMesDiaTitle.textContent = `${monthName} por dia`;
   if (els.caixaMesDiaSubtitle) {
     els.caixaMesDiaSubtitle.textContent = mode === "faturamento"
-      ? "Pedidos emitidos em cada dia (não cancelados). Clique em um dia para ver os produtos vendidos."
-      : "Realizado é o que entrou no dia. Previsto é parcela em aberto com vencimento no dia. Clique em um dia para ver os produtos vendidos.";
+      ? "Pedidos emitidos em cada dia (não cancelados). Clique em um dia para ver os produtos vendidos, ou no total para ver o mês."
+      : "Realizado é o que entrou no dia. Previsto é parcela em aberto com vencimento no dia. Clique em um dia para ver os produtos vendidos, ou no total para ver o mês.";
   }
   const rows = await loadDashboardDailyRowsForMonth(key);
   if (state.caixaMesDiaMonthKey !== key || state.caixaMesDiaSelectedDay) return;
@@ -16218,11 +16235,49 @@ async function openCaixaMesDiaProdutos(dayKey) {
   try {
     const rows = await loadProdutosVendidosNoDia(key);
     if (seq !== caixaMesDiaProdutosSeq || state.caixaMesDiaSelectedDay !== key) return;
-    renderCaixaMesDiaProdutos(key, rows);
+    const label = formatCaixaDiaLabel(key);
+    renderCaixaMesDiaProdutos(rows, {
+      title: label,
+      subtitle: "Produtos vendidos neste dia, do maior faturamento para o menor.",
+      emptyText: "Nenhum produto vendido neste dia."
+    });
   } catch (error) {
     if (seq !== caixaMesDiaProdutosSeq || state.caixaMesDiaSelectedDay !== key) return;
     els.caixaMesDiaBody.innerHTML = `
       <p class="section-subtitle">Não foi possível carregar os produtos deste dia.</p>
+      <p class="caixa-mes-note">${escapeHtml(error.message || String(error))}</p>
+    `;
+  }
+}
+
+async function openCaixaMesProdutos() {
+  const monthKey = state.caixaMesDiaMonthKey;
+  if (!monthKey || !els.caixaMesDiaBody) return;
+  const range = getMonthRangeFromKey(monthKey);
+  const monthName = range.label.charAt(0).toUpperCase() + range.label.slice(1);
+  const seq = caixaMesDiaProdutosSeq + 1;
+  caixaMesDiaProdutosSeq = seq;
+  state.caixaMesDiaSelectedDay = "mes";
+  setCaixaMesDiaBackVisible(true);
+  if (els.caixaMesDiaTitle) els.caixaMesDiaTitle.textContent = `${monthName} · produtos`;
+  if (els.caixaMesDiaSubtitle) {
+    els.caixaMesDiaSubtitle.textContent = "Carregando produtos do mês…";
+  }
+  els.caixaMesDiaBody.innerHTML = '<p class="section-subtitle">Carregando produtos do mês…</p>';
+
+  try {
+    const rows = await loadProdutosVendidosNoMes(monthKey);
+    if (seq !== caixaMesDiaProdutosSeq || state.caixaMesDiaSelectedDay !== "mes") return;
+    renderCaixaMesDiaProdutos(rows, {
+      title: `${monthName} · produtos`,
+      subtitle: "Produtos vendidos no mês, do maior faturamento para o menor.",
+      emptyText: "Nenhum produto vendido neste mês.",
+      valueLabel: "Faturamento"
+    });
+  } catch (error) {
+    if (seq !== caixaMesDiaProdutosSeq || state.caixaMesDiaSelectedDay !== "mes") return;
+    els.caixaMesDiaBody.innerHTML = `
+      <p class="section-subtitle">Não foi possível carregar os produtos deste mês.</p>
       <p class="caixa-mes-note">${escapeHtml(error.message || String(error))}</p>
     `;
   }
@@ -19772,13 +19827,28 @@ function attachEvents() {
   }
   if (els.caixaMesDiaBody) {
     els.caixaMesDiaBody.addEventListener("click", (event) => {
-      const day = event.target instanceof Element ? event.target.closest("[data-cash-day]") : null;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      const monthProdutos = target.closest("[data-cash-month-produtos]");
+      if (monthProdutos && els.caixaMesDiaBody.contains(monthProdutos)) {
+        openCaixaMesProdutos();
+        return;
+      }
+      const day = target.closest("[data-cash-day]");
       if (!day || !els.caixaMesDiaBody.contains(day)) return;
       openCaixaMesDiaProdutos(day.getAttribute("data-cash-day"));
     });
     els.caixaMesDiaBody.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
-      const day = event.target instanceof Element ? event.target.closest("[data-cash-day]") : null;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      const monthProdutos = target.closest("[data-cash-month-produtos]");
+      if (monthProdutos && els.caixaMesDiaBody.contains(monthProdutos)) {
+        event.preventDefault();
+        openCaixaMesProdutos();
+        return;
+      }
+      const day = target.closest("[data-cash-day]");
       if (!day || !els.caixaMesDiaBody.contains(day)) return;
       event.preventDefault();
       openCaixaMesDiaProdutos(day.getAttribute("data-cash-day"));
