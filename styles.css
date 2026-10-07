@@ -1490,6 +1490,35 @@ button.caixa-mes-split-card {
   width: min(1040px, 100%);
 }
 
+#caixaMesDiaModal .caixa-mes-dia-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 0;
+  padding: 1rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  align-content: start;
+}
+
+#caixaMesDiaModal .caixa-mes-dia-chart.cash-month-chart {
+  grid-auto-columns: minmax(36px, 1fr);
+}
+
+#caixaMesDiaModal .caixa-mes-dia-chart .cash-bar-track {
+  height: 180px;
+}
+
+#caixaMesDiaModal .caixa-mes-dia-chart .cash-bar-wrap {
+  cursor: pointer;
+}
+
+#caixaMesDiaModal .caixa-mes-dia-chart .cash-bar-wrap:hover .cash-bar-track,
+#caixaMesDiaModal .caixa-mes-dia-chart .cash-bar-wrap:focus-visible .cash-bar-track {
+  outline: 2px solid rgba(22, 93, 89, 0.45);
+  outline-offset: 2px;
+}
+
 .caixa-mes-dia-body {
   display: grid;
   gap: 0.85rem;
@@ -1543,6 +1572,13 @@ button.caixa-mes-split-card {
   background: #f8f4ec;
   border-top: 1px solid #e2d8c6;
   color: var(--ink);
+}
+
+.caixa-mes-dia-produtos-table tbody td:first-child,
+.caixa-mes-dia-produtos-table thead th:first-child,
+.caixa-mes-dia-produtos-table tfoot td:first-child {
+  white-space: normal;
+  text-align: left;
 }
 
 .caixa-mes-items-body {
@@ -6282,6 +6318,10 @@ body:has(#estoqueMovimentoModal:not(.hidden)) {
 }
 
 @media (max-width: 720px) {
+  #caixaMesDiaModal .caixa-mes-dia-body {
+    padding: 0.85rem 0.9rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
+  }
+
   .modal-overlay.modal-overlay--fullscreen .modal-head,
   .modal-overlay.modal-overlay--fullscreen .modal-documento-head {
     padding: 0.75rem 0.9rem;
