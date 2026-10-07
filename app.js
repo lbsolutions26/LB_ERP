@@ -151,6 +151,10 @@ const state = {
     adminEmpresas: {
       sort: { field: "nome", direction: "asc" },
       filters: { nome: "", contato: "", local: "", usuarios: "", created_at: "" }
+    },
+    caixaMesDiaProdutos: {
+      sort: { field: "total", direction: "desc" },
+      filters: { produto: "", quantidade: "", pedidos: "", total: "" }
     }
   },
   adminView: "empresas",
@@ -13678,6 +13682,11 @@ function rerenderTableView(tableKey) {
   }
   if (tableKey === "adminEmpresas") {
     renderAdminEmpresasTable();
+    return;
+  }
+  if (tableKey === "caixaMesDiaProdutos") {
+    if (!caixaMesDiaProdutosViewOptions) return;
+    renderCaixaMesDiaProdutos(caixaMesDiaProdutosSource, caixaMesDiaProdutosViewOptions);
   }
 }
 
@@ -15783,11 +15792,26 @@ async function loadDashboardDailyRowsForMonth(monthKey) {
 }
 
 let caixaMesDiaProdutosSeq = 0;
+let caixaMesDiaProdutosSource = [];
+let caixaMesDiaProdutosViewOptions = null;
+
+function resetCaixaMesDiaProdutosView() {
+  caixaMesDiaProdutosSource = [];
+  caixaMesDiaProdutosViewOptions = null;
+  const view = state.tableViews?.caixaMesDiaProdutos;
+  if (!view) return;
+  view.sort.field = "total";
+  view.sort.direction = "desc";
+  for (const field of Object.keys(view.filters || {})) {
+    view.filters[field] = "";
+  }
+}
 
 function closeCaixaMesDiaModal() {
   state.caixaMesDiaMonthKey = "";
   state.caixaMesDiaSelectedDay = "";
   caixaMesDiaProdutosSeq += 1;
+  resetCaixaMesDiaProdutosView();
   if (els.caixaMesDiaBackBtn) els.caixaMesDiaBackBtn.classList.add("hidden");
   if (els.caixaMesDiaModal) els.caixaMesDiaModal.classList.add("hidden");
 }
@@ -15990,6 +16014,7 @@ async function openCaixaMesDiaModal(monthKey) {
   state.caixaMesDiaExpected = entry ? entry.total : null;
   state.caixaMesDiaSelectedDay = "";
   caixaMesDiaProdutosSeq += 1;
+  resetCaixaMesDiaProdutosView();
   setCaixaMesDiaBackVisible(false);
   if (els.caixaMesDiaTitle) {
     els.caixaMesDiaTitle.textContent = `${monthName} por dia`;
@@ -16139,37 +16164,85 @@ async function loadProdutosVendidosNoMes(monthKey) {
   });
 }
 
+const caixaMesDiaProdutosAccessors = {
+  produto: {
+    filter: (row) => row?.nome || "",
+    sort: (row) => row?.nome || ""
+  },
+  quantidade: {
+    filter: (row) => {
+      const qty = Number(row?.quantidade || 0);
+      return `${formatPedidoProdutoQuantidade(qty)} ${qty.toLocaleString("pt-BR")} ${qty}`;
+    },
+    sort: (row) => Number(row?.quantidade || 0)
+  },
+  pedidos: {
+    filter: (row) => {
+      const count = Number(row?.pedidos || 0);
+      return `${formatCompactNumber(count)} ${count.toLocaleString("pt-BR")} ${count}`;
+    },
+    sort: (row) => Number(row?.pedidos || 0)
+  },
+  total: {
+    filter: (row) => {
+      const total = Number(row?.total || 0);
+      const plain = total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return `${moeda.format(total)} ${plain} ${String(total).replace(".", ",")}`;
+    },
+    sort: (row) => Number(row?.total || 0)
+  }
+};
+
+function pinCaixaMesDiaProdutosFilterHeader() {
+  const table = els.caixaMesDiaBody?.querySelector(".caixa-mes-dia-produtos-table");
+  const labelCell = table?.querySelector("thead tr:first-child th");
+  if (!table || !labelCell) return;
+  const top = `${labelCell.offsetHeight}px`;
+  table.querySelectorAll("thead tr.caixa-mes-dia-produtos-filters th").forEach((cell) => {
+    cell.style.top = top;
+  });
+}
+
 function renderCaixaMesDiaProdutos(rows, options = {}) {
   if (!els.caixaMesDiaBody) return;
+  caixaMesDiaProdutosSource = Array.isArray(rows) ? rows.slice() : [];
+  caixaMesDiaProdutosViewOptions = options;
   const title = options.title || "Produtos vendidos";
-  const subtitle = options.subtitle || "Somados por item do pedido, do maior faturamento para o menor.";
+  const subtitle = options.subtitle || "Clique no cabeçalho para reordenar ou pesquise em cada coluna.";
   const emptyText = options.emptyText || "Nenhum produto vendido neste período.";
   const valueLabel = options.valueLabel || "Faturamento";
-  const quantidade = rows.reduce((sum, row) => sum + Number(row.quantidade || 0), 0);
-  const total = roundMoney(rows.reduce((sum, row) => sum + Number(row.total || 0), 0));
 
   if (els.caixaMesDiaTitle) els.caixaMesDiaTitle.textContent = title;
   if (els.caixaMesDiaSubtitle) els.caixaMesDiaSubtitle.textContent = subtitle;
 
-  if (!rows.length) {
+  if (!caixaMesDiaProdutosSource.length) {
     els.caixaMesDiaBody.innerHTML = `
       <p class="section-subtitle">${escapeHtml(emptyText)}</p>
     `;
     return;
   }
 
-  const body = rows.map((row) => `
+  const visible = getFilteredAndSortedTableRows(
+    caixaMesDiaProdutosSource,
+    "caixaMesDiaProdutos",
+    caixaMesDiaProdutosAccessors
+  );
+  const quantidade = visible.reduce((sum, row) => sum + Number(row.quantidade || 0), 0);
+  const total = roundMoney(visible.reduce((sum, row) => sum + Number(row.total || 0), 0));
+  const body = visible.length
+    ? visible.map((row) => `
     <tr>
       <td>${escapeHtml(row.nome)}</td>
       <td class="cash-month-num">${escapeHtml(formatPedidoProdutoQuantidade(row.quantidade))}</td>
       <td class="cash-month-num">${formatCompactNumber(row.pedidos)}</td>
       <td class="cash-month-num cash-month-total">${moeda.format(row.total)}</td>
     </tr>
-  `).join("");
+  `).join("")
+    : `<tr><td class="caixa-mes-dia-produtos-empty" colspan="4">Nenhum produto encontrado para essa pesquisa.</td></tr>`;
 
   els.caixaMesDiaBody.innerHTML = `
     <div class="dashboard-cash-summary-group caixa-mes-dia-summary">
-      <div class="dashboard-cash-summary"><span>Produtos</span><strong>${formatCompactNumber(rows.length)}</strong></div>
+      <div class="dashboard-cash-summary"><span>Produtos</span><strong>${formatCompactNumber(visible.length)}</strong></div>
       <div class="dashboard-cash-summary"><span>Quantidade</span><strong>${escapeHtml(formatPedidoProdutoQuantidade(quantidade))}</strong></div>
       <div class="dashboard-cash-summary"><span>${escapeHtml(valueLabel)}</span><strong>${moeda.format(total)}</strong></div>
     </div>
@@ -16177,10 +16250,16 @@ function renderCaixaMesDiaProdutos(rows, options = {}) {
       <table class="cash-month-table caixa-mes-dia-produtos-table">
         <thead>
           <tr>
-            <th scope="col">Produto</th>
-            <th scope="col" class="cash-month-num">Qtd</th>
-            <th scope="col" class="cash-month-num">Pedidos</th>
-            <th scope="col" class="cash-month-num">${escapeHtml(valueLabel)}</th>
+            <th scope="col" class="sortable" data-table="caixaMesDiaProdutos" data-sort="produto" data-label="Produto" title="Clique para ordenar por Produto">Produto</th>
+            <th scope="col" class="sortable cash-month-num" data-table="caixaMesDiaProdutos" data-sort="quantidade" data-label="Qtd" title="Clique para ordenar por Qtd">Qtd</th>
+            <th scope="col" class="sortable cash-month-num" data-table="caixaMesDiaProdutos" data-sort="pedidos" data-label="Pedidos" title="Clique para ordenar por Pedidos">Pedidos</th>
+            <th scope="col" class="sortable cash-month-num" data-table="caixaMesDiaProdutos" data-sort="total" data-label="${escapeHtml(valueLabel)}" title="Clique para ordenar por ${escapeHtml(valueLabel)}">${escapeHtml(valueLabel)}</th>
+          </tr>
+          <tr class="caixa-mes-dia-produtos-filters">
+            <th><input data-table-filter="caixaMesDiaProdutos" data-field="produto" value="${getTableFilterValue("caixaMesDiaProdutos", "produto")}" placeholder="Pesquisar" aria-label="Pesquisar produto" /></th>
+            <th><input data-table-filter="caixaMesDiaProdutos" data-field="quantidade" value="${getTableFilterValue("caixaMesDiaProdutos", "quantidade")}" placeholder="Pesquisar" aria-label="Pesquisar quantidade" /></th>
+            <th><input data-table-filter="caixaMesDiaProdutos" data-field="pedidos" value="${getTableFilterValue("caixaMesDiaProdutos", "pedidos")}" placeholder="Pesquisar" aria-label="Pesquisar pedidos" /></th>
+            <th><input data-table-filter="caixaMesDiaProdutos" data-field="total" value="${getTableFilterValue("caixaMesDiaProdutos", "total")}" placeholder="Pesquisar" aria-label="Pesquisar ${escapeHtml(valueLabel)}" /></th>
           </tr>
         </thead>
         <tbody>${body}</tbody>
@@ -16195,12 +16274,15 @@ function renderCaixaMesDiaProdutos(rows, options = {}) {
       </table>
     </div>
   `;
+  updateTableSortHeaders("caixaMesDiaProdutos");
+  window.requestAnimationFrame(pinCaixaMesDiaProdutosFilterHeader);
 }
 
 async function showCaixaMesDiaMonthAgain() {
   const key = state.caixaMesDiaMonthKey;
   if (!key || !els.caixaMesDiaBody) return;
   caixaMesDiaProdutosSeq += 1;
+  resetCaixaMesDiaProdutosView();
   state.caixaMesDiaSelectedDay = "";
   setCaixaMesDiaBackVisible(false);
   const mode = state.caixaMesDiaMode === "faturamento" ? "faturamento" : "recebimentos";
@@ -16224,6 +16306,7 @@ async function openCaixaMesDiaProdutos(dayKey) {
 
   const seq = caixaMesDiaProdutosSeq + 1;
   caixaMesDiaProdutosSeq = seq;
+  resetCaixaMesDiaProdutosView();
   state.caixaMesDiaSelectedDay = key;
   setCaixaMesDiaBackVisible(true);
   if (els.caixaMesDiaTitle) els.caixaMesDiaTitle.textContent = formatCaixaDiaLabel(key);
@@ -16238,7 +16321,7 @@ async function openCaixaMesDiaProdutos(dayKey) {
     const label = formatCaixaDiaLabel(key);
     renderCaixaMesDiaProdutos(rows, {
       title: label,
-      subtitle: "Produtos vendidos neste dia, do maior faturamento para o menor.",
+      subtitle: "Clique no cabeçalho para reordenar ou pesquise em cada coluna.",
       emptyText: "Nenhum produto vendido neste dia."
     });
   } catch (error) {
@@ -16257,6 +16340,7 @@ async function openCaixaMesProdutos() {
   const monthName = range.label.charAt(0).toUpperCase() + range.label.slice(1);
   const seq = caixaMesDiaProdutosSeq + 1;
   caixaMesDiaProdutosSeq = seq;
+  resetCaixaMesDiaProdutosView();
   state.caixaMesDiaSelectedDay = "mes";
   setCaixaMesDiaBackVisible(true);
   if (els.caixaMesDiaTitle) els.caixaMesDiaTitle.textContent = `${monthName} · produtos`;
@@ -16270,7 +16354,7 @@ async function openCaixaMesProdutos() {
     if (seq !== caixaMesDiaProdutosSeq || state.caixaMesDiaSelectedDay !== "mes") return;
     renderCaixaMesDiaProdutos(rows, {
       title: `${monthName} · produtos`,
-      subtitle: "Produtos vendidos no mês, do maior faturamento para o menor.",
+      subtitle: "Clique no cabeçalho para reordenar ou pesquise em cada coluna.",
       emptyText: "Nenhum produto vendido neste mês.",
       valueLabel: "Faturamento"
     });
