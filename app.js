@@ -193,6 +193,8 @@ const state = {
   parcelasReceberPrevistas: [],
   dashboardMonthlyCash: [],
   dashboardDaily: [],
+  dashboardDailyByMonth: {},
+  caixaMesDiaMonthKey: "",
   dashboardContasPagarMes: {
     total: 0,
     aberto: 0,
@@ -682,6 +684,11 @@ const els = {
   caixaMesBreakdownSubtitle: document.getElementById("caixaMesBreakdownSubtitle"),
   caixaMesBreakdownBody: document.getElementById("caixaMesBreakdownBody"),
   closeCaixaMesBreakdownModalBtn: document.getElementById("closeCaixaMesBreakdownModalBtn"),
+  caixaMesDiaModal: document.getElementById("caixaMesDiaModal"),
+  caixaMesDiaTitle: document.getElementById("caixaMesDiaTitle"),
+  caixaMesDiaSubtitle: document.getElementById("caixaMesDiaSubtitle"),
+  caixaMesDiaBody: document.getElementById("caixaMesDiaBody"),
+  closeCaixaMesDiaModalBtn: document.getElementById("closeCaixaMesDiaModalBtn"),
   caixaMesItemsModal: document.getElementById("caixaMesItemsModal"),
   caixaMesItemsTitle: document.getElementById("caixaMesItemsTitle"),
   caixaMesItemsSubtitle: document.getElementById("caixaMesItemsSubtitle"),
@@ -14102,8 +14109,8 @@ function renderMetrics(options = {}) {
   }
   if (els.entradasCaixaSubtitulo) {
     els.entradasCaixaSubtitulo.textContent = isFaturamentoMode
-      ? "Valor total dos pedidos (data de emissão). Deve bater com o Total do mês em Faturamento por Dia."
-      : "Caixa do mês: valores já recebidos + títulos em aberto com vencimento no período (pode diferir do faturamento).";
+      ? "Valor total dos pedidos (data de emissão). Deve bater com o Total do mês em Faturamento por Dia. Clique em um mês da tabela para ver a abertura por dia."
+      : "Caixa do mês: valores já recebidos + títulos em aberto com vencimento no período (pode diferir do faturamento). Clique em um mês da tabela para ver a abertura por dia.";
   }
 
   if (els.entradasCaixaLegenda) {
@@ -14189,22 +14196,26 @@ function renderMetrics(options = {}) {
           const isCurrent = item.monthKey === currentMonthKey;
           const realizedPct = total > 0 ? Math.round((realized / total) * 100) : 0;
           const forecastPct = Math.max(0, 100 - realizedPct);
+          const monthAttr = escapeHtml(item.monthKey);
+          const openLabel = `Abrir ${item.label} por dia`;
           if (isFaturamentoMode) {
             return `
-              <tr class="${isCurrent ? "is-current" : ""}">
+              <tr class="${isCurrent ? "is-current" : ""} is-clickable" data-cash-month="${monthAttr}" tabindex="0" title="Ver abertura por dia" aria-label="${escapeHtml(openLabel)}">
                 <td>
                   <span class="cash-month-label">${escapeHtml(item.label)}</span>
                   ${isCurrent ? '<span class="cash-month-tag">atual</span>' : ""}
+                  <span class="cash-month-open-hint">por dia</span>
                 </td>
                 <td class="cash-month-num">${moeda.format(total)}</td>
               </tr>
             `;
           }
           return `
-            <tr class="${isCurrent ? "is-current" : ""}">
+            <tr class="${isCurrent ? "is-current" : ""} is-clickable" data-cash-month="${monthAttr}" tabindex="0" title="Ver abertura por dia" aria-label="${escapeHtml(openLabel)}">
               <td>
                 <span class="cash-month-label">${escapeHtml(item.label)}</span>
                 ${isCurrent ? '<span class="cash-month-tag">atual</span>' : ""}
+                <span class="cash-month-open-hint">por dia</span>
               </td>
               <td class="cash-month-num cash-month-total">${moeda.format(total)}</td>
               <td class="cash-month-num cash-month-realized">${moeda.format(realized)}</td>
@@ -15591,6 +15602,365 @@ async function openCaixaMesBreakdownModal() {
   }
 }
 
+function businessDayKeyFromTimestamp(value) {
+  if (value == null || value === "") return null;
+  if (typeof value === "string") {
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnly) return `${dateOnly[1]}-${dateOnly[2]}-${dateOnly[3]}`;
+  }
+  const parts = getBusinessDateParts(value);
+  if (!parts?.year || !parts?.month || !parts?.day) return null;
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function businessTodayKey() {
+  return businessDayKeyFromTimestamp(new Date()) || formatDateInput(new Date());
+}
+
+function getMonthRangeFromKey(monthKey) {
+  const match = String(monthKey || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return getCurrentMonthRange();
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const start = new Date(year, monthIndex, 1, 12, 0, 0, 0);
+  const end = new Date(year, monthIndex + 1, 1, 0, 0, 0, 0);
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  return {
+    start,
+    end,
+    key: `${match[1]}-${match[2]}`,
+    label: start.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
+    daysInMonth
+  };
+}
+
+function roundMoney(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
+
+/**
+ * Abertura diária de um mês civil, na mesma base do gráfico mensal
+ * (fuso America/Sao_Paulo).
+ */
+async function loadDashboardDailyRowsForMonth(monthKey) {
+  if (!state.empresaId || !supabaseClient) return [];
+  const range = getMonthRangeFromKey(monthKey);
+  const cacheKey = `${state.empresaId}:${range.key}`;
+  const cached = state.dashboardDailyByMonth?.[cacheKey];
+  if (cached) return cached;
+
+  const queryStartIso = new Date(range.start.getTime() - 36 * 60 * 60 * 1000).toISOString();
+  const queryEndIso = new Date(range.end.getTime() + 36 * 60 * 60 * 1000).toISOString();
+  const inMonth = (value) => businessMonthKeyFromTimestamp(value) === range.key;
+
+  const [recebidosResp, previstosResp, pedidosResp] = await Promise.all([
+    fetchAllSupabaseRows(() =>
+      supabaseClient
+        .from("recebimentos")
+        .select("valor, data_recebimento")
+        .eq("empresa_id", state.empresaId)
+        .gte("data_recebimento", queryStartIso)
+        .lt("data_recebimento", queryEndIso)
+        .order("data_recebimento", { ascending: true })
+    ),
+    fetchAllSupabaseRows(() =>
+      supabaseClient
+        .from("contas_receber_parcelas")
+        .select("valor_parcela, valor_recebido, vencimento, status")
+        .eq("empresa_id", state.empresaId)
+        .gte("vencimento", queryStartIso)
+        .lt("vencimento", queryEndIso)
+        .order("vencimento", { ascending: true })
+    ),
+    fetchAllSupabaseRows(() =>
+      supabaseClient
+        .from("documentos_venda")
+        .select("total, data_emissao, status, tipo_documento")
+        .eq("empresa_id", state.empresaId)
+        .eq("tipo_documento", "pedido")
+        .gte("data_emissao", queryStartIso)
+        .lt("data_emissao", queryEndIso)
+        .order("data_emissao", { ascending: true })
+    )
+  ]);
+
+  if (recebidosResp.error) throw recebidosResp.error;
+  if (previstosResp.error) throw previstosResp.error;
+  if (pedidosResp.error) throw pedidosResp.error;
+
+  const byDay = new Map();
+  const ensure = (dia) => {
+    if (!byDay.has(dia)) {
+      byDay.set(dia, { faturamento: 0, pedidosCount: 0, recebimentos: 0, previsto: 0 });
+    }
+    return byDay.get(dia);
+  };
+
+  for (const row of recebidosResp.data || []) {
+    if (!inMonth(row.data_recebimento)) continue;
+    const dia = businessDayKeyFromTimestamp(row.data_recebimento);
+    if (!dia || !dia.startsWith(range.key)) continue;
+    ensure(dia).recebimentos += Number(row.valor || 0);
+  }
+
+  for (const row of previstosResp.data || []) {
+    if (!inMonth(row.vencimento)) continue;
+    const status = String(row.status || "").toLowerCase();
+    if (status === "recebido" || status === "cancelado") continue;
+    const aberto = Math.max(0, Number(row.valor_parcela || 0) - Number(row.valor_recebido || 0));
+    if (aberto <= 0.00001) continue;
+    const dia = businessDayKeyFromTimestamp(row.vencimento);
+    if (!dia || !dia.startsWith(range.key)) continue;
+    ensure(dia).previsto += aberto;
+  }
+
+  for (const row of pedidosResp.data || []) {
+    if (!inMonth(row.data_emissao)) continue;
+    const status = String(row.status || "").toLowerCase();
+    if (status === "cancelado") continue;
+    const tipo = String(row.tipo_documento || "").toLowerCase();
+    if (tipo && tipo !== "pedido") continue;
+    const dia = businessDayKeyFromTimestamp(row.data_emissao);
+    if (!dia || !dia.startsWith(range.key)) continue;
+    const bucket = ensure(dia);
+    bucket.faturamento += Number(row.total || 0);
+    bucket.pedidosCount += 1;
+  }
+
+  const rows = [];
+  for (let day = 1; day <= range.daysInMonth; day += 1) {
+    const dia = `${range.key}-${String(day).padStart(2, "0")}`;
+    const found = byDay.get(dia) || { faturamento: 0, pedidosCount: 0, recebimentos: 0, previsto: 0 };
+    rows.push({
+      dia,
+      faturamento: roundMoney(found.faturamento),
+      pedidosCount: found.pedidosCount,
+      recebimentos: roundMoney(found.recebimentos),
+      previsto: roundMoney(found.previsto)
+    });
+  }
+
+  if (!state.dashboardDailyByMonth) state.dashboardDailyByMonth = {};
+  state.dashboardDailyByMonth[cacheKey] = rows;
+  return rows;
+}
+
+function closeCaixaMesDiaModal() {
+  state.caixaMesDiaMonthKey = "";
+  if (els.caixaMesDiaModal) els.caixaMesDiaModal.classList.add("hidden");
+}
+
+function renderCaixaMesDiaBody(rows, range, mode, expectedTotal) {
+  if (!els.caixaMesDiaBody) return;
+  const isFaturamentoMode = mode === "faturamento";
+  const todayKey = businessTodayKey();
+  const monthName = (range.label || "mês").charAt(0).toUpperCase() + (range.label || "mês").slice(1);
+
+  const totals = rows.reduce(
+    (acc, row) => {
+      acc.faturamento += Number(row.faturamento || 0);
+      acc.pedidosCount += Number(row.pedidosCount || 0);
+      acc.recebimentos += Number(row.recebimentos || 0);
+      acc.previsto += Number(row.previsto || 0);
+      return acc;
+    },
+    { faturamento: 0, pedidosCount: 0, recebimentos: 0, previsto: 0 }
+  );
+  totals.faturamento = roundMoney(totals.faturamento);
+  totals.recebimentos = roundMoney(totals.recebimentos);
+  totals.previsto = roundMoney(totals.previsto);
+  const caixaTotal = roundMoney(totals.recebimentos + totals.previsto);
+  const headline = isFaturamentoMode ? roundMoney(totals.faturamento) : caixaTotal;
+
+  const summary = isFaturamentoMode
+    ? `
+      <div class="dashboard-cash-summary"><span>Faturamento</span><strong>${moeda.format(totals.faturamento)}</strong></div>
+      <div class="dashboard-cash-summary"><span>Pedidos</span><strong>${formatCompactNumber(totals.pedidosCount)}</strong></div>
+    `
+    : `
+      <div class="dashboard-cash-summary"><span>Total</span><strong>${moeda.format(caixaTotal)}</strong></div>
+      <div class="dashboard-cash-summary"><span>Realizado</span><strong>${moeda.format(totals.recebimentos)}</strong></div>
+      <div class="dashboard-cash-summary"><span>Previsto</span><strong>${moeda.format(totals.previsto)}</strong></div>
+    `;
+
+  const legend = isFaturamentoMode
+    ? `<span class="cash-chart-legend-item"><i class="cash-dot cash-dot-realized"></i> Faturamento (pedidos)</span>`
+    : `
+      <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-realized"></i> Realizado</span>
+      <span class="cash-chart-legend-item"><i class="cash-dot cash-dot-forecast"></i> Previsto</span>
+    `;
+
+  const maxValue = Math.max(
+    ...rows.map((row) => (isFaturamentoMode
+      ? Number(row.faturamento || 0)
+      : Number(row.recebimentos || 0) + Number(row.previsto || 0))),
+    0
+  );
+
+  const bars = rows.map((row) => {
+    const realized = Number(row.recebimentos || 0);
+    const forecast = Number(row.previsto || 0);
+    const value = isFaturamentoMode ? Number(row.faturamento || 0) : realized + forecast;
+    const totalHeight = maxValue > 0 && value > 0 ? Math.max(6, Math.round((value / maxValue) * 100)) : 0;
+    const realizedHeight = value > 0 ? Math.round((realized / value) * totalHeight) : 0;
+    const forecastHeight = Math.max(0, totalHeight - realizedHeight);
+    const date = new Date(`${row.dia}T12:00:00`);
+    const weekend = date.getDay() === 0 || date.getDay() === 6;
+    const isToday = row.dia === todayKey;
+    const dayNum = String(date.getDate());
+    const weekday = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+    const title = isFaturamentoMode
+      ? `${date.toLocaleDateString("pt-BR")} (${weekday}): ${moeda.format(value)} · ${formatCompactNumber(row.pedidosCount)} pedidos`
+      : `${date.toLocaleDateString("pt-BR")} (${weekday}): ${moeda.format(value)} | Realizado ${moeda.format(realized)} | Previsto ${moeda.format(forecast)}`;
+    const fills = isFaturamentoMode
+      ? `<div class="cash-bar-fill${isToday ? " cash-bar-fill-current" : ""}" data-bar-h="${totalHeight}%" style="height:0%"></div>`
+      : `
+        <div class="cash-bar-fill cash-bar-fill-realized" data-bar-h="${realizedHeight}%" style="height:0%"></div>
+        <div class="cash-bar-fill cash-bar-fill-forecast" data-bar-h="${forecastHeight}%" style="height:0%"></div>
+      `;
+    return `
+      <div class="cash-bar-wrap${isToday ? " cash-bar-wrap-current" : ""}${weekend ? " is-weekend" : ""}" title="${escapeHtml(title)}">
+        <div class="cash-bar-track" aria-hidden="true">${fills}</div>
+        <div class="cash-bar-label">${escapeHtml(dayNum)}</div>
+      </div>
+    `;
+  }).join("");
+
+  const head = isFaturamentoMode
+    ? `
+      <tr>
+        <th scope="col">Dia</th>
+        <th scope="col" class="cash-month-num">Faturamento</th>
+        <th scope="col" class="cash-month-num">Pedidos</th>
+      </tr>
+    `
+    : `
+      <tr>
+        <th scope="col">Dia</th>
+        <th scope="col" class="cash-month-num">Total</th>
+        <th scope="col" class="cash-month-num">Realizado</th>
+        <th scope="col" class="cash-month-num">Previsto</th>
+      </tr>
+    `;
+
+  const body = rows.map((row) => {
+    const realized = Number(row.recebimentos || 0);
+    const forecast = Number(row.previsto || 0);
+    const faturamento = Number(row.faturamento || 0);
+    const total = isFaturamentoMode ? faturamento : realized + forecast;
+    const date = new Date(`${row.dia}T12:00:00`);
+    const weekend = date.getDay() === 0 || date.getDay() === 6;
+    const isToday = row.dia === todayKey;
+    const empty = isFaturamentoMode
+      ? faturamento <= 0 && Number(row.pedidosCount || 0) === 0
+      : realized <= 0 && forecast <= 0;
+    const weekday = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+    const label = `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")} ${weekday}`;
+    const classes = [
+      weekend ? "is-weekend" : "",
+      isToday ? "is-today" : "",
+      empty ? "is-empty" : ""
+    ].filter(Boolean).join(" ");
+    if (isFaturamentoMode) {
+      return `
+        <tr class="${classes}">
+          <td>${escapeHtml(label)}${isToday ? ' <span class="cash-month-tag">hoje</span>' : ""}</td>
+          <td class="cash-month-num">${moeda.format(faturamento)}</td>
+          <td class="cash-month-num">${formatCompactNumber(row.pedidosCount)}</td>
+        </tr>
+      `;
+    }
+    return `
+      <tr class="${classes}">
+        <td>${escapeHtml(label)}${isToday ? ' <span class="cash-month-tag">hoje</span>' : ""}</td>
+        <td class="cash-month-num cash-month-total">${moeda.format(total)}</td>
+        <td class="cash-month-num cash-month-realized">${moeda.format(realized)}</td>
+        <td class="cash-month-num cash-month-forecast">${moeda.format(forecast)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const foot = isFaturamentoMode
+    ? `
+      <tr>
+        <td>Total</td>
+        <td class="cash-month-num">${moeda.format(totals.faturamento)}</td>
+        <td class="cash-month-num">${formatCompactNumber(totals.pedidosCount)}</td>
+      </tr>
+    `
+    : `
+      <tr>
+        <td>Total</td>
+        <td class="cash-month-num">${moeda.format(caixaTotal)}</td>
+        <td class="cash-month-num">${moeda.format(totals.recebimentos)}</td>
+        <td class="cash-month-num">${moeda.format(totals.previsto)}</td>
+      </tr>
+    `;
+
+  const expected = expectedTotal == null ? null : Number(expectedTotal);
+  const diverges = expected != null && Number.isFinite(expected) && Math.abs(expected - headline) > 1;
+  const note = diverges
+    ? `<p class="caixa-mes-note">A soma dos dias (${moeda.format(headline)}) difere do total da linha do mês (${moeda.format(expected)}).</p>`
+    : `<p class="caixa-mes-note">A soma dos dias fecha com o total da linha do mês${isFaturamentoMode ? "" : " (realizado + previsto)"}.</p>`;
+
+  els.caixaMesDiaBody.innerHTML = `
+    <div class="dashboard-cash-summary-group caixa-mes-dia-summary">${summary}</div>
+    <div class="cash-chart-legend">${legend}</div>
+    <div class="cash-month-chart daily-chart caixa-mes-dia-chart" aria-label="Gráfico por dia de ${escapeHtml(monthName)}">${bars}</div>
+    <div class="cash-month-table-wrap">
+      <table class="cash-month-table caixa-mes-dia-table">
+        <thead>${head}</thead>
+        <tbody>${body}</tbody>
+        <tfoot>${foot}</tfoot>
+      </table>
+    </div>
+    ${note}
+  `;
+  animateDashboardBars(els.caixaMesDiaBody);
+  window.requestAnimationFrame(() => {
+    const todayBar = els.caixaMesDiaBody.querySelector(".cash-bar-wrap-current");
+    if (todayBar && typeof todayBar.scrollIntoView === "function") {
+      todayBar.scrollIntoView({ inline: "center", block: "nearest", behavior: "auto" });
+    }
+  });
+}
+
+async function openCaixaMesDiaModal(monthKey) {
+  if (!els.caixaMesDiaModal || !els.caixaMesDiaBody) return;
+  const key = String(monthKey || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(key)) return;
+
+  const mode = state.dashboardCashChartMode === "faturamento" ? "faturamento" : "recebimentos";
+  const range = getMonthRangeFromKey(key);
+  const monthName = range.label.charAt(0).toUpperCase() + range.label.slice(1);
+  const entry = getMonthlyCashEntries(mode).find((item) => item.monthKey === key) || null;
+
+  state.caixaMesDiaMonthKey = key;
+  if (els.caixaMesDiaTitle) {
+    els.caixaMesDiaTitle.textContent = `${monthName} por dia`;
+  }
+  if (els.caixaMesDiaSubtitle) {
+    els.caixaMesDiaSubtitle.textContent = mode === "faturamento"
+      ? "Pedidos emitidos em cada dia (não cancelados)."
+      : "Realizado é o que entrou no dia. Previsto é parcela em aberto com vencimento no dia.";
+  }
+  els.caixaMesDiaBody.innerHTML = '<p class="section-subtitle">Carregando abertura por dia…</p>';
+  els.caixaMesDiaModal.classList.remove("hidden");
+  if (els.closeCaixaMesDiaModalBtn) els.closeCaixaMesDiaModalBtn.focus();
+
+  try {
+    const rows = await loadDashboardDailyRowsForMonth(key);
+    if (state.caixaMesDiaMonthKey !== key) return;
+    renderCaixaMesDiaBody(rows, range, mode, entry ? entry.total : null);
+  } catch (error) {
+    if (state.caixaMesDiaMonthKey !== key) return;
+    els.caixaMesDiaBody.innerHTML = `
+      <p class="section-subtitle">Não foi possível carregar a abertura por dia.</p>
+      <p class="caixa-mes-note">${escapeHtml(error.message || String(error))}</p>
+    `;
+  }
+}
+
 /* =========================
  * Hub de Relatórios (menu)
  * ========================= */
@@ -16949,6 +17319,7 @@ async function refreshAll() {
       if (!state.session || !state.empresaId) return;
 
       setDashboardLoading(true);
+      state.dashboardDailyByMonth = {};
 
       // Dashboard primeiro: pinta a tela cedo e só depois carrega o restante.
       await Promise.all([
@@ -19106,6 +19477,33 @@ function attachEvents() {
       });
     });
   }
+  if (els.entradasCaixaGrid) {
+    els.entradasCaixaGrid.addEventListener("click", (event) => {
+      const row = event.target instanceof Element ? event.target.closest("tr[data-cash-month]") : null;
+      if (!row) return;
+      openCaixaMesDiaModal(row.getAttribute("data-cash-month"));
+    });
+    els.entradasCaixaGrid.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const row = event.target instanceof Element ? event.target.closest("tr[data-cash-month]") : null;
+      if (!row) return;
+      event.preventDefault();
+      openCaixaMesDiaModal(row.getAttribute("data-cash-month"));
+    });
+  }
+  if (els.closeCaixaMesDiaModalBtn) {
+    els.closeCaixaMesDiaModalBtn.addEventListener("click", () => closeCaixaMesDiaModal());
+  }
+  if (els.caixaMesDiaModal) {
+    els.caixaMesDiaModal.addEventListener("click", (event) => {
+      if (event.target === els.caixaMesDiaModal) closeCaixaMesDiaModal();
+    });
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (!els.caixaMesDiaModal || els.caixaMesDiaModal.classList.contains("hidden")) return;
+    closeCaixaMesDiaModal();
+  });
   if (els.closeCaixaMesBreakdownModalBtn) {
     els.closeCaixaMesBreakdownModalBtn.addEventListener("click", () => closeCaixaMesBreakdownModal());
   }

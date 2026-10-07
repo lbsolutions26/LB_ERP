@@ -1486,6 +1486,65 @@ button.caixa-mes-split-card {
   width: min(720px, 100%);
 }
 
+.modal-caixa-mes-dia-card {
+  width: min(1040px, 100%);
+}
+
+.caixa-mes-dia-body {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.65rem;
+}
+
+.caixa-mes-dia-summary {
+  justify-content: flex-start;
+}
+
+.caixa-mes-dia-summary .dashboard-cash-summary {
+  justify-items: start;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(217, 210, 196, 0.9);
+}
+
+.caixa-mes-dia-chart.cash-month-chart {
+  grid-auto-columns: 28px;
+  gap: 0.28rem;
+  min-height: 180px;
+  margin-top: 0;
+}
+
+.caixa-mes-dia-chart .cash-bar-track {
+  height: 132px;
+}
+
+.caixa-mes-dia-chart .cash-bar-label {
+  font-size: 0.68rem;
+}
+
+.caixa-mes-dia-chart .cash-bar-wrap.is-weekend .cash-bar-label {
+  opacity: 0.5;
+}
+
+.caixa-mes-dia-table tbody tr.is-weekend td {
+  background: rgba(20, 24, 30, 0.03);
+}
+
+.caixa-mes-dia-table tbody tr.is-empty td {
+  color: #b3aa9c;
+}
+
+.caixa-mes-dia-table tbody tr.is-today td {
+  background: rgba(22, 93, 89, 0.1);
+  color: var(--ink);
+}
+
+.caixa-mes-dia-table tfoot td {
+  font-weight: 700;
+  background: #f8f4ec;
+  border-top: 1px solid #e2d8c6;
+  color: var(--ink);
+}
+
 .caixa-mes-items-body {
   display: grid;
   gap: 0.75rem;
@@ -1681,6 +1740,14 @@ button.caixa-mes-split-card {
   background: rgba(22, 93, 89, 0.04);
 }
 
+.cash-month-table tbody tr.is-clickable {
+  cursor: pointer;
+}
+
+.cash-month-table tbody tr.is-clickable:focus-visible td {
+  box-shadow: inset 0 0 0 2px rgba(22, 93, 89, 0.45);
+}
+
 .cash-month-table tbody tr.is-current td {
   background: rgba(22, 93, 89, 0.07);
 }
@@ -1694,6 +1761,16 @@ button.caixa-mes-split-card {
   text-transform: capitalize;
   color: var(--ink);
   margin-right: 0.4rem;
+}
+
+.cash-month-open-hint {
+  display: inline-block;
+  margin-left: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: #165d59;
 }
 
 .cash-month-tag {
