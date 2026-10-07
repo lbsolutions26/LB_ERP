@@ -16,6 +16,7 @@ export function installComprasModule(ctx) {
     escapeHtml,
     showToast,
     formatDateInput,
+    foldSearchText,
     registrarEstoqueMovimento,
     ensureProdutosLoaded,
     loadFormasPagamento,
@@ -1126,14 +1127,14 @@ export function installComprasModule(ctx) {
   }
 
   function fillProdutoOptionsForDePara(selected = "", filterText = "") {
-    const q = String(filterText || "").trim().toLowerCase();
+    const q = foldSearchText(filterText || "");
     const opts = ['<option value="">Selecione o produto do catálogo…</option>'];
     for (const p of state().produtos || []) {
       if (p.ativo === false) continue;
       const nome = String(p.nome || "");
       const cod = String(p.codigo || p.external_id || "");
       if (q) {
-        const hay = `${nome} ${cod}`.toLowerCase();
+        const hay = foldSearchText(`${nome} ${cod}`);
         if (!hay.includes(q)) continue;
       }
       const sel = String(p.id) === String(selected) ? " selected" : "";
@@ -3569,13 +3570,11 @@ export function installComprasModule(ctx) {
   }
 
   function produtoMatchesQuery(p, query) {
-    const tokens = String(query || "")
-      .trim()
-      .toLowerCase()
+    const tokens = foldSearchText(query || "")
       .split(/\s+/)
       .filter(Boolean);
     if (!tokens.length) return true;
-    const hay = `${p.nome || ""} ${p.codigo || ""} ${p.external_id || ""} ${p.ean || ""}`.toLowerCase();
+    const hay = foldSearchText(`${p.nome || ""} ${p.codigo || ""} ${p.external_id || ""} ${p.ean || ""}`);
     return tokens.every((tok) => hay.includes(tok));
   }
 

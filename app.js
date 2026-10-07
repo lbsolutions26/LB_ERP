@@ -1,4 +1,4 @@
-import { installComprasModule } from "./compras.js?v=20260826notaProdutoBusy";
+import { installComprasModule } from "./compras.js?v=20261007buscaAcento";
 import { installCalendarioModule } from "./calendario.js";
 
 let supabaseClient;
@@ -1001,6 +1001,28 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+/** Comparação de busca: sem acento e sem diferença de maiúscula. Câmbio = cambio, Câmara = camara. */
+function foldSearchText(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function searchTextIncludes(haystack, needle) {
+  const foldedNeedle = foldSearchText(needle);
+  if (!foldedNeedle) return true;
+  return foldSearchText(haystack).includes(foldedNeedle);
+}
+
+/** Padrão ILIKE que aceita vogal acentuada no banco (ã/â/á contam como um caractere). */
+function accentLooseIlikePattern(value) {
+  const folded = foldSearchText(value).replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  if (!folded) return "%";
+  return `%${folded.replace(/[aeiou]/g, "_")}%`;
+}
+
 function resolveProdutoImageUrl(imagemPath) {
   const value = String(imagemPath || "").trim();
   if (!value) return "";
@@ -1461,7 +1483,7 @@ function getNovoDocumentoProdutoComboState(item) {
     produto,
     label: produto?.nome || descricaoFallback || "Selecionar produto",
     search: String(item.produtoSearch || ""),
-    query: String(item.produtoSearch || "").trim().toLowerCase()
+    query: foldSearchText(item.produtoSearch || "")
   };
 }
 
@@ -1571,11 +1593,11 @@ function refreshNovoDocumentoProdutoOptions(rowId, searchText) {
   const panel = document.querySelector(`[data-produto-combo-panel="${rowId}"]`);
   if (!(panel instanceof HTMLElement)) return;
 
-  const query = String(item.produtoSearch || "").trim().toLowerCase();
+  const query = foldSearchText(item.produtoSearch || "");
   const produtosFiltrados = query
     ? state.produtos.filter((produto) => {
-        const nome = String(produto.nome || "").toLowerCase();
-        const categoria = String(produto.categoria || "").toLowerCase();
+        const nome = foldSearchText(produto.nome || "");
+        const categoria = foldSearchText(produto.categoria || "");
         return nome.includes(query) || categoria.includes(query);
       })
     : state.produtos;
@@ -1610,8 +1632,8 @@ function renderNovoDocumentoProdutoCombo(item) {
   const comboState = getNovoDocumentoProdutoComboState(item);
   const produtosFiltrados = comboState.query
     ? state.produtos.filter((produto) => {
-        const nome = String(produto.nome || "").toLowerCase();
-        const categoria = String(produto.categoria || "").toLowerCase();
+        const nome = foldSearchText(produto.nome || "");
+        const categoria = foldSearchText(produto.categoria || "");
         return nome.includes(comboState.query) || categoria.includes(comboState.query);
       })
     : state.produtos;
@@ -3726,12 +3748,12 @@ async function createDocumentoFinanceiro(documentoId, clienteId, pagamentoState,
 
 function renderNovoDocumentoClienteSelect() {
   if (!els.novoDocumentoClienteOptions) return;
-  const search = String(els.novoDocumentoClienteSearch?.value || "").trim().toLowerCase();
+  const search = foldSearchText(els.novoDocumentoClienteSearch?.value || "");
   const clientesFiltrados = search
     ? state.clientes.filter((cliente) => {
-        const nome = String(cliente.nome || "").toLowerCase();
-        const telefone = String(cliente.telefone || "").toLowerCase();
-        const email = String(cliente.email || "").toLowerCase();
+        const nome = foldSearchText(cliente.nome || "");
+        const telefone = foldSearchText(cliente.telefone || "");
+        const email = foldSearchText(cliente.email || "");
         return nome.includes(search) || telefone.includes(search) || email.includes(search);
       })
     : state.clientes;
@@ -4797,11 +4819,7 @@ async function scanBarcodeForCaixa() {
 }
 
 function normalizeCaixaSearchText(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+  return foldSearchText(value);
 }
 
 function getCaixaProdutoCodigo(produto) {
@@ -5216,14 +5234,14 @@ function renderCaixaLastProductPreview(produto = null) {
 
 function renderCaixaClienteOptions(query = "") {
   if (!els.caixaClienteOptions) return;
-  const q = String(query || "").trim().toLowerCase();
+  const q = foldSearchText(query);
   if (!q) {
     els.caixaClienteOptions.classList.add("hidden");
     els.caixaClienteOptions.innerHTML = "";
     return;
   }
   const matches = (state.clientes || [])
-    .filter((c) => String(c.nome || "").toLowerCase().includes(q))
+    .filter((c) => foldSearchText(c.nome || "").includes(q))
     .slice(0, 12);
   if (!matches.length) {
     els.caixaClienteOptions.innerHTML =
@@ -11027,8 +11045,8 @@ function getEstoqueSaldosRows() {
     })
     .filter((row) => {
       if (busca) {
-        const hay = `${row.produto.nome} ${row.produto.categoria || ""}`.toLowerCase();
-        if (!hay.includes(busca)) return false;
+        const hay = foldSearchText(`${row.produto.nome} ${row.produto.categoria || ""}`);
+        if (!hay.includes(foldSearchText(busca))) return false;
       }
       if (statusFilter && row.status !== statusFilter) return false;
       if (abcFilter) {
@@ -11106,10 +11124,10 @@ function renderEstoqueSaldosTable() {
 
 function renderEstoqueMovimentosTable() {
   if (!els.estoqueMovimentosTable) return;
-  const busca = String(state.estoqueFilters.movBusca || "").trim().toLowerCase();
+  const busca = foldSearchText(state.estoqueFilters.movBusca || "");
   let rows = state.estoqueMovimentos || [];
   if (busca) {
-    rows = rows.filter((m) => String(m.produto?.nome || "").toLowerCase().includes(busca));
+    rows = rows.filter((m) => foldSearchText(m.produto?.nome || "").includes(busca));
   }
 
   if (!rows.length) {
@@ -11324,9 +11342,9 @@ function renderEstoqueAbc() {
 
 function renderEstoqueInventarioTable() {
   if (!els.estoqueInventarioTable) return;
-  const busca = String(state.estoqueFilters.invBusca || "").trim().toLowerCase();
+  const busca = foldSearchText(state.estoqueFilters.invBusca || "");
   const rows = getProdutosControlamEstoque()
-    .filter((p) => !busca || String(p.nome).toLowerCase().includes(busca))
+    .filter((p) => !busca || foldSearchText(p.nome).includes(busca))
     .sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
 
   if (!rows.length) {
@@ -12409,13 +12427,19 @@ async function findDocumentoIdsByProdutoFilter(produtoNeedle) {
   const { data, error } = await fetchAllSupabaseRows(() =>
     supabaseClient
       .from("documento_venda_itens")
-      .select("documento_id")
+      .select("documento_id, descricao_item")
       .eq("empresa_id", state.empresaId)
-      .ilike("descricao_item", `%${needle}%`)
+      .ilike("descricao_item", accentLooseIlikePattern(needle))
   );
 
   if (error) throw error;
-  const ids = [...new Set((data || []).map((row) => Number(row.documento_id)).filter(Number.isFinite))];
+  const foldedNeedle = foldSearchText(needle);
+  const ids = [...new Set(
+    (data || [])
+      .filter((row) => foldSearchText(row.descricao_item || "").includes(foldedNeedle))
+      .map((row) => Number(row.documento_id))
+      .filter(Number.isFinite)
+  )];
   return ids;
 }
 
@@ -12465,7 +12489,7 @@ async function loadPedidosFilteredFromDatabase() {
       }
 
       if (filters.cliente) {
-        query = query.ilike("cliente.nome", `%${filters.cliente}%`);
+        query = query.ilike("cliente.nome", accentLooseIlikePattern(filters.cliente));
       }
 
       if (filters.data) {
@@ -12512,7 +12536,7 @@ async function loadPedidosFilteredFromDatabase() {
             const cleanId = String(filters.pedido).replace(/[^\d]/g, "");
             query = query.eq("id", cleanId ? Number(cleanId) : -1);
           }
-          if (filters.cliente) query = query.ilike("cliente.nome", `%${filters.cliente}%`);
+          if (filters.cliente) query = query.ilike("cliente.nome", accentLooseIlikePattern(filters.cliente));
           if (filters.data) {
             const range = parseLooseDateFilter(filters.data);
             if (range) query = query.gte("data_emissao", range.start).lte("data_emissao", range.end);
@@ -12545,6 +12569,14 @@ async function loadPedidosFilteredFromDatabase() {
       docsData = docsData.filter((row) => {
         const label = row.data_emissao ? new Date(row.data_emissao).toLocaleDateString("pt-BR") : "";
         return label.toLowerCase().includes(needle);
+      });
+    }
+
+    if (filters.cliente) {
+      const needle = foldSearchText(filters.cliente);
+      docsData = docsData.filter((row) => {
+        const cliente = Array.isArray(row.cliente) ? row.cliente[0] : row.cliente;
+        return foldSearchText(cliente?.nome || "").includes(needle);
       });
     }
 
@@ -13383,9 +13415,9 @@ function getProdutoSortValue(produto, field) {
 function getFilteredAndSortedProdutos() {
   const filtered = state.produtos.filter((produto) => {
     return Object.entries(state.produtoFilters).every(([field, filterValue]) => {
-      const needle = String(filterValue || "").trim().toLowerCase();
+      const needle = foldSearchText(filterValue);
       if (!needle) return true;
-      const haystack = getProdutoFieldValue(produto, field).toLowerCase();
+      const haystack = foldSearchText(getProdutoFieldValue(produto, field));
       return haystack.includes(needle);
     });
   });
@@ -13451,9 +13483,9 @@ function getFilteredAndSortedTableRows(rows, tableKey, accessors) {
 
   const filtered = rows.filter((row) => {
     return Object.entries(view.filters || {}).every(([field, filterValue]) => {
-      const needle = String(filterValue || "").trim().toLowerCase();
+      const needle = foldSearchText(filterValue);
       if (!needle) return true;
-      const haystack = String(getTableAccessorValue(row, accessors, field, "filter") || "").toLowerCase();
+      const haystack = foldSearchText(getTableAccessorValue(row, accessors, field, "filter") || "");
       return haystack.includes(needle);
     });
   });
@@ -13830,7 +13862,7 @@ function renderPedidosTable() {
 function renderContasReceberTable() {
   if (!els.contasReceberTable) return;
 
-  const search = String(els.financeiroSearchInput?.value || "").trim().toLowerCase();
+  const search = foldSearchText(els.financeiroSearchInput?.value || "");
   const statusFilter = String(els.financeiroStatusFilter?.value || "").trim().toLowerCase();
 
   const statusSearchFiltered = state.contasReceber.filter((conta) => {
@@ -13842,7 +13874,7 @@ function renderContasReceberTable() {
     const statusConta = String(conta.statusNormalizado || "aberto");
 
     const matchStatus = !statusFilter || statusFilter === statusConta;
-    const haystack = `${clienteNome} ${titulo} ${documento} ${emissao} ${vencimento}`.toLowerCase();
+    const haystack = foldSearchText(`${clienteNome} ${titulo} ${documento} ${emissao} ${vencimento}`);
     const matchSearch = !search || haystack.includes(search);
     return matchStatus && matchSearch;
   });
@@ -18192,6 +18224,7 @@ function initComprasModule() {
       escapeHtml,
       showToast,
       formatDateInput,
+      foldSearchText,
       registrarEstoqueMovimento,
       ensureProdutosLoaded,
       loadFormasPagamento,
